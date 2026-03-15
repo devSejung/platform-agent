@@ -1,0 +1,65 @@
+# syntax=docker/dockerfile:1.7
+
+FROM ubuntu:22.04
+
+ARG OPENCLAW_NODE_VERSION="24.11.0"
+ARG OPENCLAW_USE_COMPANY_APT="0"
+ARG OPENCLAW_NODE_SHA256_AMD64=""
+ARG OPENCLAW_NODE_SHA256_ARM64=""
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY docker/jammy/company-jammy.list /tmp/company-jammy.list
+
+RUN set -eux; \
+  rm -f /etc/apt/sources.list.d/*.list; \
+  if [ "$OPENCLAW_USE_COMPANY_APT" = "1" ]; then \
+    cp /tmp/company-jammy.list /etc/apt/sources.list; \
+  fi; \
+  apt-get update && \
+  apt-get upgrade -y --no-install-recommends && \
+  apt-get install -y --no-install-recommends \
+    bash \
+    build-essential \
+    ca-certificates \
+    curl \
+    git \
+    jq \
+    less \
+    libssl-dev \
+    make \
+    pkg-config \
+    python3 \
+    python3-pip \
+    python3-venv \
+    ripgrep \
+    unzip \
+    vim \
+    xz-utils \
+    zip && \
+  rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+  arch="$(dpkg --print-architecture)"; \
+  case "$arch" in \
+    amd64) node_arch='x64'; node_sha="$OPENCLAW_NODE_SHA256_AMD64" ;; \
+    arm64) node_arch='arm64'; node_sha="$OPENCLAW_NODE_SHA256_ARM64" ;; \
+    *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+  esac; \
+  curl -fsSL "https://nodejs.org/dist/v${OPENCLAW_NODE_VERSION}/node-v${OPENCLAW_NODE_VERSION}-linux-${node_arch}.tar.xz" -o /tmp/node.tar.xz; \
+  if [ -n "$node_sha" ]; then \
+    printf '%s  %s\n' "$node_sha" /tmp/node.tar.xz | sha256sum -c -; \
+  else \
+    echo "WARNING: Node tarball checksum not set for $arch" >&2; \
+  fi; \
+  tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1; \
+  rm -f /tmp/node.tar.xz; \
+  node --version; \
+  npm --version; \
+  corepack enable
+
+RUN useradd --create-home --shell /bin/bash sandbox
+USER sandbox
+WORKDIR /home/sandbox
+
+CMD ["sleep", "infinity"]

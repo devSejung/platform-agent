@@ -1,0 +1,253 @@
+# syntax=docker/dockerfile:1.7
+
+ARG OPENCLAW_EXTENSIONS=""
+ARG OPENCLAW_NODE_VERSION="24.11.0"
+ARG OPENCLAW_USE_COMPANY_APT="0"
+ARG OPENCLAW_NODE_SHA256_AMD64=""
+ARG OPENCLAW_NODE_SHA256_ARM64=""
+
+FROM ubuntu:22.04 AS ext-deps
+ARG OPENCLAW_EXTENSIONS
+COPY extensions /tmp/extensions
+RUN mkdir -p /out && \
+    for ext in $OPENCLAW_EXTENSIONS; do \
+      if [ -f "/tmp/extensions/$ext/package.json" ]; then \
+        mkdir -p "/out/$ext" && \
+        cp "/tmp/extensions/$ext/package.json" "/out/$ext/package.json"; \
+      fi; \
+    done
+
+FROM ubuntu:22.04 AS build
+ARG OPENCLAW_NODE_VERSION
+ARG OPENCLAW_USE_COMPANY_APT
+ARG OPENCLAW_NODE_SHA256_AMD64
+ARG OPENCLAW_NODE_SHA256_ARM64
+ENV DEBIAN_FRONTEND=noninteractive
+COPY docker/jammy/company-jammy.list /tmp/company-jammy.list
+RUN --mount=type=cache,id=openclaw-jammy-build-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=openclaw-jammy-build-apt-lists,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    rm -f /etc/apt/sources.list.d/*.list; \
+    if [ "$OPENCLAW_USE_COMPANY_APT" = "1" ]; then \
+      cp /tmp/company-jammy.list /etc/apt/sources.list; \
+    fi; \
+    apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
+    apt-get install -y --no-install-recommends \
+      build-essential \
+      ca-certificates \
+      curl \
+      git \
+      libssl-dev \
+      make \
+      pkg-config \
+      g++ \
+      python3 \
+      unzip \
+      xz-utils && \
+    rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) node_arch='x64'; node_sha="$OPENCLAW_NODE_SHA256_AMD64" ;; \
+      arm64) node_arch='arm64'; node_sha="$OPENCLAW_NODE_SHA256_ARM64" ;; \
+      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://nodejs.org/dist/v${OPENCLAW_NODE_VERSION}/node-v${OPENCLAW_NODE_VERSION}-linux-${node_arch}.tar.xz" -o /tmp/node.tar.xz; \
+    if [ -n "$node_sha" ]; then \
+      printf '%s  %s\n' "$node_sha" /tmp/node.tar.xz | sha256sum -c -; \
+    else \
+      echo "WARNING: Node tarball checksum not set for $arch" >&2; \
+    fi; \
+    tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1; \
+    rm -f /tmp/node.tar.xz; \
+    node --version; \
+    npm --version; \
+    corepack enable
+RUN set -eux; \
+    for attempt in 1 2 3 4 5; do \
+      if curl --retry 5 --retry-all-errors --retry-delay 2 -fsSL https://bun.sh/install | bash; then \
+        break; \
+      fi; \
+      if [ "$attempt" -eq 5 ]; then \
+        exit 1; \
+      fi; \
+      sleep $((attempt * 2)); \
+    done
+ENV PATH="/root/.bun/bin:${PATH}"
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY ui/package.json ./ui/package.json
+COPY patches ./patches
+COPY --from=ext-deps /out/ ./extensions/
+
+RUN --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    NODE_OPTIONS=--max-old-space-size=2048 pnpm install --frozen-lockfile
+
+COPY . .
+
+RUN for dir in /app/extensions /app/.agent /app/.agents; do \
+      if [ -d "$dir" ]; then \
+        find "$dir" -type d -exec chmod 755 {} +; \
+        find "$dir" -type f -exec chmod 644 {} +; \
+      fi; \
+    done
+
+RUN pnpm canvas:a2ui:bundle || \
+    (echo "A2UI bundle: creating stub (non-fatal)" && \
+     mkdir -p src/canvas-host/a2ui && \
+     echo "/* A2UI bundle unavailable in this build */" > src/canvas-host/a2ui/a2ui.bundle.js && \
+     echo "stub" > src/canvas-host/a2ui/.bundle.hash && \
+     rm -rf vendor/a2ui apps/shared/OpenClawKit/Tools/CanvasA2UI)
+RUN pnpm build:docker
+ENV OPENCLAW_PREFER_PNPM=1
+RUN pnpm ui:build
+
+FROM build AS runtime-assets
+RUN CI=true pnpm prune --prod && \
+    find dist -type f \( -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' -o -name '*.map' \) -delete
+
+FROM ubuntu:22.04 AS runtime
+ARG OPENCLAW_NODE_VERSION
+ARG OPENCLAW_USE_COMPANY_APT
+ARG OPENCLAW_NODE_SHA256_AMD64
+ARG OPENCLAW_NODE_SHA256_ARM64
+ARG OPENCLAW_DOCKER_APT_PACKAGES=""
+ARG OPENCLAW_INSTALL_BROWSER=""
+ARG OPENCLAW_INSTALL_DOCKER_CLI="1"
+
+LABEL org.opencontainers.image.source="https://github.com/openclaw/openclaw" \
+  org.opencontainers.image.url="https://openclaw.ai" \
+  org.opencontainers.image.documentation="https://docs.openclaw.ai/install/docker" \
+  org.opencontainers.image.licenses="MIT" \
+  org.opencontainers.image.title="OpenClaw (Jammy Runtime)" \
+  org.opencontainers.image.description="OpenClaw gateway and CLI runtime container image based on Ubuntu 22.04 jammy"
+
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /app
+
+COPY docker/jammy/company-jammy.list /tmp/company-jammy.list
+
+RUN set -eux; \
+    rm -f /etc/apt/sources.list.d/*.list; \
+    if [ "$OPENCLAW_USE_COMPANY_APT" = "1" ]; then \
+      cp /tmp/company-jammy.list /etc/apt/sources.list; \
+    fi; \
+    apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      git \
+      gnupg \
+      hostname \
+      jq \
+      less \
+      libssl-dev \
+      lsof \
+      make \
+      openssl \
+      pkg-config \
+      procps \
+      python3 \
+      python3-pip \
+      python3-venv \
+      ripgrep \
+      unzip \
+      vim \
+      xz-utils \
+      zip && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) node_arch='x64'; node_sha="$OPENCLAW_NODE_SHA256_AMD64" ;; \
+      arm64) node_arch='arm64'; node_sha="$OPENCLAW_NODE_SHA256_ARM64" ;; \
+      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://nodejs.org/dist/v${OPENCLAW_NODE_VERSION}/node-v${OPENCLAW_NODE_VERSION}-linux-${node_arch}.tar.xz" -o /tmp/node.tar.xz; \
+    if [ -n "$node_sha" ]; then \
+      printf '%s  %s\n' "$node_sha" /tmp/node.tar.xz | sha256sum -c -; \
+    else \
+      echo "WARNING: Node tarball checksum not set for $arch" >&2; \
+    fi; \
+    tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1; \
+    rm -f /tmp/node.tar.xz; \
+    node --version; \
+    npm --version; \
+    corepack enable
+
+RUN groupadd -g 1000 node && \
+    useradd -m -u 1000 -g 1000 -s /bin/bash node
+
+COPY --from=runtime-assets --chown=1000:1000 /app/package.json .
+COPY --from=runtime-assets --chown=1000:1000 /app/openclaw.mjs .
+
+# Core runtime files. Extensions may import from src/ at runtime, so keep the
+# source tree alongside the compiled dist/ layout.
+COPY --from=runtime-assets --chown=1000:1000 /app/dist ./dist
+COPY --from=runtime-assets --chown=1000:1000 /app/src ./src
+
+# Runtime dependencies.
+COPY --from=runtime-assets --chown=1000:1000 /app/node_modules ./node_modules
+
+# Dynamically loaded runtime content.
+COPY --from=runtime-assets --chown=1000:1000 /app/extensions ./extensions
+COPY --from=runtime-assets --chown=1000:1000 /app/skills ./skills
+COPY --from=runtime-assets --chown=1000:1000 /app/docs ./docs
+
+ENV COREPACK_HOME=/usr/local/share/corepack
+RUN install -d -m 0755 "$COREPACK_HOME" && \
+    corepack enable && \
+    for attempt in 1 2 3 4 5; do \
+      if corepack prepare "$(node -p "require('./package.json').packageManager")" --activate; then \
+        break; \
+      fi; \
+      if [ "$attempt" -eq 5 ]; then \
+        exit 1; \
+      fi; \
+      sleep $((attempt * 2)); \
+    done && \
+    chmod -R a+rX "$COREPACK_HOME"
+
+RUN if [ -n "$OPENCLAW_DOCKER_APT_PACKAGES" ]; then \
+      apt-get update && \
+      apt-get install -y --no-install-recommends $OPENCLAW_DOCKER_APT_PACKAGES && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+
+RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
+      apt-get update && \
+      apt-get install -y --no-install-recommends xvfb && \
+      mkdir -p /home/node/.cache/ms-playwright && \
+      PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright \
+      node /app/node_modules/playwright-core/cli.js install --with-deps chromium && \
+      chown -R node:node /home/node/.cache/ms-playwright && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+
+RUN if [ -n "$OPENCLAW_INSTALL_DOCKER_CLI" ]; then \
+      apt-get update && \
+      compose_pkgs=""; \
+      for candidate in docker-compose-v2 docker-compose-plugin docker-compose; do \
+        if apt-cache show "$candidate" >/dev/null 2>&1; then \
+          compose_pkgs="$compose_pkgs $candidate"; \
+        fi; \
+      done; \
+      apt-get install -y --no-install-recommends docker.io $compose_pkgs && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+
+RUN chown -R node:node /app /home/node
+
+RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw && \
+    chmod 755 /app/openclaw.mjs
+
+ENV NODE_ENV=production
+USER node
+
+HEALTHCHECK --interval=3m --timeout=10s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]

@@ -1,0 +1,7 @@
+deb http://repo.samsungds.net/artifactory/debian-remote/ubuntu jammy main restricted
+deb http://repo.samsungds.net/artifactory/debian-remote/ubuntu jammy-updates main restricted
+deb http://repo.samsungds.net/artifactory/debian-remote/ubuntu jammy universe
+deb http://repo.samsungds.net/artifactory/debian-remote/ubuntu jammy-updates universe
+deb http://repo.samsungds.net/artifactory/debian-remote/ubuntu jammy multiverse
+deb http://repo.samsungds.net/artifactory/debian-remote/ubuntu jammy-updates multiverse
+deb http://repo.samsungds.net/artifactory/debian-remote/ubuntu jammy-backports main restricted universe multiverse

@@ -2,10 +2,10 @@ import { getSafeLocalStorage } from "../../local-storage.ts";
 import { en } from "../locales/en.ts";
 import {
   DEFAULT_LOCALE,
+  INITIAL_LOCALE,
   SUPPORTED_LOCALES,
   isSupportedLocale,
   loadLazyLocaleTranslation,
-  resolveNavigatorLocale,
 } from "./registry.ts";
 import type { Locale, TranslationMap } from "./types.ts";
 
@@ -51,9 +51,7 @@ class I18nManager {
     if (isSupportedLocale(saved)) {
       return saved;
     }
-    const language =
-      typeof globalThis.navigator?.language === "string" ? globalThis.navigator.language : null;
-    return resolveNavigatorLocale(language ?? "");
+    return INITIAL_LOCALE;
   }
 
   private loadLocale() {

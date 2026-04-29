@@ -1,5 +1,5 @@
 import { LitElement } from "lit";
-import { state } from "lit/decorators.js";
+import { customElement, state } from "lit/decorators.js";
 import { i18n, I18nController, isSupportedLocale } from "../i18n/index.ts";
 import {
   handleChannelConfigReload as handleChannelConfigReloadInternal,
@@ -28,7 +28,13 @@ import {
   handleFirstUpdated,
   handleUpdated,
 } from "./app-lifecycle.ts";
+import {
+  logoutEmployee,
+  submitEmployeeAdSso,
+  submitEmployeeLogin,
+} from "./controllers/employee-login.ts";
 import { renderApp } from "./app-render.ts";
+import type { EmployeeUiLoginNotice } from "../../../src/gateway/employee-ui-contract.ts";
 import {
   exportLogs as exportLogsInternal,
   handleChatScroll as handleChatScrollInternal,
@@ -104,6 +110,7 @@ import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.
 declare global {
   interface Window {
     __OPENCLAW_CONTROL_UI_BASE_PATH__?: string;
+    __OPENCLAW_UI_MODE__?: "control" | "employee";
   }
 }
 
@@ -122,13 +129,31 @@ function resolveOnboardingMode(): boolean {
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
+function resolveUiMode(): "control" | "employee" {
+  if (window.__OPENCLAW_UI_MODE__ === "employee") {
+    return "employee";
+  }
+  const pathname = typeof window.location?.pathname === "string" ? window.location.pathname : "";
+  if (pathname === "/" || /^\/employee(?:\/|$)/.test(pathname)) {
+    return "employee";
+  }
+  return "control";
+}
+
+@customElement("openclaw-app")
 export class OpenClawApp extends LitElement {
   private i18nController = new I18nController(this);
   clientInstanceId = generateUUID();
   connectGeneration = 0;
   @state() settings: UiSettings = loadSettings();
+  @state() employeeMode = resolveUiMode() === "employee";
   constructor() {
     super();
+    if (this.employeeMode && this.settings.theme === "claw") {
+      this.settings = { ...this.settings, theme: "knot" };
+      this.theme = "knot";
+      this.themeOrder = this.buildThemeOrder(this.theme);
+    }
     if (isSupportedLocale(this.settings.locale)) {
       void i18n.setLocale(this.settings.locale);
     }
@@ -136,6 +161,26 @@ export class OpenClawApp extends LitElement {
   @state() password = "";
   @state() loginShowGatewayToken = false;
   @state() loginShowGatewayPassword = false;
+  @state() employeeBootstrapToken: string | null = null;
+  @state() employeeBootstrapReady = false;
+  @state() employeeBootstrapError: string | null = null;
+  @state() employeeLoginNotice: EmployeeUiLoginNotice | null = null;
+  @state() employeeLoginIdentifier = "";
+  @state() employeeLoginPassword = "";
+  @state() employeeLoginSubmitting = false;
+  @state() employeeUi = {
+    docsUrl: null as string | null,
+    announcementTitle: null as string | null,
+    announcementBody: null as string | null,
+    announcementLinkLabel: null as string | null,
+    announcementLinkUrl: null as string | null,
+  };
+  @state() employeeProfile = {
+    employeeId: null as string | null,
+    name: null as string | null,
+    department: null as string | null,
+    agentId: null as string | null,
+  };
   @state() tab: Tab = "chat";
   @state() onboarding = resolveOnboardingMode();
   @state() connected = false;
@@ -478,9 +523,12 @@ export class OpenClawApp extends LitElement {
   private chatHasAutoScrolled = false;
   private chatUserNearBottom = true;
   @state() chatNewMessagesBelow = false;
+  private employeeBootstrapPollInterval: number | null = null;
   private nodesPollInterval: number | null = null;
   private logsPollInterval: number | null = null;
   private debugPollInterval: number | null = null;
+  private heartbeatPollInterval: number | null = null;
+  private requestStatusPollInterval: number | null = null;
   private logsScrollFrame: number | null = null;
   private toolStreamById = new Map<string, ToolStreamEntry>();
   private toolStreamOrder: string[] = [];
@@ -559,6 +607,18 @@ export class OpenClawApp extends LitElement {
 
   connect() {
     connectGatewayInternal(this as unknown as Parameters<typeof connectGatewayInternal>[0]);
+  }
+
+  async handleEmployeeLogin() {
+    await submitEmployeeLogin(this as unknown as Parameters<typeof submitEmployeeLogin>[0]);
+  }
+
+  async handleEmployeeAdSso() {
+    await submitEmployeeAdSso(this as unknown as Parameters<typeof submitEmployeeAdSso>[0]);
+  }
+
+  async handleEmployeeLogout() {
+    await logoutEmployee(this as unknown as Parameters<typeof logoutEmployee>[0]);
   }
 
   handleChatScroll(event: Event) {
@@ -788,8 +848,4 @@ export class OpenClawApp extends LitElement {
   render() {
     return renderApp(this as unknown as AppViewState);
   }
-}
-
-if (!customElements.get("openclaw-app")) {
-  customElements.define("openclaw-app", OpenClawApp);
 }

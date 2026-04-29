@@ -256,6 +256,11 @@ export const FIELD_LABELS: Record<string, string> = {
   "tools.web.fetch.readability": "Web Fetch Readability Extraction",
   "gateway.controlUi.basePath": "Control UI Base Path",
   "gateway.controlUi.root": "Control UI Assets Root",
+  "gateway.controlUi.docsUrl": "Workspace Docs URL",
+  "gateway.controlUi.announcementTitle": "Employee Announcement Title",
+  "gateway.controlUi.announcementBody": "Employee Announcement Body",
+  "gateway.controlUi.announcementLinkLabel": "Employee Announcement Link Label",
+  "gateway.controlUi.announcementLinkUrl": "Employee Announcement Link URL",
   "gateway.controlUi.allowedOrigins": "Control UI Allowed Origins",
   "gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback":
     "Dangerously Allow Host-Header Origin Fallback",

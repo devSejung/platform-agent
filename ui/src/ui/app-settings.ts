@@ -5,6 +5,8 @@ import {
   stopLogsPolling,
   startDebugPolling,
   stopDebugPolling,
+  startHeartbeatPolling,
+  stopHeartbeatPolling,
 } from "./app-polling.ts";
 import { scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
 import type { OpenClawApp } from "./app.ts";
@@ -14,10 +16,11 @@ import { loadAgentSkills } from "./controllers/agent-skills.ts";
 import { loadAgents } from "./controllers/agents.ts";
 import { loadChannels } from "./controllers/channels.ts";
 import { loadConfig, loadConfigSchema } from "./controllers/config.ts";
-import { loadCronJobs, loadCronRuns, loadCronStatus } from "./controllers/cron.ts";
+import { loadCronJobs, loadCronModelSuggestions, loadCronRuns, loadCronStatus } from "./controllers/cron.ts";
 import { loadDebug } from "./controllers/debug.ts";
 import { loadDevices } from "./controllers/devices.ts";
 import { loadDreamDiary, loadDreamingStatus } from "./controllers/dreaming.ts";
+import { loadEmployeeHeartbeat } from "./controllers/heartbeat.ts";
 import { loadExecApprovals } from "./controllers/exec-approvals.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
@@ -41,6 +44,7 @@ import { resetChatViewState } from "./views/chat.ts";
 
 type SettingsHost = {
   settings: UiSettings;
+  employeeMode?: boolean;
   password?: string;
   theme: ThemeName;
   themeMode: ThemeMode;
@@ -73,9 +77,11 @@ type SettingsHost = {
 export function applySettings(host: SettingsHost, next: UiSettings) {
   const normalized = {
     ...next,
+    sessionKey: next.sessionKey?.trim() || "main",
     lastActiveSessionKey: next.lastActiveSessionKey?.trim() || next.sessionKey.trim() || "main",
   };
   host.settings = normalized;
+  host.sessionKey = normalized.sessionKey;
   saveSettings(normalized);
   if (next.theme !== host.theme || next.themeMode !== host.themeMode) {
     host.theme = next.theme;
@@ -235,6 +241,34 @@ export function setThemeMode(
 }
 
 export async function refreshActiveTab(host: SettingsHost) {
+  if (host.employeeMode) {
+    if (host.tab !== "chat" && host.tab !== "cron" && host.tab !== "heartbeat" && host.tab !== "skills") {
+      host.tab = "chat";
+    }
+    if (host.tab === "chat") {
+      await refreshChat(host as unknown as Parameters<typeof refreshChat>[0]);
+      scheduleChatScroll(
+        host as unknown as Parameters<typeof scheduleChatScroll>[0],
+        !host.chatHasAutoScrolled,
+      );
+    }
+    if (host.tab === "cron") {
+      await loadCron(host);
+    }
+    if (host.tab === "heartbeat") {
+      await loadEmployeeHeartbeat(host as unknown as Parameters<typeof loadEmployeeHeartbeat>[0]);
+    }
+    if (host.tab === "skills") {
+      const agentId =
+        host.employeeProfile?.agentId?.trim() ||
+        resolveAgentIdFromSessionKey(host.sessionKey) ||
+        null;
+      if (agentId) {
+        await loadAgentSkills(host as unknown as OpenClawApp, agentId);
+      }
+    }
+    return;
+  }
   if (host.tab === "overview") {
     await loadOverview(host);
   }
@@ -478,6 +512,11 @@ function applyTabSelection(
   } else {
     stopDebugPolling(host as unknown as Parameters<typeof stopDebugPolling>[0]);
   }
+  if (next === "heartbeat") {
+    startHeartbeatPolling(host as unknown as Parameters<typeof startHeartbeatPolling>[0]);
+  } else {
+    stopHeartbeatPolling(host as unknown as Parameters<typeof stopHeartbeatPolling>[0]);
+  }
 
   if (options.refreshPolicy === "always" || host.connected) {
     void refreshActiveTab(host);
@@ -682,5 +721,6 @@ export async function loadCron(host: SettingsHost) {
     loadCronStatus(app),
     loadCronJobs(app),
     loadCronRuns(app, activeCronJobId),
+    loadCronModelSuggestions(app),
   ]);
 }

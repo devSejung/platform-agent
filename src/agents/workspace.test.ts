@@ -15,6 +15,7 @@ import {
   filterBootstrapFilesForSession,
   loadWorkspaceBootstrapFiles,
   resolveDefaultAgentWorkspaceDir,
+  upsertWorkspaceUserProfile,
   type WorkspaceBootstrapFile,
 } from "./workspace.js";
 
@@ -75,8 +76,9 @@ describe("ensureAgentWorkspace", () => {
   it("creates BOOTSTRAP.md and records a seeded marker for brand new workspaces", async () => {
     const tempDir = await makeTempWorkspace("openclaw-workspace-");
 
-    await ensureAgentWorkspace({ dir: tempDir, ensureBootstrapFiles: true });
+    const result = await ensureAgentWorkspace({ dir: tempDir, ensureBootstrapFiles: true });
 
+    expect(result.workspaceCreated).toBe(true);
     await expectBootstrapSeeded(tempDir);
     expect((await readWorkspaceState(tempDir)).setupCompletedAt).toBeUndefined();
   });
@@ -242,6 +244,61 @@ describe("loadWorkspaceBootstrapFiles", () => {
     } finally {
       await fs.rm(rootDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("upsertWorkspaceUserProfile", () => {
+  it("appends an auto-generated user block to USER.md", async () => {
+    const tempDir = await makeTempWorkspace("openclaw-workspace-");
+    await ensureAgentWorkspace({ dir: tempDir, ensureBootstrapFiles: true });
+
+    const result = await upsertWorkspaceUserProfile({
+      workspaceDir: tempDir,
+      profile: {
+        employeeId: "eon",
+        name: "Eon",
+        department: "Platform",
+        email: "eon@company.example",
+      },
+    });
+
+    expect(result.seeded).toBe(true);
+    const content = await fs.readFile(result.path, "utf8");
+    expect(content).toContain("<!-- OPENCLAW_AUTO_USER_START -->");
+    expect(content).toContain("- Employee ID: eon");
+    expect(content).toContain("- Jira ID: eon");
+    expect(content).toContain("- Name: Eon");
+    expect(content).toContain("- Department: Platform");
+    expect(content).toContain("- Email: eon@company.example");
+  });
+
+  it("replaces the existing auto-generated user block without duplicating it", async () => {
+    const tempDir = await makeTempWorkspace("openclaw-workspace-");
+    await ensureAgentWorkspace({ dir: tempDir, ensureBootstrapFiles: true });
+
+    const first = await upsertWorkspaceUserProfile({
+      workspaceDir: tempDir,
+      profile: {
+        employeeId: "eon",
+        name: "Eon",
+      },
+    });
+    expect(first.seeded).toBe(true);
+    const result = await upsertWorkspaceUserProfile({
+      workspaceDir: tempDir,
+      profile: {
+        employeeId: "eon",
+        name: "Eon Kim",
+        department: "Platform",
+      },
+    });
+
+    expect(result.seeded).toBe(false);
+    const content = await fs.readFile(result.path, "utf8");
+    expect(content.match(/OPENCLAW_AUTO_USER_START/g)?.length).toBe(1);
+    expect(content).toContain("- Jira ID: eon");
+    expect(content).toContain("- Name: Eon Kim");
+    expect(content).not.toContain("- Name: Eon\n");
   });
 });
 

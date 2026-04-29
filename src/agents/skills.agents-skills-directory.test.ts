@@ -13,10 +13,16 @@ async function createTempDir(prefix: string) {
   return dir;
 }
 
-function buildSkillsPrompt(workspaceDir: string, managedDir: string, bundledDir: string): string {
+function buildSkillsPrompt(
+  workspaceDir: string,
+  managedDir: string,
+  bundledDir: string,
+  extraDirs?: string[],
+): string {
   return buildWorkspaceSkillsPrompt(workspaceDir, {
     managedSkillsDir: managedDir,
     bundledSkillsDir: bundledDir,
+    ...(extraDirs ? { config: { skills: { load: { extraDirs } } } } : {}),
   });
 }
 
@@ -106,6 +112,42 @@ describe("buildWorkspaceSkillsPrompt — .agents/skills/ directories", () => {
     const prompt2 = buildSkillsPrompt(workspaceDir, managedDir, bundledDir);
     expect(prompt2).toContain("Project agents version");
     expect(prompt2).not.toContain("Personal agents version");
+  });
+
+  it("loads configured extraDirs above personal and project .agents/skills/ but below workspace", async () => {
+    const { workspaceDir, managedDir, bundledDir } = await createWorkspaceSkillDirs();
+    const extraDir = await createTempDir("openclaw-extra-skills-");
+
+    await writeSkill({
+      dir: path.join(fakeHome, ".agents", "skills", "shared-skill"),
+      name: "shared-skill",
+      description: "Personal agents version",
+    });
+    await writeSkill({
+      dir: path.join(workspaceDir, ".agents", "skills", "shared-skill"),
+      name: "shared-skill",
+      description: "Project agents version",
+    });
+    await writeSkill({
+      dir: path.join(extraDir, "shared-skill"),
+      name: "shared-skill",
+      description: "Extra dirs version",
+    });
+
+    const prompt1 = buildSkillsPrompt(workspaceDir, managedDir, bundledDir, [extraDir]);
+    expect(prompt1).toContain("Extra dirs version");
+    expect(prompt1).not.toContain("Project agents version");
+    expect(prompt1).not.toContain("Personal agents version");
+
+    await writeSkill({
+      dir: path.join(workspaceDir, "skills", "shared-skill"),
+      name: "shared-skill",
+      description: "Workspace version",
+    });
+
+    const prompt2 = buildSkillsPrompt(workspaceDir, managedDir, bundledDir, [extraDir]);
+    expect(prompt2).toContain("Workspace version");
+    expect(prompt2).not.toContain("Extra dirs version");
   });
 
   it("loads unique skills from all .agents/skills/ sources alongside others", async () => {

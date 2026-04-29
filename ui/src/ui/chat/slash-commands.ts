@@ -21,6 +21,8 @@ export type SlashCommandDef = {
   argOptions?: string[];
   /** Keyboard shortcut hint shown in the menu (display only). */
   shortcut?: string;
+  /** Hidden from employee UI mode. */
+  employeeHidden?: boolean;
 };
 
 const COMMAND_ICON_OVERRIDES: Partial<Record<string, IconName>> = {
@@ -89,6 +91,10 @@ const UI_ONLY_COMMANDS: SlashCommandDef[] = [
     executeLocal: true,
   },
 ];
+
+function isEmployeeUiMode(): boolean {
+  return (globalThis as { __OPENCLAW_UI_MODE__?: unknown }).__OPENCLAW_UI_MODE__ === "employee";
+}
 
 const CATEGORY_OVERRIDES: Partial<Record<string, SlashCommandCategory>> = {
   help: "tools",
@@ -196,15 +202,20 @@ function toSlashCommand(command: ChatCommandDefinition): SlashCommandDef | null 
     category: mapCategory(command),
     executeLocal: LOCAL_COMMANDS.has(command.key),
     argOptions: getArgOptions(command),
+    employeeHidden: command.key === "agents",
   };
 }
 
-export const SLASH_COMMANDS: SlashCommandDef[] = [
+const ALL_SLASH_COMMANDS: SlashCommandDef[] = [
   ...buildBuiltinChatCommands()
     .map(toSlashCommand)
     .filter((command): command is SlashCommandDef => command !== null),
   ...UI_ONLY_COMMANDS,
 ];
+
+export const SLASH_COMMANDS: SlashCommandDef[] = isEmployeeUiMode()
+  ? ALL_SLASH_COMMANDS.filter((command) => !command.employeeHidden)
+  : ALL_SLASH_COMMANDS;
 
 const CATEGORY_ORDER: SlashCommandCategory[] = ["session", "model", "tools", "agents"];
 

@@ -1,12 +1,15 @@
+import { loadConfig } from "../../config/config.js";
 import { resolveMainSessionKeyFromConfig } from "../../config/sessions.js";
 import {
   loadOrCreateDeviceIdentity,
   publicKeyRawBase64UrlFromPem,
 } from "../../infra/device-identity.js";
-import { getLastHeartbeatEvent } from "../../infra/heartbeat-events.js";
+import { getLastHeartbeatEvent, getLastHeartbeatEventForAgent } from "../../infra/heartbeat-events.js";
 import { setHeartbeatsEnabled } from "../../infra/heartbeat-runner.js";
+import { resolveHeartbeatSummaryForAgent } from "../../infra/heartbeat-summary.js";
 import { enqueueSystemEvent, isSystemEventContextChanged } from "../../infra/system-events.js";
 import { listSystemPresence, updateSystemPresence } from "../../infra/system-presence.js";
+import { getEmployeeAgentId, isEmployeeClient } from "../employee-access.js";
 import { normalizeLowercaseStringOrEmpty, readStringValue } from "../../shared/string-coerce.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import { broadcastPresenceSnapshot } from "../server/presence-events.js";
@@ -24,10 +27,26 @@ export const systemHandlers: GatewayRequestHandlers = {
       undefined,
     );
   },
-  "last-heartbeat": ({ respond }) => {
-    respond(true, getLastHeartbeatEvent(), undefined);
+  "last-heartbeat": ({ respond, client }) => {
+    const employeeAgentId = getEmployeeAgentId(client);
+    const payload = employeeAgentId
+      ? getLastHeartbeatEventForAgent(employeeAgentId)
+      : getLastHeartbeatEvent();
+    respond(true, payload, undefined);
   },
-  "set-heartbeats": ({ params, respond }) => {
+  "heartbeat.summary.get": ({ respond, client, params }) => {
+    const cfg = loadConfig();
+    const employeeAgentId = getEmployeeAgentId(client);
+    const requestedAgentId =
+      typeof params.agentId === "string" && params.agentId.trim() ? params.agentId.trim() : undefined;
+    const agentId = employeeAgentId ?? requestedAgentId;
+    respond(true, resolveHeartbeatSummaryForAgent(cfg, agentId), undefined);
+  },
+  "set-heartbeats": ({ params, respond, client }) => {
+    if (isEmployeeClient(client)) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "employee access denied"));
+      return;
+    }
     const enabled = params.enabled;
     if (typeof enabled !== "boolean") {
       respond(

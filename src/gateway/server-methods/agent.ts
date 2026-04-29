@@ -43,6 +43,7 @@ import {
 import { resolveAssistantIdentity } from "../assistant-identity.js";
 import { MediaOffloadError, parseMessageWithAttachments } from "../chat-attachments.js";
 import { resolveAssistantAvatarUrl } from "../control-ui-shared.js";
+import { enforceEmployeeAgent, enforceEmployeeSessionKey } from "../employee-access.js";
 import { ADMIN_SCOPE } from "../method-scopes.js";
 import { GATEWAY_CLIENT_CAPS, hasGatewayClientCap } from "../protocol/client-info.js";
 import {
@@ -848,7 +849,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       context,
     });
   },
-  "agent.identity.get": ({ params, respond }) => {
+  "agent.identity.get": ({ params, respond, client }) => {
     if (!validateAgentIdentityParams(params)) {
       respond(
         false,
@@ -867,6 +868,9 @@ export const agentHandlers: GatewayRequestHandlers = {
     const sessionKeyRaw = typeof p.sessionKey === "string" ? p.sessionKey.trim() : "";
     let agentId = agentIdRaw ? normalizeAgentId(agentIdRaw) : undefined;
     if (sessionKeyRaw) {
+      if (!enforceEmployeeSessionKey(client, sessionKeyRaw, respond, "agent identity")) {
+        return;
+      }
       if (classifySessionKeyShape(sessionKeyRaw) === "malformed_agent") {
         respond(
           false,
@@ -891,6 +895,9 @@ export const agentHandlers: GatewayRequestHandlers = {
         return;
       }
       agentId = resolved;
+    }
+    if (!enforceEmployeeAgent(client, agentId ?? null, respond, "agent identity")) {
+      return;
     }
     const cfg = loadConfig();
     const identity = resolveAssistantIdentity({ cfg, agentId });

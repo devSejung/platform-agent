@@ -1,7 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveAcpxPluginConfig, resolveAcpxPluginRoot } from "./config.js";
+
+afterEach(() => {
+  delete process.env.OPENCLAW_ACPX_CODEX_COMMAND;
+  delete process.env.OPENCLAW_ACPX_CLAUDE_COMMAND;
+  vi.restoreAllMocks();
+});
 
 describe("embedded acpx plugin config", () => {
   it("resolves workspace stateDir and cwd by default", () => {
@@ -33,6 +39,46 @@ describe("embedded acpx plugin config", () => {
       claude: "claude --acp",
       codex: "codex custom-acp",
     });
+  });
+
+  it("auto-detects bundled agent binaries on PATH", () => {
+    vi.spyOn(fs, "existsSync").mockImplementation((target) => {
+      const candidate = String(target);
+      return candidate.endsWith(`${path.sep}codex-acp`) || candidate.endsWith(`${path.sep}claude-agent-acp`);
+    });
+    const originalPath = process.env.PATH;
+    process.env.PATH = ["/opt/openclaw-acp/bin", "/usr/local/bin"].join(path.delimiter);
+
+    const resolved = resolveAcpxPluginConfig({
+      rawConfig: undefined,
+      workspaceDir: "/tmp/openclaw-acpx",
+    });
+
+    expect(resolved.agents).toEqual({
+      claude: path.join("/opt/openclaw-acp/bin", "claude-agent-acp"),
+      codex: path.join("/opt/openclaw-acp/bin", "codex-acp"),
+    });
+
+    process.env.PATH = originalPath;
+  });
+
+  it("prefers explicit env overrides over PATH detection", () => {
+    process.env.OPENCLAW_ACPX_CODEX_COMMAND = "/custom/codex-acp";
+    vi.spyOn(fs, "existsSync").mockImplementation((target) => {
+      const candidate = String(target);
+      return candidate.endsWith(`${path.sep}codex-acp`);
+    });
+    const originalPath = process.env.PATH;
+    process.env.PATH = ["/usr/local/bin"].join(path.delimiter);
+
+    const resolved = resolveAcpxPluginConfig({
+      rawConfig: undefined,
+      workspaceDir: "/tmp/openclaw-acpx",
+    });
+
+    expect(resolved.agents.codex).toBe("/custom/codex-acp");
+
+    process.env.PATH = originalPath;
   });
 
   it("injects the built-in plugin-tools MCP server only when explicitly enabled", () => {

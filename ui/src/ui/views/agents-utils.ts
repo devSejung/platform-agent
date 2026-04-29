@@ -219,7 +219,18 @@ export function resolveAgentAvatarUrl(
 
 export function agentLogoUrl(basePath: string): string {
   const base = basePath?.trim() ? basePath.replace(/\/$/, "") : "";
+  if (!base || base === "/employee") {
+    return "/favicon.svg";
+  }
   return base ? `${base}/favicon.svg` : "favicon.svg";
+}
+
+export function employeeLogoUrl(basePath: string): string {
+  const base = basePath?.trim() ? basePath.replace(/\/$/, "") : "";
+  if (!base || base === "/employee") {
+    return "/favicon-employee.svg";
+  }
+  return base ? `${base}/favicon-employee.svg` : "favicon-employee.svg";
 }
 
 function isLikelyEmoji(value: string) {

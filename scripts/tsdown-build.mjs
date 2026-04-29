@@ -61,15 +61,36 @@ function findFatalUnresolvedImport(lines) {
   return null;
 }
 
-const result = spawnSync(
-  "pnpm",
-  ["exec", "tsdown", "--config-loader", "unrun", "--logLevel", logLevel, ...extraArgs],
-  {
+function runTsdown(command, args) {
+  return spawnSync(command, args, {
     encoding: "utf8",
     stdio: "pipe",
     shell: process.platform === "win32",
-  },
-);
+  });
+}
+
+let result = runTsdown("pnpm", [
+  "exec",
+  "tsdown",
+  "--config-loader",
+  "unrun",
+  "--logLevel",
+  logLevel,
+  ...extraArgs,
+]);
+
+if (result.error?.code === "ENOENT") {
+  result = runTsdown("corepack", [
+    "pnpm",
+    "exec",
+    "tsdown",
+    "--config-loader",
+    "unrun",
+    "--logLevel",
+    logLevel,
+    ...extraArgs,
+  ]);
+}
 
 const stdout = result.stdout ?? "";
 const stderr = result.stderr ?? "";
@@ -97,6 +118,10 @@ if (fatalUnresolvedImport) {
 
 if (typeof result.status === "number") {
   process.exit(result.status);
+}
+
+if (result.error) {
+  console.error(String(result.error));
 }
 
 process.exit(1);

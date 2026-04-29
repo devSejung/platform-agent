@@ -12,12 +12,23 @@ function setTestLocation(params: { protocol: string; host: string; pathname: str
 }
 
 function setControlUiBasePath(value: string | undefined) {
+  const baseWindow =
+    typeof window !== "undefined"
+      ? window
+      : ({
+          localStorage: globalThis.localStorage,
+          sessionStorage: globalThis.sessionStorage,
+          location: globalThis.location,
+        } as Window & typeof globalThis);
   if (typeof window === "undefined") {
     vi.stubGlobal(
       "window",
       value == null
-        ? ({} as Window & typeof globalThis)
-        : ({ __OPENCLAW_CONTROL_UI_BASE_PATH__: value } as Window & typeof globalThis),
+        ? baseWindow
+        : ({
+            ...baseWindow,
+            __OPENCLAW_CONTROL_UI_BASE_PATH__: value,
+          } as Window & typeof globalThis),
     );
     return;
   }
@@ -26,6 +37,38 @@ function setControlUiBasePath(value: string | undefined) {
     return;
   }
   Object.defineProperty(window, "__OPENCLAW_CONTROL_UI_BASE_PATH__", {
+    value,
+    writable: true,
+    configurable: true,
+  });
+}
+
+function setUiMode(value: "control" | "employee" | undefined) {
+  const baseWindow =
+    typeof window !== "undefined"
+      ? window
+      : ({
+          localStorage: globalThis.localStorage,
+          sessionStorage: globalThis.sessionStorage,
+          location: globalThis.location,
+        } as Window & typeof globalThis);
+  if (typeof window === "undefined") {
+    vi.stubGlobal(
+      "window",
+      value == null
+        ? baseWindow
+        : ({
+            ...baseWindow,
+            __OPENCLAW_UI_MODE__: value,
+          } as Window & typeof globalThis),
+    );
+    return;
+  }
+  if (value == null) {
+    delete window.__OPENCLAW_UI_MODE__;
+    return;
+  }
+  Object.defineProperty(window, "__OPENCLAW_UI_MODE__", {
     value,
     writable: true,
     configurable: true,
@@ -45,11 +88,13 @@ describe("loadSettings default gateway URL derivation", () => {
     localStorage.clear();
     sessionStorage.clear();
     setControlUiBasePath(undefined);
+    setUiMode("control");
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     setControlUiBasePath(undefined);
+    setUiMode(undefined);
     vi.unstubAllGlobals();
   });
 
@@ -436,5 +481,61 @@ describe("loadSettings default gateway URL derivation", () => {
       sessionKey: "agent:current:main",
       lastActiveSessionKey: "agent:current:main",
     });
+  });
+
+  it("stores employee settings in a separate localStorage namespace", async () => {
+    setTestLocation({
+      protocol: "https:",
+      host: "gateway.example:8443",
+      pathname: "/employee",
+    });
+    setUiMode("employee");
+
+    const gwUrl = expectedGatewayUrl("");
+    const { saveSettings } = await import("./storage.ts");
+    saveSettings({
+      gatewayUrl: gwUrl,
+      token: "",
+      sessionKey: "agent:eon:main",
+      lastActiveSessionKey: "agent:eon:main",
+      theme: "knot",
+      themeMode: "system",
+      chatFocusMode: false,
+      chatShowThinking: true,
+      chatShowToolCalls: true,
+      splitRatio: 0.6,
+      navCollapsed: false,
+      navWidth: 220,
+      navGroupsCollapsed: {},
+      borderRadius: 50,
+    });
+
+    expect(localStorage.getItem("openclaw.employee.settings.v1:wss://gateway.example:8443")).toBeTruthy();
+    expect(localStorage.getItem("openclaw.control.settings.v1:wss://gateway.example:8443")).toBeNull();
+  });
+
+  it("does not read control legacy settings while in employee mode", async () => {
+    setTestLocation({
+      protocol: "https:",
+      host: "gateway.example:8443",
+      pathname: "/employee",
+    });
+    setUiMode("employee");
+    localStorage.setItem(
+      "openclaw.control.settings.v1",
+      JSON.stringify({
+        gatewayUrl: "wss://gateway.example:8443",
+        sessionKey: "agent:main:main",
+        lastActiveSessionKey: "agent:main:main",
+        theme: "claw",
+        themeMode: "system",
+      }),
+    );
+
+    const { loadSettings } = await import("./storage.ts");
+    const settings = loadSettings();
+
+    expect(settings.sessionKey).toBe("main");
+    expect(settings.lastActiveSessionKey).toBe("main");
   });
 });

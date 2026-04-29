@@ -1,5 +1,6 @@
 import { html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
+import { buildAgentMainSessionKey } from "../../../src/routing/session-key.js";
 import { t } from "../i18n/index.ts";
 import { refreshChat } from "./app-chat.ts";
 import { syncUrlWithSessionKey } from "./app-settings.ts";
@@ -29,7 +30,21 @@ type SessionDefaultsSnapshot = {
   mainKey?: string;
 };
 
-function resolveSidebarChatSessionKey(state: AppViewState): string {
+export function resolveSidebarChatSessionKey(state: AppViewState): string {
+  if (state.employeeMode) {
+    const employeeAgentId =
+      state.employeeProfile?.agentId?.trim() ||
+      parseAgentSessionKey(state.sessionKey)?.agentId?.trim() ||
+      parseAgentSessionKey(state.settings.lastActiveSessionKey)?.agentId?.trim() ||
+      "";
+    if (employeeAgentId) {
+      return buildAgentMainSessionKey({ agentId: employeeAgentId });
+    }
+    const current = state.sessionKey?.trim();
+    if (current) {
+      return current;
+    }
+  }
   const snapshot = state.hello?.snapshot as
     | { sessionDefaults?: SessionDefaultsSnapshot }
     | undefined;
@@ -314,20 +329,25 @@ export function renderChatControls(state: AppViewState) {
       >
         ${focusIcon}
       </button>
-      <button
-        class="btn btn--sm btn--icon ${hideCron ? "active" : ""}"
-        @click=${() => {
-          state.sessionsHideCron = !hideCron;
-        }}
-        aria-pressed=${hideCron}
-        title=${hideCron
-          ? hiddenCronCount > 0
-            ? t("chat.showCronSessionsHidden", { count: String(hiddenCronCount) })
-            : t("chat.showCronSessions")
-          : t("chat.hideCronSessions")}
-      >
-        ${renderCronFilterIcon(hiddenCronCount)}
-      </button>
+      ${renderChatModelSelect(state)}
+      ${state.employeeMode
+        ? nothing
+        : html`
+            <button
+              class="btn btn--sm btn--icon ${hideCron ? "active" : ""}"
+              @click=${() => {
+                state.sessionsHideCron = !hideCron;
+              }}
+              aria-pressed=${hideCron}
+              title=${hideCron
+                ? hiddenCronCount > 0
+                  ? t("chat.showCronSessionsHidden", { count: String(hiddenCronCount) })
+                  : t("chat.showCronSessions")
+                : t("chat.hideCronSessions")}
+            >
+              ${renderCronFilterIcon(hiddenCronCount)}
+            </button>
+          `}
     </div>
   `;
 }
@@ -424,6 +444,7 @@ export function renderChatMobileToggle(state: AppViewState) {
         }}
       >
         <div class="chat-controls">
+          ${renderChatModelSelect(state)}
           <label class="field chat-controls__session">
             <select
               .value=${state.sessionKey}

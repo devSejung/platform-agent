@@ -509,3 +509,39 @@ describe("control UI routing", () => {
     );
   });
 });
+
+describe("employee UI routing", () => {
+  it("renders an employee login gate before bootstrap/connect", async () => {
+    window.__OPENCLAW_UI_MODE__ = "employee";
+    const app = document.createElement("openclaw-app") as ReturnType<typeof mountApp>;
+    document.body.append(app);
+    app.connected = false;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    expect(app.querySelector(".login-gate")).not.toBeNull();
+    expect(app.querySelector(".login-gate__title")?.textContent).toContain("OpenClaw Workspace");
+    expect(app.textContent).toContain("Company sign-in required");
+    expect(app.textContent).toContain("Employee Access");
+    expect(app.querySelector(".sidebar-shell")).toBeNull();
+  });
+
+  it("keeps the connected employee experience out of the control sidebar shell", async () => {
+    window.__OPENCLAW_UI_MODE__ = "employee";
+    const app = mountApp("/employee/chat");
+    app.employeeMode = true;
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "main",
+    };
+    await app.updateComplete;
+
+    expect(app.querySelector(".shell--employee")).not.toBeNull();
+    expect(app.querySelector(".sidebar-shell")).toBeNull();
+    expect(app.querySelector(".sidebar")).toBeNull();
+    expect(app.querySelector(".page-title")?.textContent).toContain("OpenClaw Workspace");
+    expect(app.querySelector(".page-sub")?.textContent).toContain("Eon");
+  });
+});

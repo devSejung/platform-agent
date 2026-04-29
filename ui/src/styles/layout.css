@@ -373,6 +373,14 @@
   display: flex;
 }
 
+.sidebar-body-stack {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .sidebar-shell__footer {
   padding: 12px 0 0;
   border-top: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
@@ -430,6 +438,83 @@
 
 .sidebar-nav::-webkit-scrollbar {
   display: none;
+}
+
+.sidebar-identity {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 96%, transparent), var(--card));
+  box-shadow: 0 10px 28px color-mix(in srgb, black 10%, transparent);
+}
+
+.sidebar-identity__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sidebar-identity__title {
+  font-size: 11px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sidebar-identity__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-identity__primary {
+  font-size: 18px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+}
+
+.sidebar-identity__meta {
+  display: grid;
+  gap: 8px;
+}
+
+.sidebar-identity__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sidebar-identity__label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sidebar-identity__row strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
 }
 
 .nav-collapse-toggle {

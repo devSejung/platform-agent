@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentLogoUrl,
   buildAgentContext,
+  employeeLogoUrl,
   resolveConfiguredCronModelSuggestions,
   resolveAgentAvatarUrl,
   resolveEffectiveModelFallbacks,
@@ -102,14 +103,19 @@ describe("sortLocaleStrings", () => {
   });
 });
 
-describe("agentLogoUrl", () => {
+describe("asset URL helpers", () => {
   it("keeps base-mounted control UI logo paths absolute to the mount", () => {
     expect(agentLogoUrl("/ui")).toBe("/ui/favicon.svg");
     expect(agentLogoUrl("/apps/openclaw/")).toBe("/apps/openclaw/favicon.svg");
+    expect(employeeLogoUrl("/ui")).toBe("/ui/favicon-employee.svg");
+    expect(employeeLogoUrl("/apps/openclaw/")).toBe("/apps/openclaw/favicon-employee.svg");
   });
 
-  it("uses a route-relative fallback before basePath bootstrap finishes", () => {
-    expect(agentLogoUrl("")).toBe("favicon.svg");
+  it("uses the root favicon for the root app and employee route", () => {
+    expect(agentLogoUrl("")).toBe("/favicon.svg");
+    expect(agentLogoUrl("/employee")).toBe("/favicon.svg");
+    expect(employeeLogoUrl("")).toBe("/favicon-employee.svg");
+    expect(employeeLogoUrl("/employee")).toBe("/favicon-employee.svg");
   });
 });
 

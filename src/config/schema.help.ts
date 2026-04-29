@@ -376,6 +376,16 @@ export const FIELD_HELP: Record<string, string> = {
     "Optional URL prefix where the Control UI is served (e.g. /openclaw).",
   "gateway.controlUi.root":
     "Optional filesystem root for Control UI assets (defaults to dist/control-ui).",
+  "gateway.controlUi.docsUrl":
+    "Optional docs/help URL rendered in the web UI sidebar. Leave empty to hide the Docs shortcut entirely.",
+  "gateway.controlUi.announcementTitle":
+    "Optional employee-facing announcement title shown on the login screen and inside the employee workspace.",
+  "gateway.controlUi.announcementBody":
+    "Optional employee-facing announcement body text. Keep it short and operational, such as maintenance windows or service notices.",
+  "gateway.controlUi.announcementLinkLabel":
+    "Optional CTA label for the employee announcement link, such as 'Learn more' or 'Open notice'.",
+  "gateway.controlUi.announcementLinkUrl":
+    "Optional CTA URL for the employee announcement. Use a full HTTPS URL to your intranet notice or policy page.",
   "gateway.controlUi.allowedOrigins":
     'Allowed browser origins for Control UI/WebChat websocket connections (full origins only, e.g. https://control.example.com). Required for non-loopback Control UI deployments unless dangerous Host-header fallback is explicitly enabled. Setting ["*"] means allow any browser origin and should be avoided outside tightly controlled local testing.',
   "gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback":

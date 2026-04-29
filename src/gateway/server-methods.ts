@@ -52,7 +52,7 @@ function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["c
   if (!isRoleAuthorizedForMethod(role, method)) {
     return errorShape(ErrorCodes.INVALID_REQUEST, `unauthorized role: ${role}`);
   }
-  if (role === "node") {
+  if (role === "node" || role === "employee") {
     return null;
   }
   if (scopes.includes(ADMIN_SCOPE)) {

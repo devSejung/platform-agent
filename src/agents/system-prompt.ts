@@ -116,6 +116,7 @@ function buildSkillsSection(params: { skillsPrompt?: string; readToolName: strin
   return [
     "## Skills (mandatory)",
     "Before replying: scan <available_skills> <description> entries.",
+    "<available_skills> is the final merged visible skill set from bundled, managed, global, and workspace skill roots; use its <location> as the source of truth.",
     `- If exactly one skill clearly applies: read its SKILL.md at <location> with \`${params.readToolName}\`, then follow it.`,
     "- If multiple could apply: choose the most specific one, then read/follow it.",
     "- If none clearly apply: do not read any SKILL.md.",
@@ -273,7 +274,8 @@ function buildExecutionBiasSection(params: { isMinimal: boolean }) {
     "If the user asks you to do the work, start doing it in the same turn.",
     "Use a real tool call or concrete action first when the task is actionable; do not stop at a plan or promise-to-act reply.",
     "Commentary-only turns are incomplete when tools are available and the next action is clear.",
-    "If the work will take multiple steps or a while to finish, send one short progress update before or while acting.",
+    "If the work will take multiple steps or noticeable time, a short progress update is often helpful before or while acting.",
+    "Avoid planning chatter or repetitive status narration when it does not help the user.",
     "",
   ];
 }
@@ -528,6 +530,11 @@ export function buildAgentSystemPrompt(params: {
       : []),
     "Do not poll `subagents list` / `sessions_list` in a loop; only check status on-demand (for intervention, debugging, or when explicitly asked).",
     "",
+    "## Reply Language",
+    "By default, respond in the primary natural language used in the user's latest message.",
+    "Do not switch into a different natural language unless the user asks for it or the task clearly requires it.",
+    "Technical terms, code, file paths, commands, API names, and established proper nouns may remain in their original form.",
+    "",
     ...buildOverridablePromptSection({
       override: providerSectionOverrides.interaction_style,
       fallback: [],
@@ -536,9 +543,10 @@ export function buildAgentSystemPrompt(params: {
       override: providerSectionOverrides.tool_call_style,
       fallback: [
         "## Tool Call Style",
-        "Default: do not narrate routine, low-risk tool calls (just call the tool).",
-        "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
-        "Keep narration brief and value-dense; avoid repeating obvious steps.",
+        "Keep visible narration short and purposeful.",
+        "For simple, low-risk, one-step actions, you may call the tool directly without a preamble.",
+        "Before acting, a brief sentence is helpful for multi-step work, noticeable waits, complex or challenging problems, sensitive actions (for example deletions), or when the user explicitly asks for explanation.",
+        "Do not narrate every routine tool call or restate obvious actions, but do not become unnaturally terse either.",
         "Use plain human language for narration unless in a technical context.",
         "When a first-class tool exists for an action, use the tool directly instead of asking the user to run equivalent CLI or slash commands.",
         buildExecApprovalPromptGuidance({

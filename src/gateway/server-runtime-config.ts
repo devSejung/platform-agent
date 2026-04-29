@@ -96,7 +96,11 @@ export async function resolveGatewayRuntimeConfig(params: {
           strictTransportSecurityConfig.trim().length > 0
         ? strictTransportSecurityConfig.trim()
         : undefined;
-  const controlUiBasePath = normalizeControlUiBasePath(params.cfg.gateway?.controlUi?.basePath);
+  const controlUiBasePath = normalizeControlUiBasePath(
+    typeof params.cfg.gateway?.controlUi?.basePath === "string"
+      ? params.cfg.gateway.controlUi.basePath
+      : "/controlui",
+  );
   const controlUiRootRaw = params.cfg.gateway?.controlUi?.root;
   const controlUiRoot =
     typeof controlUiRootRaw === "string" && controlUiRootRaw.trim().length > 0

@@ -1203,6 +1203,12 @@ export function buildGatewaySessionRow(params: {
   const id = parsed?.id;
   const origin = entry?.origin;
   const originLabel = origin?.label;
+  const parsedAgent = parseAgentSessionKey(key);
+  const isHeartbeatDecoratedMainSession =
+    normalizeLowercaseStringOrEmpty(originLabel) === "heartbeat" &&
+    normalizeLowercaseStringOrEmpty(origin?.from) === "heartbeat" &&
+    normalizeLowercaseStringOrEmpty(origin?.to) === "heartbeat" &&
+    parsedAgent?.rest === normalizeMainKey(cfg.session?.mainKey);
   const displayName =
     entry?.displayName ??
     (channel
@@ -1216,9 +1222,8 @@ export function buildGatewaySessionRow(params: {
         })
       : undefined) ??
     entry?.label ??
-    originLabel;
+    (isHeartbeatDecoratedMainSession ? undefined : originLabel);
   const deliveryFields = normalizeSessionDeliveryFields(entry);
-  const parsedAgent = parseAgentSessionKey(key);
   const sessionAgentId = normalizeAgentId(parsedAgent?.agentId ?? resolveDefaultAgentId(cfg));
   const subagentRun = getSessionDisplaySubagentRunByChildSessionKey(key);
   const subagentOwner =

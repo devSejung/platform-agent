@@ -5,6 +5,13 @@ ARG OPENCLAW_NODE_VERSION="24.11.0"
 ARG OPENCLAW_USE_COMPANY_APT="0"
 ARG OPENCLAW_NODE_SHA256_AMD64=""
 ARG OPENCLAW_NODE_SHA256_ARM64=""
+ARG OPENCLAW_BUNDLE_ACP_CODEX="1"
+ARG OPENCLAW_BUNDLE_ACP_CLAUDE="1"
+ARG OPENCLAW_BUNDLE_CLAUDE_CODE="1"
+ARG OPENCLAW_BUNDLED_CODEX_ACP_VERSION="0.11.1"
+ARG OPENCLAW_BUNDLED_CLAUDE_ACP_VERSION="0.25.0"
+ARG OPENCLAW_BUNDLED_CLAUDE_CODE_VERSION="1.0.119"
+ARG OPENCLAW_INSTALL_SKILL_NANO_PDF="1"
 
 FROM ubuntu:22.04 AS ext-deps
 ARG OPENCLAW_EXTENSIONS
@@ -80,6 +87,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY ui/package.json ./ui/package.json
 COPY patches ./patches
+COPY scripts/postinstall-bundled-plugins.mjs scripts/npm-runner.mjs scripts/windows-cmd-helpers.mjs ./scripts/
 COPY --from=ext-deps /out/ ./extensions/
 
 RUN --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
@@ -113,6 +121,13 @@ ARG OPENCLAW_NODE_VERSION
 ARG OPENCLAW_USE_COMPANY_APT
 ARG OPENCLAW_NODE_SHA256_AMD64
 ARG OPENCLAW_NODE_SHA256_ARM64
+ARG OPENCLAW_BUNDLE_ACP_CODEX
+ARG OPENCLAW_BUNDLE_ACP_CLAUDE
+ARG OPENCLAW_BUNDLE_CLAUDE_CODE
+ARG OPENCLAW_BUNDLED_CODEX_ACP_VERSION
+ARG OPENCLAW_BUNDLED_CLAUDE_ACP_VERSION
+ARG OPENCLAW_BUNDLED_CLAUDE_CODE_VERSION
+ARG OPENCLAW_INSTALL_SKILL_NANO_PDF
 ARG OPENCLAW_DOCKER_APT_PACKAGES=""
 ARG OPENCLAW_INSTALL_BROWSER=""
 ARG OPENCLAW_INSTALL_DOCKER_CLI="1"
@@ -139,7 +154,11 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
+      ffmpeg \
+      file \
+      gh \
       git \
+      git-review \
       gnupg \
       hostname \
       jq \
@@ -150,12 +169,16 @@ RUN set -eux; \
       openssl \
       pkg-config \
       procps \
+      poppler-utils \
+      openssh-client \
       python3 \
+      python3-openpyxl \
       python3-pip \
       python3-venv \
       ripgrep \
       unzip \
       vim \
+      xlsx2csv \
       xz-utils \
       zip && \
     rm -rf /var/lib/apt/lists/*
@@ -178,6 +201,34 @@ RUN set -eux; \
     node --version; \
     npm --version; \
     corepack enable
+
+RUN set -eux; \
+    bundled_packages=""; \
+    if [ "$OPENCLAW_BUNDLE_ACP_CODEX" = "1" ]; then \
+      bundled_packages="$bundled_packages @zed-industries/codex-acp@$OPENCLAW_BUNDLED_CODEX_ACP_VERSION"; \
+    fi; \
+    if [ "$OPENCLAW_BUNDLE_ACP_CLAUDE" = "1" ]; then \
+      bundled_packages="$bundled_packages @agentclientprotocol/claude-agent-acp@$OPENCLAW_BUNDLED_CLAUDE_ACP_VERSION"; \
+    fi; \
+    if [ "$OPENCLAW_BUNDLE_CLAUDE_CODE" = "1" ]; then \
+      bundled_packages="$bundled_packages @anthropic-ai/claude-code@$OPENCLAW_BUNDLED_CLAUDE_CODE_VERSION"; \
+    fi; \
+    if [ -n "$bundled_packages" ]; then \
+      npm install -g --omit=dev --no-fund --no-audit $bundled_packages; \
+      codex-acp --help >/dev/null 2>&1 || true; \
+      claude-agent-acp --help >/dev/null 2>&1 || true; \
+      claude --help >/dev/null 2>&1 || true; \
+    fi
+
+RUN set -eux; \
+    if [ "$OPENCLAW_INSTALL_SKILL_NANO_PDF" = "1" ]; then \
+      if python3 -m pip help install 2>/dev/null | grep -q -- '--break-system-packages'; then \
+        python3 -m pip install --no-cache-dir --break-system-packages nano-pdf; \
+      else \
+        python3 -m pip install --no-cache-dir nano-pdf; \
+      fi; \
+      nano-pdf --help >/dev/null 2>&1 || true; \
+    fi
 
 RUN groupadd -g 1000 node && \
     useradd -m -u 1000 -g 1000 -s /bin/bash node
@@ -218,7 +269,7 @@ RUN if [ -n "$OPENCLAW_DOCKER_APT_PACKAGES" ]; then \
       rm -rf /var/lib/apt/lists/*; \
     fi
 
-RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
+RUN if [ "$OPENCLAW_INSTALL_BROWSER" = "1" ]; then \
       apt-get update && \
       apt-get install -y --no-install-recommends xvfb && \
       mkdir -p /home/node/.cache/ms-playwright && \
@@ -228,7 +279,7 @@ RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
       rm -rf /var/lib/apt/lists/*; \
     fi
 
-RUN if [ -n "$OPENCLAW_INSTALL_DOCKER_CLI" ]; then \
+RUN if [ "$OPENCLAW_INSTALL_DOCKER_CLI" = "1" ]; then \
       apt-get update && \
       compose_pkgs=""; \
       for candidate in docker-compose-v2 docker-compose-plugin docker-compose; do \
@@ -240,12 +291,16 @@ RUN if [ -n "$OPENCLAW_INSTALL_DOCKER_CLI" ]; then \
       rm -rf /var/lib/apt/lists/*; \
     fi
 
-RUN chown -R node:node /app /home/node
+RUN chown node:node /app /home/node && \
+    mkdir -p /home/node/.local /home/node/.cache && \
+    chown -R node:node /home/node/.local /home/node/.cache
 
 RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw && \
+    ln -sf /app/node_modules/.bin/acpx /usr/local/bin/acpx && \
     chmod 755 /app/openclaw.mjs
 
 ENV NODE_ENV=production
+ENV PATH="/app/node_modules/.bin:${PATH}"
 USER node
 
 HEALTHCHECK --interval=3m --timeout=10s --start-period=15s --retries=3 \

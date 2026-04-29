@@ -80,6 +80,7 @@ const BASE_METHODS = [
   "sessions.delete",
   "sessions.compact",
   "last-heartbeat",
+  "heartbeat.summary.get",
   "set-heartbeats",
   "wake",
   "node.pair.request",

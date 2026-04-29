@@ -13,6 +13,12 @@ OUTPUT_FILE="$ROOT_DIR/src/canvas-host/a2ui/a2ui.bundle.js"
 A2UI_RENDERER_DIR="$ROOT_DIR/vendor/a2ui/renderers/lit"
 A2UI_APP_DIR="$ROOT_DIR/apps/shared/OpenClawKit/Tools/CanvasA2UI"
 
+if command -v pnpm >/dev/null 2>&1; then
+  PNPM=(pnpm)
+else
+  PNPM=(corepack pnpm)
+fi
+
 # Docker builds exclude vendor/apps via .dockerignore.
 # Sparse local builds can also omit these inputs intentionally.
 if [[ ! -d "$A2UI_RENDERER_DIR" || ! -d "$A2UI_APP_DIR" ]]; then
@@ -89,7 +95,7 @@ if [[ -f "$HASH_FILE" ]]; then
   fi
 fi
 
-pnpm -s exec tsc -p "$A2UI_RENDERER_DIR/tsconfig.json"
+"${PNPM[@]}" -s exec tsc -p "$A2UI_RENDERER_DIR/tsconfig.json"
 if command -v rolldown >/dev/null 2>&1 && rolldown --version >/dev/null 2>&1; then
   rolldown -c "$A2UI_APP_DIR/rolldown.config.mjs"
 elif [[ -f "$ROOT_DIR/node_modules/.pnpm/node_modules/rolldown/bin/cli.mjs" ]]; then
@@ -98,7 +104,7 @@ elif [[ -f "$ROOT_DIR/node_modules/.pnpm/rolldown@1.0.0-rc.9/node_modules/rolldo
   node "$ROOT_DIR/node_modules/.pnpm/rolldown@1.0.0-rc.9/node_modules/rolldown/bin/cli.mjs" \
     -c "$A2UI_APP_DIR/rolldown.config.mjs"
 else
-  pnpm -s dlx rolldown -c "$A2UI_APP_DIR/rolldown.config.mjs"
+  "${PNPM[@]}" -s dlx rolldown -c "$A2UI_APP_DIR/rolldown.config.mjs"
 fi
 
 echo "$current_hash" > "$HASH_FILE"

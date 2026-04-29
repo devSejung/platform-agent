@@ -83,6 +83,17 @@ describe("i18n", () => {
     expect(fresh.t("common.health")).toBe("健康状况");
   });
 
+  it("defaults to Korean when there is no saved locale and navigator locale is unsupported", async () => {
+    vi.resetModules();
+    vi.stubGlobal("localStorage", createStorageMock());
+    vi.stubGlobal("navigator", { language: "fr-FR" } as Navigator);
+    const fresh = await import("../lib/translate.ts");
+    await vi.waitFor(() => {
+      expect(fresh.i18n.getLocale()).toBe("ko");
+    });
+    expect(fresh.t("common.health")).toBe("상태");
+  });
+
   it("skips node localStorage accessors that warn without a storage file", async () => {
     vi.resetModules();
     vi.unstubAllGlobals();
@@ -91,7 +102,9 @@ describe("i18n", () => {
 
     const fresh = await import("../lib/translate.ts");
 
-    expect(fresh.i18n.getLocale()).toBe("en");
+    await vi.waitFor(() => {
+      expect(fresh.i18n.getLocale()).toBe("ko");
+    });
     expect(warningSpy).not.toHaveBeenCalledWith(
       "`--localstorage-file` was provided without a valid path",
       expect.anything(),

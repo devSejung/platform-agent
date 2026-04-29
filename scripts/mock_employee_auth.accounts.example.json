@@ -1,0 +1,32 @@
+{
+  "adssoDefaultIdentifier": "eon@samsung.com",
+  "accounts": [
+    {
+      "identifier": "eon@samsung.com",
+      "password": "456123",
+      "employeeId": "eon",
+      "name": "Eon",
+      "department": "Samsung",
+      "agentId": "eon",
+      "sessionKey": "agent:eon:main"
+    },
+    {
+      "identifier": "minji@samsung.com",
+      "password": "456123",
+      "employeeId": "minji",
+      "name": "Minji",
+      "department": "Samsung",
+      "agentId": "minji",
+      "sessionKey": "agent:minji:main"
+    },
+    {
+      "identifier": "jiwon@samsung.com",
+      "password": "456123",
+      "employeeId": "jiwon",
+      "name": "Jiwon",
+      "department": "Samsung",
+      "agentId": "jiwon",
+      "sessionKey": "agent:jiwon:main"
+    }
+  ]
+}

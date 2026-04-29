@@ -8,21 +8,28 @@ function isStorage(value: unknown): value is Storage {
 
 function getSafeStorage(name: "localStorage" | "sessionStorage"): Storage | null {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+  const descriptorValue = descriptor && !descriptor.get ? descriptor.value : undefined;
 
   if (typeof process !== "undefined" && process.env?.VITEST) {
-    return descriptor && !descriptor.get && isStorage(descriptor.value) ? descriptor.value : null;
+    if (isStorage(descriptorValue)) {
+      return descriptorValue;
+    }
+    const direct = globalThis[name];
+    return isStorage(direct) ? direct : null;
   }
 
   if (typeof window !== "undefined" && typeof document !== "undefined") {
     try {
       const storage = window[name];
-      return isStorage(storage) ? storage : null;
+      if (isStorage(storage)) {
+        return storage;
+      }
     } catch {
-      return null;
+      // fall through to the global descriptor fallback below
     }
   }
 
-  return descriptor && !descriptor.get && isStorage(descriptor.value) ? descriptor.value : null;
+  return isStorage(descriptorValue) ? descriptorValue : null;
 }
 
 export function getSafeLocalStorage(): Storage | null {

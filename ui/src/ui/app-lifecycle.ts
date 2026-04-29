@@ -1,11 +1,17 @@
 import { connectGateway } from "./app-gateway.ts";
 import {
+  startEmployeeBootstrapPolling,
   startLogsPolling,
   startNodesPolling,
+  stopEmployeeBootstrapPolling,
   stopLogsPolling,
   stopNodesPolling,
   startDebugPolling,
   stopDebugPolling,
+  startHeartbeatPolling,
+  stopHeartbeatPolling,
+  startRequestStatusPolling,
+  stopRequestStatusPolling,
 } from "./app-polling.ts";
 import { observeTopbar, scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
 import {
@@ -17,6 +23,7 @@ import {
   syncThemeWithSettings,
 } from "./app-settings.ts";
 import { loadControlUiBootstrapConfig } from "./controllers/control-ui-bootstrap.ts";
+import { loadEmployeeBootstrap } from "./controllers/employee-bootstrap.ts";
 import type { Tab } from "./navigation.ts";
 
 type LifecycleHost = {
@@ -29,12 +36,23 @@ type LifecycleHost = {
   assistantAvatar: string | null;
   assistantAgentId: string | null;
   serverVersion: string | null;
+  employeeMode: boolean;
+  employeeBootstrapToken: string | null;
+  employeeBootstrapReady: boolean;
+  employeeBootstrapError: string | null;
+  employeeProfile: {
+    employeeId: string | null;
+    name: string | null;
+    department: string | null;
+    agentId: string | null;
+  };
   chatHasAutoScrolled: boolean;
   chatManualRefreshInFlight: boolean;
   chatLoading: boolean;
   chatMessages: unknown[];
   chatToolMessages: unknown[];
   chatStream: string | null;
+  chatRunId: string | null;
   logsAutoFollow: boolean;
   logsAtBottom: boolean;
   logsEntries: unknown[];
@@ -46,7 +64,9 @@ export function handleConnected(host: LifecycleHost) {
   const connectGeneration = ++host.connectGeneration;
   host.basePath = inferBasePath();
   applySettingsFromUrl(host as unknown as Parameters<typeof applySettingsFromUrl>[0]);
-  const bootstrapReady = loadControlUiBootstrapConfig(host);
+  const bootstrapReady = host.employeeMode
+    ? loadEmployeeBootstrap(host as unknown as Parameters<typeof loadEmployeeBootstrap>[0])
+    : loadControlUiBootstrapConfig(host);
   syncTabWithLocation(host as unknown as Parameters<typeof syncTabWithLocation>[0], true);
   syncThemeWithSettings(host as unknown as Parameters<typeof syncThemeWithSettings>[0]);
   attachThemeListener(host as unknown as Parameters<typeof attachThemeListener>[0]);
@@ -55,14 +75,25 @@ export function handleConnected(host: LifecycleHost) {
     if (host.connectGeneration !== connectGeneration) {
       return;
     }
+    if (host.employeeMode && !host.employeeBootstrapReady) {
+      return;
+    }
     connectGateway(host as unknown as Parameters<typeof connectGateway>[0]);
   });
-  startNodesPolling(host as unknown as Parameters<typeof startNodesPolling>[0]);
+  if (host.employeeMode) {
+    startEmployeeBootstrapPolling(host as unknown as Parameters<typeof startEmployeeBootstrapPolling>[0]);
+  }
+  if (!host.employeeMode) {
+    startNodesPolling(host as unknown as Parameters<typeof startNodesPolling>[0]);
+  }
   if (host.tab === "logs") {
     startLogsPolling(host as unknown as Parameters<typeof startLogsPolling>[0]);
   }
   if (host.tab === "debug") {
     startDebugPolling(host as unknown as Parameters<typeof startDebugPolling>[0]);
+  }
+  if (host.employeeMode && host.tab === "heartbeat") {
+    startHeartbeatPolling(host as unknown as Parameters<typeof startHeartbeatPolling>[0]);
   }
 }
 
@@ -73,9 +104,14 @@ export function handleFirstUpdated(host: LifecycleHost) {
 export function handleDisconnected(host: LifecycleHost) {
   host.connectGeneration += 1;
   window.removeEventListener("popstate", host.popStateHandler);
+  stopEmployeeBootstrapPolling(
+    host as unknown as Parameters<typeof stopEmployeeBootstrapPolling>[0],
+  );
   stopNodesPolling(host as unknown as Parameters<typeof stopNodesPolling>[0]);
   stopLogsPolling(host as unknown as Parameters<typeof stopLogsPolling>[0]);
   stopDebugPolling(host as unknown as Parameters<typeof stopDebugPolling>[0]);
+  stopHeartbeatPolling(host as unknown as Parameters<typeof stopHeartbeatPolling>[0]);
+  stopRequestStatusPolling(host as unknown as Parameters<typeof stopRequestStatusPolling>[0]);
   host.client?.stop();
   host.client = null;
   host.connected = false;
@@ -93,6 +129,8 @@ export function handleUpdated(host: LifecycleHost, changed: Map<PropertyKey, unk
     (changed.has("chatMessages") ||
       changed.has("chatToolMessages") ||
       changed.has("chatStream") ||
+      changed.has("chatRunId") ||
+      changed.has("chatSending") ||
       changed.has("chatLoading") ||
       changed.has("tab"))
   ) {
@@ -109,6 +147,11 @@ export function handleUpdated(host: LifecycleHost, changed: Map<PropertyKey, unk
       host as unknown as Parameters<typeof scheduleChatScroll>[0],
       forcedByTab || forcedByLoad || streamJustStarted || !host.chatHasAutoScrolled,
     );
+  }
+  if (host.chatSending || host.chatRunId || host.chatStream !== null) {
+    startRequestStatusPolling(host as unknown as Parameters<typeof startRequestStatusPolling>[0]);
+  } else {
+    stopRequestStatusPolling(host as unknown as Parameters<typeof stopRequestStatusPolling>[0]);
   }
   if (
     host.tab === "logs" &&

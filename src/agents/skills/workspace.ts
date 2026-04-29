@@ -452,10 +452,7 @@ function loadSkillEntries(
   });
 
   const merged = new Map<string, Skill>();
-  // Precedence: extra < bundled < managed < agents-skills-personal < agents-skills-project < workspace
-  for (const skill of extraSkills) {
-    merged.set(skill.name, skill);
-  }
+  // Precedence: bundled < managed < agents-skills-personal < agents-skills-project < extra < workspace
   for (const skill of bundledSkills) {
     merged.set(skill.name, skill);
   }
@@ -466,6 +463,9 @@ function loadSkillEntries(
     merged.set(skill.name, skill);
   }
   for (const skill of projectAgentsSkills) {
+    merged.set(skill.name, skill);
+  }
+  for (const skill of extraSkills) {
     merged.set(skill.name, skill);
   }
   for (const skill of workspaceSkills) {

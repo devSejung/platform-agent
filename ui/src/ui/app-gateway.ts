@@ -2,6 +2,7 @@ import {
   GATEWAY_EVENT_UPDATE_AVAILABLE,
   type GatewayUpdateAvailableEventPayload,
 } from "../../../src/gateway/events.js";
+import { ConnectErrorDetailCodes } from "../../../src/gateway/protocol/connect-error-details.js";
 import {
   CHAT_SESSIONS_ACTIVE_MINUTES,
   clearPendingQueueItemsForRun,
@@ -23,6 +24,7 @@ import { loadAssistantIdentity } from "./controllers/assistant-identity.ts";
 import { loadChatHistory } from "./controllers/chat.ts";
 import { handleChatEvent, type ChatEventPayload } from "./controllers/chat.ts";
 import { loadDevices } from "./controllers/devices.ts";
+import { loadEmployeeBootstrap } from "./controllers/employee-bootstrap.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import {
   addExecApproval,
@@ -56,7 +58,18 @@ function isGenericBrowserFetchFailure(message: string): boolean {
 }
 
 type GatewayHost = {
+  basePath: string;
   settings: UiSettings;
+  employeeMode: boolean;
+  employeeBootstrapToken: string | null;
+  employeeBootstrapReady: boolean;
+  employeeBootstrapError: string | null;
+  employeeProfile: {
+    employeeId: string | null;
+    name: string | null;
+    department: string | null;
+    agentId: string | null;
+  };
   password: string;
   clientInstanceId: string;
   client: GatewayBrowserClient | null;
@@ -218,10 +231,13 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
   const client = new GatewayBrowserClient({
     url: host.settings.gatewayUrl,
     token: host.settings.token.trim() ? host.settings.token : undefined,
+    bootstrapToken: host.employeeMode ? (host.employeeBootstrapToken ?? undefined) : undefined,
     password: host.password.trim() ? host.password : undefined,
     clientName: "openclaw-control-ui",
     clientVersion,
     mode: "webchat",
+    role: host.employeeMode ? "employee" : undefined,
+    scopes: host.employeeMode ? [] : undefined,
     instanceId: host.clientInstanceId,
     onHello: (hello) => {
       if (host.client !== client) {
@@ -249,10 +265,12 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
       }
       void subscribeSessions(host as unknown as OpenClawApp);
       void loadAssistantIdentity(host as unknown as OpenClawApp);
-      void loadAgents(host as unknown as OpenClawApp);
-      void loadHealthState(host as unknown as OpenClawApp);
-      void loadNodes(host as unknown as OpenClawApp, { quiet: true });
-      void loadDevices(host as unknown as OpenClawApp, { quiet: true });
+      if (!host.employeeMode) {
+        void loadAgents(host as unknown as OpenClawApp);
+        void loadHealthState(host as unknown as OpenClawApp);
+        void loadNodes(host as unknown as OpenClawApp, { quiet: true });
+        void loadDevices(host as unknown as OpenClawApp, { quiet: true });
+      }
       void refreshActiveTab(host as unknown as Parameters<typeof refreshActiveTab>[0]);
     },
     onClose: ({ code, reason, error }) => {
@@ -282,6 +300,12 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
         host.lastError = shutdownHost.pendingShutdownMessage ?? null;
         host.lastErrorCode = null;
       }
+      if (
+        host.employeeMode &&
+        resolveGatewayErrorDetailCode(error) === ConnectErrorDetailCodes.AUTH_BOOTSTRAP_TOKEN_INVALID
+      ) {
+        void recoverEmployeeBootstrap(host);
+      }
     },
     onEvent: (evt) => {
       if (host.client !== client) {
@@ -301,6 +325,14 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
   host.client = client;
   previousClient?.stop();
   client.start();
+}
+
+async function recoverEmployeeBootstrap(host: GatewayHost) {
+  await loadEmployeeBootstrap(host as unknown as Parameters<typeof loadEmployeeBootstrap>[0]);
+  if (!host.employeeBootstrapReady) {
+    return;
+  }
+  connectGateway(host);
 }
 
 export function handleGatewayEvent(host: GatewayHost, evt: GatewayEventFrame) {

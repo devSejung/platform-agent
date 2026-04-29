@@ -140,6 +140,7 @@ export const CONTROL_UI_OPERATOR_SCOPES = [
 
 export type GatewayConnectAuth = {
   token?: string;
+  bootstrapToken?: string;
   deviceToken?: string;
   password?: string;
 };
@@ -197,7 +198,10 @@ type DeviceTokenRetryDecision = {
 export type GatewayBrowserClientOptions = {
   url: string;
   token?: string;
+  bootstrapToken?: string;
   password?: string;
+  role?: string;
+  scopes?: string[];
   clientName?: GatewayClientName;
   clientVersion?: string;
   platform?: string;
@@ -214,13 +218,15 @@ const CONNECT_FAILED_CLOSE_CODE = 4008;
 
 function buildGatewayConnectAuth(
   selectedAuth: SelectedConnectAuth,
+  bootstrapToken?: string,
 ): GatewayConnectAuth | undefined {
   const authToken = selectedAuth.authToken;
-  if (!(authToken || selectedAuth.authPassword)) {
+  if (!(authToken || selectedAuth.authPassword || bootstrapToken)) {
     return undefined;
   }
   return {
     token: authToken,
+    bootstrapToken,
     deviceToken: selectedAuth.authDeviceToken ?? selectedAuth.resolvedDeviceToken,
     password: selectedAuth.authPassword,
   };
@@ -383,11 +389,29 @@ export class GatewayBrowserClient {
   }
 
   private async buildConnectPlan(): Promise<ConnectPlan> {
-    const role = CONTROL_UI_OPERATOR_ROLE;
-    const scopes = [...CONTROL_UI_OPERATOR_SCOPES];
+    const role = this.opts.role?.trim() || CONTROL_UI_OPERATOR_ROLE;
+    const scopes = Array.isArray(this.opts.scopes)
+      ? [...this.opts.scopes]
+      : [...CONTROL_UI_OPERATOR_SCOPES];
     const client = this.buildConnectClient();
+    const explicitBootstrapToken = this.opts.bootstrapToken?.trim() || undefined;
     const explicitGatewayToken = this.opts.token?.trim() || undefined;
     const explicitPassword = this.opts.password?.trim() || undefined;
+    if (role === "employee") {
+      const selectedAuth: SelectedConnectAuth = {
+        canFallbackToShared: false,
+      };
+      return {
+        role,
+        scopes,
+        client,
+        explicitGatewayToken,
+        selectedAuth,
+        auth: buildGatewayConnectAuth(selectedAuth, explicitBootstrapToken),
+        deviceIdentity: null,
+        device: undefined,
+      };
+    }
 
     // crypto.subtle is only available in secure contexts (HTTPS, localhost).
     // Over plain HTTP, we skip device identity and fall back to token-only auth.

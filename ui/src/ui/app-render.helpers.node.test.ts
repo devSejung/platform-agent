@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isCronSessionKey,
   parseSessionKey,
+  resolveSidebarChatSessionKey,
   resolveSessionDisplayName,
 } from "./app-render.helpers.ts";
 import type { SessionsListResult } from "./types.ts";
@@ -11,6 +12,46 @@ type SessionRow = SessionsListResult["sessions"][number];
 function row(overrides: Partial<SessionRow> & { key: string }): SessionRow {
   return { kind: "direct", updatedAt: 0, ...overrides };
 }
+
+describe("resolveSidebarChatSessionKey", () => {
+  it("keeps employee chat pinned to the employee agent main session", () => {
+    expect(
+      resolveSidebarChatSessionKey({
+        employeeMode: true,
+        employeeProfile: { agentId: "minji" },
+        sessionKey: "agent:eon:main",
+        settings: { lastActiveSessionKey: "agent:eon:main" },
+        hello: {
+          snapshot: {
+            sessionDefaults: {
+              mainSessionKey: "main",
+              mainKey: "main",
+            },
+          },
+        },
+      } as never),
+    ).toBe("agent:minji:main");
+  });
+
+  it("uses gateway defaults for control mode", () => {
+    expect(
+      resolveSidebarChatSessionKey({
+        employeeMode: false,
+        employeeProfile: { agentId: null },
+        sessionKey: "agent:minji:main",
+        settings: { lastActiveSessionKey: "agent:minji:main" },
+        hello: {
+          snapshot: {
+            sessionDefaults: {
+              mainSessionKey: "main",
+              mainKey: "main",
+            },
+          },
+        },
+      } as never),
+    ).toBe("main");
+  });
+});
 
 /* ================================================================
  *  parseSessionKey – low-level key → type / fallback mapping

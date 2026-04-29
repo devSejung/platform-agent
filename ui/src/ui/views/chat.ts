@@ -35,12 +35,13 @@ import { detectTextDirection } from "../text-direction.ts";
 import type { GatewaySessionRow, SessionsListResult } from "../types.ts";
 import type { ChatItem, MessageGroup } from "../types/chat-types.ts";
 import type { ChatAttachment, ChatQueueItem } from "../ui-types.ts";
-import { agentLogoUrl, resolveAgentAvatarUrl } from "./agents-utils.ts";
+import { agentLogoUrl, employeeLogoUrl, resolveAgentAvatarUrl } from "./agents-utils.ts";
 import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
 import "../components/resizable-divider.ts";
 
 export type ChatProps = {
   sessionKey: string;
+  employeeMode?: boolean;
   onSessionKeyChange: (next: string) => void;
   thinkingLevel: string | null;
   showThinking: boolean;
@@ -177,10 +178,29 @@ function adjustTextareaHeight(el: HTMLTextAreaElement) {
   el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
 }
 
+function formatCompactionElapsed(startedAt: number | null | undefined) {
+  if (!startedAt || !Number.isFinite(startedAt)) {
+    return null;
+  }
+  const elapsedMs = Math.max(0, Date.now() - startedAt);
+  const totalSeconds = Math.floor(elapsedMs / 1_000);
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
+}
+
 function renderCompactionIndicator(status: CompactionIndicatorStatus | null | undefined) {
   if (!status) {
     return nothing;
   }
+  const elapsedLabel = formatCompactionElapsed(status.startedAt);
   if (status.phase === "active") {
     return html`
       <div
@@ -188,7 +208,16 @@ function renderCompactionIndicator(status: CompactionIndicatorStatus | null | un
         role="status"
         aria-live="polite"
       >
-        ${icons.loader} Compacting context...
+        <div class="compaction-indicator__icon">${icons.loader}</div>
+        <div class="compaction-indicator__content">
+          <div class="compaction-indicator__title">Context compaction in progress</div>
+          <div class="compaction-indicator__body">
+            Preparing room for the next response. Your conversation is still running.
+          </div>
+        </div>
+        ${elapsedLabel
+          ? html`<div class="compaction-indicator__meta">Elapsed ${elapsedLabel}</div>`
+          : nothing}
       </div>
     `;
   }
@@ -199,7 +228,16 @@ function renderCompactionIndicator(status: CompactionIndicatorStatus | null | un
         role="status"
         aria-live="polite"
       >
-        ${icons.loader} Retrying after compaction...
+        <div class="compaction-indicator__icon">${icons.loader}</div>
+        <div class="compaction-indicator__content">
+          <div class="compaction-indicator__title">Continuing after compaction</div>
+          <div class="compaction-indicator__body">
+            Context was compacted successfully. Resuming the response now.
+          </div>
+        </div>
+        ${elapsedLabel
+          ? html`<div class="compaction-indicator__meta">Elapsed ${elapsedLabel}</div>`
+          : nothing}
       </div>
     `;
   }
@@ -212,7 +250,10 @@ function renderCompactionIndicator(status: CompactionIndicatorStatus | null | un
           role="status"
           aria-live="polite"
         >
-          ${icons.check} Context compacted
+          <div class="compaction-indicator__icon">${icons.check}</div>
+          <div class="compaction-indicator__content">
+            <div class="compaction-indicator__title">Context compaction complete</div>
+          </div>
         </div>
       `;
     }
@@ -252,6 +293,45 @@ function renderFallbackIndicator(status: FallbackIndicatorStatus | null | undefi
       ${icon} ${message}
     </div>
   `;
+}
+
+function normalizeChatErrorMessage(error: string): string {
+  const trimmed = error.trim();
+  if (!trimmed) {
+    return "Request failed.";
+  }
+  const normalized = trimmed.toLowerCase();
+  if (normalized.includes("timeout")) {
+    return "Request failed. Timed out.";
+  }
+  if (normalized.includes("aborted")) {
+    return "Request failed. Aborted.";
+  }
+  return `Request failed. ${trimmed}`;
+}
+
+function formatRequestElapsedSeconds(startedAt: number | null): string {
+  if (!startedAt || !Number.isFinite(startedAt)) {
+    return "0s";
+  }
+  return `${Math.max(0, Math.floor((Date.now() - startedAt) / 1000))}s`;
+}
+
+function renderRequestStatus(props: ChatProps) {
+  if (props.error) {
+    return html`<div class="callout danger">${normalizeChatErrorMessage(props.error)}</div>`;
+  }
+  const elapsed = formatRequestElapsedSeconds(props.streamStartedAt);
+  if (props.sending) {
+    return html`<div class="callout">API request in progress... (${elapsed})</div>`;
+  }
+  if (props.canAbort && props.stream === null) {
+    return html`<div class="callout">API request in progress... (${elapsed})</div>`;
+  }
+  if (props.stream !== null) {
+    return html`<div class="callout">Receiving response... (${elapsed})</div>`;
+  }
+  return nothing;
 }
 
 /**
@@ -636,7 +716,18 @@ function renderWelcomeState(props: ChatProps): TemplateResult {
       avatarUrl: props.assistantAvatarUrl ?? undefined,
     },
   });
-  const logoUrl = agentLogoUrl(props.basePath ?? "");
+  const logoUrl = props.employeeMode
+    ? employeeLogoUrl(props.basePath ?? "")
+    : agentLogoUrl(props.basePath ?? "");
+  const displayName = props.employeeMode ? "PlatformClaw" : name;
+  const suggestions = props.employeeMode
+    ? [
+        "오늘 해야 할 일을 정리해줘",
+        "방금 대화한 내용을 요약해줘",
+        "보낼 답장을 초안으로 만들어줘",
+        "다음 단계 업무를 추천해줘",
+      ]
+    : WELCOME_SUGGESTIONS;
 
   return html`
     <div class="agent-chat__welcome" style="--agent-color: var(--accent)">
@@ -644,19 +735,27 @@ function renderWelcomeState(props: ChatProps): TemplateResult {
       ${avatar
         ? html`<img
             src=${avatar}
-            alt=${name}
+            alt=${displayName}
             style="width:56px; height:56px; border-radius:50%; object-fit:cover;"
           />`
-        : html`<div class="agent-chat__avatar agent-chat__avatar--logo">
-            <img src=${logoUrl} alt="OpenClaw" />
-          </div>`}
-      <h2>${name}</h2>
+          : html`<div class="agent-chat__avatar agent-chat__avatar--logo">
+            <img src=${logoUrl} alt=${displayName} />
+          </div>`
+      }
+      <h2>${displayName}</h2>
       <div class="agent-chat__badges">
-        <span class="agent-chat__badge"><img src=${logoUrl} alt="" /> Ready to chat</span>
+        <span class="agent-chat__badge"
+          ><img src=${logoUrl} alt="" />
+          ${props.employeeMode ? "PlatformClaw Workspace" : "Ready to chat"}</span
+        >
       </div>
-      <p class="agent-chat__hint">Type a message below &middot; <kbd>/</kbd> for commands</p>
+      <p class="agent-chat__hint">
+        ${props.employeeMode
+          ? "업무 관련 질문, 요약, 초안 작성, 다음 단계 정리까지 자연스럽게 요청할 수 있습니다."
+          : html`Type a message below &middot; <kbd>/</kbd> for commands`}
+      </p>
       <div class="agent-chat__suggestions">
-        ${WELCOME_SUGGESTIONS.map(
+        ${suggestions.map(
           (text) => html`
             <button
               type="button"
@@ -1162,7 +1261,7 @@ export function renderChat(props: ChatProps) {
       @dragover=${(e: DragEvent) => e.preventDefault()}
     >
       ${props.disabledReason ? html`<div class="callout">${props.disabledReason}</div>` : nothing}
-      ${props.error ? html`<div class="callout danger">${props.error}</div>` : nothing}
+      ${renderRequestStatus(props)}
       ${props.focusMode
         ? html`
             <button
@@ -1348,6 +1447,8 @@ export function renderChat(props: ChatProps) {
           <div class="agent-chat__toolbar-right">
             ${nothing /* search hidden for now */}
             ${canAbort
+              ? nothing
+              : props.employeeMode
               ? nothing
               : html`
                   <button

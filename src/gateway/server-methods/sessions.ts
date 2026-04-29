@@ -36,6 +36,12 @@ import {
 import { normalizeOptionalString, readStringValue } from "../../shared/string-coerce.js";
 import { GATEWAY_CLIENT_IDS } from "../protocol/client-info.js";
 import {
+  enforceEmployeeAgent,
+  enforceEmployeeSessionKey,
+  filterEmployeeSessionRows,
+  isEmployeeClient,
+} from "../employee-access.js";
+import {
   ErrorCodes,
   errorShape,
   validateSessionsAbortParams,
@@ -207,6 +213,39 @@ function emitSessionsChanged(
   );
 }
 
+function emitCompactionAgentEvent(
+  context: Pick<GatewayRequestContext, "broadcast">,
+  payload: {
+    runId: string;
+    sessionKey: string;
+    seq: number;
+    phase: "start" | "end";
+    completed?: boolean;
+    trigger?: "manual";
+    tokensBefore?: number;
+    tokensAfter?: number;
+  },
+) {
+  context.broadcast(
+    "agent",
+    {
+      runId: payload.runId,
+      seq: payload.seq,
+      ts: Date.now(),
+      stream: "compaction",
+      sessionKey: payload.sessionKey,
+      data: {
+        phase: payload.phase,
+        completed: payload.completed === true,
+        trigger: payload.trigger,
+        ...(typeof payload.tokensBefore === "number" ? { tokensBefore: payload.tokensBefore } : {}),
+        ...(typeof payload.tokensAfter === "number" ? { tokensAfter: payload.tokensAfter } : {}),
+      },
+    },
+    { dropIfSlow: true },
+  );
+}
+
 function rejectWebchatSessionMutation(params: {
   action: "patch" | "delete";
   client: GatewayClient | null;
@@ -232,6 +271,38 @@ function rejectWebchatSessionMutation(params: {
 
 function buildDashboardSessionKey(agentId: string): string {
   return `agent:${agentId}:dashboard:${randomUUID()}`;
+}
+
+function rejectEmployeeSessionsPatch(params: {
+  client: GatewayClient | null | undefined;
+  patch: Record<string, unknown>;
+  respond: RespondFn;
+}): boolean {
+  if (!isEmployeeClient(params.client)) {
+    return false;
+  }
+  const disallowedKeys = Object.entries(params.patch)
+    .filter(([key, value]) => key !== "key" && value !== undefined)
+    .map(([key]) => key)
+    .filter(
+      (key) =>
+        key !== "model" &&
+        key !== "thinkingLevel" &&
+        key !== "fastMode" &&
+        key !== "verboseLevel",
+    );
+  if (disallowedKeys.length === 0) {
+    return false;
+  }
+  params.respond(
+    false,
+    undefined,
+    errorShape(
+      ErrorCodes.INVALID_REQUEST,
+      `employee sessions.patch only allows model, thinkingLevel, fastMode, and verboseLevel (received: ${disallowedKeys.join(", ")})`,
+    ),
+  );
+  return true;
 }
 
 function cloneCheckpointSessionEntry(params: {
@@ -447,6 +518,9 @@ async function handleSessionSend(params: {
   if (!key) {
     return;
   }
+  if (!enforceEmployeeSessionKey(params.client, key, params.respond, "session steer")) {
+    return;
+  }
   const { entry, canonicalKey, storePath } = loadSessionEntry(key);
   if (!entry?.sessionId) {
     params.respond(
@@ -548,7 +622,7 @@ async function handleSessionSend(params: {
   }
 }
 export const sessionsHandlers: GatewayRequestHandlers = {
-  "sessions.list": ({ params, respond }) => {
+  "sessions.list": ({ params, respond, client }) => {
     if (!assertValidParams(params, validateSessionsListParams, "sessions.list", respond)) {
       return;
     }
@@ -561,7 +635,16 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       store,
       opts: p,
     });
-    respond(true, result, undefined);
+    const filteredSessions = filterEmployeeSessionRows(client, result.sessions ?? []);
+    respond(
+      true,
+      {
+        ...result,
+        sessions: filteredSessions,
+        count: filteredSessions.length,
+      },
+      undefined,
+    );
   },
   "sessions.subscribe": ({ client, context, respond }) => {
     const connId = client?.connId?.trim();
@@ -593,6 +676,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
+    if (!enforceEmployeeSessionKey(client, key, respond, "session subscription")) {
+      return;
+    }
     const { canonicalKey } = loadSessionEntry(key);
     if (connId) {
       context.subscribeSessionMessageEvents(connId, canonicalKey);
@@ -617,13 +703,16 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
+    if (!enforceEmployeeSessionKey(client, key, respond, "session subscription")) {
+      return;
+    }
     const { canonicalKey } = loadSessionEntry(key);
     if (connId) {
       context.unsubscribeSessionMessageEvents(connId, canonicalKey);
     }
     respond(true, { subscribed: false, key: canonicalKey }, undefined);
   },
-  "sessions.preview": ({ params, respond }) => {
+  "sessions.preview": ({ params, respond, client }) => {
     if (!assertValidParams(params, validateSessionsPreviewParams, "sessions.preview", respond)) {
       return;
     }
@@ -633,6 +722,19 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       .map((key) => String(key ?? "").trim())
       .filter(Boolean)
       .slice(0, 64);
+    const allowedKeys = keys.filter((key) => {
+      let allowed = true;
+      enforceEmployeeSessionKey(
+        client,
+        key,
+        (ok, _payload, error) => {
+          allowed = ok;
+          void error;
+        },
+        "session preview",
+      );
+      return allowed;
+    });
     const limit =
       typeof p.limit === "number" && Number.isFinite(p.limit) ? Math.max(1, p.limit) : 12;
     const maxChars =
@@ -640,7 +742,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         ? Math.max(20, p.maxChars)
         : 240;
 
-    if (keys.length === 0) {
+    if (allowedKeys.length === 0) {
       respond(true, { ts: Date.now(), previews: [] } satisfies SessionsPreviewResult, undefined);
       return;
     }
@@ -649,7 +751,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const storeCache = new Map<string, Record<string, SessionEntry>>();
     const previews: SessionsPreviewEntry[] = [];
 
-    for (const key of keys) {
+    for (const key of allowedKeys) {
       try {
         const storeTarget = resolveGatewaySessionStoreTarget({ cfg, key, scanLegacyKeys: false });
         const store =
@@ -685,7 +787,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
 
     respond(true, { ts: Date.now(), previews } satisfies SessionsPreviewResult, undefined);
   },
-  "sessions.resolve": async ({ params, respond }) => {
+  "sessions.resolve": async ({ params, respond, client }) => {
     if (!assertValidParams(params, validateSessionsResolveParams, "sessions.resolve", respond)) {
       return;
     }
@@ -695,6 +797,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const resolved = await resolveSessionKeyFromResolveParams({ cfg, p });
     if (!resolved.ok) {
       respond(false, undefined, resolved.error);
+      return;
+    }
+    if (!enforceEmployeeSessionKey(client, resolved.key, respond, "session resolve")) {
       return;
     }
     respond(true, { ok: true, key: resolved.key }, undefined);
@@ -777,7 +882,13 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const agentId = normalizeAgentId(
       normalizeOptionalString(p.agentId) ?? resolveDefaultAgentId(cfg),
     );
+    if (!enforceEmployeeAgent(client, agentId, respond, "session create")) {
+      return;
+    }
     if (requestedKey) {
+      if (!enforceEmployeeSessionKey(client, requestedKey, respond, "session create")) {
+        return;
+      }
       const requestedAgentId = parseAgentSessionKey(requestedKey)?.agentId;
       if (requestedAgentId && requestedAgentId !== agentId && normalizeOptionalString(p.agentId)) {
         respond(
@@ -794,6 +905,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const parentSessionKey = normalizeOptionalString(p.parentSessionKey);
     let canonicalParentSessionKey: string | undefined;
     if (parentSessionKey) {
+      if (!enforceEmployeeSessionKey(client, parentSessionKey, respond, "parent session")) {
+        return;
+      }
       const parent = loadSessionEntry(parentSessionKey);
       if (!parent.entry?.sessionId) {
         respond(
@@ -1169,6 +1283,13 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     });
   },
   "sessions.send": async ({ req, params, respond, context, client, isWebchatConnect }) => {
+    const requestedKey =
+      typeof (params as { key?: unknown } | null)?.key === "string"
+        ? (params as { key: string }).key
+        : "";
+    if (!enforceEmployeeSessionKey(client, requestedKey, respond, "session send")) {
+      return;
+    }
     await handleSessionSend({
       method: "sessions.send",
       req,
@@ -1199,6 +1320,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const p = params;
     const key = requireSessionKey(p.key, respond);
     if (!key) {
+      return;
+    }
+    if (!enforceEmployeeSessionKey(client, key, respond, "session abort")) {
       return;
     }
     const { canonicalKey } = loadSessionEntry(key);
@@ -1261,6 +1385,12 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
     if (rejectWebchatSessionMutation({ action: "patch", client, isWebchatConnect, respond })) {
+      return;
+    }
+    if (rejectEmployeeSessionsPatch({ client, patch: p as Record<string, unknown>, respond })) {
+      return;
+    }
+    if (!enforceEmployeeSessionKey(client, key, respond, "session patch")) {
       return;
     }
 
@@ -1468,6 +1598,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
+    if (!enforceEmployeeSessionKey(client, key, respond, "session compact")) {
+      return;
+    }
 
     const maxLines =
       typeof p.maxLines === "number" && Number.isFinite(p.maxLines)
@@ -1517,6 +1650,8 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     }
 
     if (maxLines === undefined) {
+      const compactionRunId = `manual-compact-${randomUUID()}`;
+      let compactionStartBroadcast = false;
       const interruptResult = await interruptSessionRunIfActive({
         req,
         context,
@@ -1531,27 +1666,60 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         return;
       }
 
+      emitCompactionAgentEvent(context, {
+        runId: compactionRunId,
+        sessionKey: target.canonicalKey,
+        seq: 1,
+        phase: "start",
+        trigger: "manual",
+      });
+      compactionStartBroadcast = true;
+
       const resolvedModel = resolveSessionModelRef(cfg, entry, target.agentId);
       const workspaceDir =
         entry?.spawnedWorkspaceDir?.trim() || resolveAgentWorkspaceDir(cfg, target.agentId);
-      const result = await compactEmbeddedPiSession({
-        sessionId,
-        sessionKey: target.canonicalKey,
-        allowGatewaySubagentBinding: true,
-        sessionFile: filePath,
-        workspaceDir,
-        config: cfg,
-        provider: resolvedModel.provider,
-        model: resolvedModel.model,
-        thinkLevel: normalizeThinkLevel(entry?.thinkingLevel),
-        reasoningLevel: normalizeReasoningLevel(entry?.reasoningLevel),
-        bashElevated: {
-          enabled: false,
-          allowed: false,
-          defaultLevel: "off",
-        },
-        trigger: "manual",
-      });
+      let result: Awaited<ReturnType<typeof compactEmbeddedPiSession>> | undefined;
+      try {
+        result = await compactEmbeddedPiSession({
+          sessionId,
+          sessionKey: target.canonicalKey,
+          allowGatewaySubagentBinding: true,
+          sessionFile: filePath,
+          workspaceDir,
+          config: cfg,
+          provider: resolvedModel.provider,
+          model: resolvedModel.model,
+          thinkLevel: normalizeThinkLevel(entry?.thinkingLevel),
+          reasoningLevel: normalizeReasoningLevel(entry?.reasoningLevel),
+          bashElevated: {
+            enabled: false,
+            allowed: false,
+            defaultLevel: "off",
+          },
+          trigger: "manual",
+        });
+      } finally {
+        if (compactionStartBroadcast) {
+          emitCompactionAgentEvent(context, {
+            runId: compactionRunId,
+            sessionKey: target.canonicalKey,
+            seq: 2,
+            phase: "end",
+            completed: result?.ok === true && result?.compacted === true,
+            trigger: "manual",
+            tokensBefore:
+              typeof result?.result?.tokensBefore === "number" &&
+              Number.isFinite(result.result.tokensBefore)
+                ? result.result.tokensBefore
+                : undefined,
+            tokensAfter:
+              typeof result?.result?.tokensAfter === "number" &&
+              Number.isFinite(result.result.tokensAfter)
+                ? result.result.tokensAfter
+                : undefined,
+          });
+        }
+      }
 
       if (result.ok && result.compacted) {
         await updateSessionStore(storePath, (store) => {

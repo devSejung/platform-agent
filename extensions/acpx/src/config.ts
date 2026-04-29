@@ -26,6 +26,11 @@ export {
 
 export const ACPX_PLUGIN_TOOLS_MCP_SERVER_NAME = "openclaw-plugin-tools";
 
+const BUNDLED_ACP_AGENT_BINARIES = {
+  claude: "claude-agent-acp",
+  codex: "codex-acp",
+} as const;
+
 function isAcpxPluginRoot(dir: string): boolean {
   return (
     fs.existsSync(path.join(dir, "openclaw.plugin.json")) &&
@@ -190,6 +195,50 @@ function resolveConfiguredMcpServers(params: {
   return resolved;
 }
 
+function resolveExecutableOnPath(command: string): string | null {
+  const trimmed = command.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const pathValue = process.env.PATH ?? "";
+  if (!pathValue) {
+    return null;
+  }
+  const extensions =
+    process.platform === "win32"
+      ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM")
+          .split(";")
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+      : [""];
+  for (const dir of pathValue.split(path.delimiter).map((entry) => entry.trim()).filter(Boolean)) {
+    for (const ext of extensions) {
+      const candidate = path.join(dir, `${trimmed}${ext}`);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
+function resolveBundledAgentCommandOverrides(): Record<string, string> {
+  const resolved: Record<string, string> = {};
+  for (const [agentId, binaryName] of Object.entries(BUNDLED_ACP_AGENT_BINARIES)) {
+    const envOverrideName = `OPENCLAW_ACPX_${agentId.toUpperCase()}_COMMAND`;
+    const envOverrideValue = process.env[envOverrideName]?.trim();
+    if (envOverrideValue) {
+      resolved[agentId] = envOverrideValue;
+      continue;
+    }
+    const binaryPath = resolveExecutableOnPath(binaryName);
+    if (binaryPath) {
+      resolved[agentId] = binaryPath;
+    }
+  }
+  return resolved;
+}
+
 export function toAcpMcpServers(mcpServers: Record<string, McpServerConfig>): AcpxMcpServer[] {
   return Object.entries(mcpServers).map(([name, server]) => ({
     name,
@@ -222,12 +271,16 @@ export function resolveAcpxPluginConfig(params: {
     pluginToolsMcpBridge,
     moduleUrl: params.moduleUrl,
   });
-  const agents = Object.fromEntries(
+  const configuredAgents = Object.fromEntries(
     Object.entries(normalized.agents ?? {}).map(([name, entry]) => [
       normalizeLowercaseStringOrEmpty(name),
       entry.command.trim(),
     ]),
   );
+  const agents = {
+    ...resolveBundledAgentCommandOverrides(),
+    ...configuredAgents,
+  };
 
   return {
     cwd,

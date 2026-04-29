@@ -836,6 +836,201 @@ describe("gateway server sessions", () => {
     );
   });
 
+  test("employee sessions.patch only permits session tuning fields on the employee session", async () => {
+    await createSessionStoreDir();
+    await writeSessionStore({
+      entries: {
+        "agent:eon:main": {
+          sessionId: "sess-eon",
+          updatedAt: Date.now(),
+        },
+        "agent:minji:main": {
+          sessionId: "sess-minji",
+          updatedAt: Date.now(),
+        },
+      },
+    });
+
+    const sessionsHandlers = await getSessionsHandlers();
+    const employeeClient = {
+      connect: { role: "employee" },
+      internal: { employee: { agentId: "eon" } },
+    } as never;
+    const loadGatewayModelCatalog = async () => [
+      {
+        id: "gpt-5-mini",
+        name: "GPT-5 Mini",
+        provider: "openai",
+        reasoning: true,
+      },
+    ];
+
+    const respondAllowed = vi.fn();
+    await sessionsHandlers["sessions.patch"]({
+      req: {} as never,
+      params: {
+        key: "agent:eon:main",
+        model: "openai/gpt-5-mini",
+        thinkingLevel: "off",
+        fastMode: true,
+        verboseLevel: "on",
+      },
+      respond: respondAllowed,
+      context: {
+        broadcastToConnIds: vi.fn(),
+        getSessionEventSubscriberConnIds: () => new Set<string>(),
+        loadGatewayModelCatalog,
+      } as never,
+      client: employeeClient,
+      isWebchatConnect: () => false,
+    });
+    expect(respondAllowed).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ ok: true, key: "agent:eon:main" }),
+      undefined,
+    );
+
+    const respondDeniedField = vi.fn();
+    await sessionsHandlers["sessions.patch"]({
+      req: {} as never,
+      params: {
+        key: "agent:eon:main",
+        label: "rename",
+      },
+      respond: respondDeniedField,
+      context: {
+        broadcastToConnIds: vi.fn(),
+        getSessionEventSubscriberConnIds: () => new Set<string>(),
+        loadGatewayModelCatalog,
+      } as never,
+      client: employeeClient,
+      isWebchatConnect: () => false,
+    });
+    expect(respondDeniedField).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        message: expect.stringMatching(
+          /only allows model, thinkingLevel, fastMode, and verboseLevel/i,
+        ),
+      }),
+    );
+
+    const respondDeniedSession = vi.fn();
+    await sessionsHandlers["sessions.patch"]({
+      req: {} as never,
+      params: {
+        key: "agent:minji:main",
+        model: "openai/gpt-5-mini",
+      },
+      respond: respondDeniedSession,
+      context: {
+        broadcastToConnIds: vi.fn(),
+        getSessionEventSubscriberConnIds: () => new Set<string>(),
+        loadGatewayModelCatalog,
+      } as never,
+      client: employeeClient,
+      isWebchatConnect: () => false,
+    });
+    expect(respondDeniedSession).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        message: expect.stringMatching(/employee access denied for session patch/i),
+      }),
+    );
+  });
+
+  test("employee sessions.compact and sessions.steer are limited to the employee session", async () => {
+    await createSessionStoreDir();
+    await writeSessionStore({
+      entries: {
+        "agent:eon:main": {
+          sessionId: "sess-eon",
+          updatedAt: Date.now(),
+        },
+        "agent:minji:main": {
+          sessionId: "sess-minji",
+          updatedAt: Date.now(),
+        },
+      },
+    });
+
+    const sessionsHandlers = await getSessionsHandlers();
+    const employeeClient = {
+      connect: { role: "employee" },
+      internal: { employee: { agentId: "eon" } },
+    } as never;
+
+    const respondCompactAllowed = vi.fn();
+    await sessionsHandlers["sessions.compact"]({
+      req: {} as never,
+      params: {
+        key: "agent:eon:main",
+      },
+      respond: respondCompactAllowed,
+      context: {
+        broadcastToConnIds: vi.fn(),
+        getSessionEventSubscriberConnIds: () => new Set<string>(),
+        loadGatewayModelCatalog: async () => ({ providers: [] }),
+      } as never,
+      client: employeeClient,
+      isWebchatConnect: () => false,
+    });
+    expect(respondCompactAllowed).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ ok: true, key: "agent:eon:main", compacted: false }),
+      undefined,
+    );
+
+    const respondCompactDenied = vi.fn();
+    await sessionsHandlers["sessions.compact"]({
+      req: {} as never,
+      params: {
+        key: "agent:minji:main",
+      },
+      respond: respondCompactDenied,
+      context: {
+        broadcastToConnIds: vi.fn(),
+        getSessionEventSubscriberConnIds: () => new Set<string>(),
+        loadGatewayModelCatalog: async () => ({ providers: [] }),
+      } as never,
+      client: employeeClient,
+      isWebchatConnect: () => false,
+    });
+    expect(respondCompactDenied).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        message: expect.stringMatching(/employee access denied for session compact/i),
+      }),
+    );
+
+    const respondSteerDenied = vi.fn();
+    await sessionsHandlers["sessions.steer"]({
+      req: {} as never,
+      params: {
+        key: "agent:minji:main",
+        message: "redirect this",
+      },
+      respond: respondSteerDenied,
+      context: {
+        broadcastToConnIds: vi.fn(),
+        getSessionEventSubscriberConnIds: () => new Set<string>(),
+        loadGatewayModelCatalog: async () => ({ providers: [] }),
+      } as never,
+      client: employeeClient,
+      isWebchatConnect: () => false,
+    });
+    expect(respondSteerDenied).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        message: expect.stringMatching(/employee access denied for session steer/i),
+      }),
+    );
+  });
+
   test("sessions.changed mutation events include sendPolicy metadata", async () => {
     await createSessionStoreDir();
     await writeSessionStore({

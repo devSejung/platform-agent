@@ -23,6 +23,10 @@ export const TAB_GROUPS = [
   },
 ] as const;
 
+export const EMPLOYEE_TAB_GROUPS = [
+  { label: "chat", tabs: ["chat", "cron", "heartbeat", "skills"] },
+] as const;
+
 export type Tab =
   | "agents"
   | "overview"
@@ -31,6 +35,7 @@ export type Tab =
   | "sessions"
   | "usage"
   | "cron"
+  | "heartbeat"
   | "skills"
   | "nodes"
   | "chat"
@@ -52,6 +57,7 @@ const TAB_PATHS: Record<Tab, string> = {
   sessions: "/sessions",
   usage: "/usage",
   cron: "/cron",
+  heartbeat: "/heartbeat",
   skills: "/skills",
   nodes: "/nodes",
   chat: "/chat",
@@ -172,6 +178,8 @@ export function iconForTab(tab: Tab): IconName {
       return "barChart";
     case "cron":
       return "loader";
+    case "heartbeat":
+      return "activity";
     case "skills":
       return "zap";
     case "nodes":
@@ -200,9 +208,19 @@ export function iconForTab(tab: Tab): IconName {
 }
 
 export function titleForTab(tab: Tab) {
+  if (tab === "heartbeat") {
+    return "Heartbeat";
+  }
   return t(`tabs.${tab}`);
 }
 
 export function subtitleForTab(tab: Tab) {
+  if (tab === "heartbeat") {
+    return "Recent delivery health and wake status.";
+  }
   return t(`subtitles.${tab}`);
+}
+
+export function tabGroupsForMode(employeeMode: boolean) {
+  return employeeMode ? EMPLOYEE_TAB_GROUPS : TAB_GROUPS;
 }

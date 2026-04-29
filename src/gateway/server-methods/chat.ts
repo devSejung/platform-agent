@@ -54,6 +54,7 @@ import {
 } from "../chat-attachments.js";
 import { stripEnvelopeFromMessage, stripEnvelopeFromMessages } from "../chat-sanitize.js";
 import { augmentChatHistoryWithCliSessionImports } from "../cli-session-history.js";
+import { enforceEmployeeSessionKey } from "../employee-access.js";
 import { ADMIN_SCOPE } from "../method-scopes.js";
 import {
   GATEWAY_CLIENT_CAPS,
@@ -1226,7 +1227,7 @@ function broadcastChatError(params: {
 }
 
 export const chatHandlers: GatewayRequestHandlers = {
-  "chat.history": async ({ params, respond, context }) => {
+  "chat.history": async ({ params, respond, context, client }) => {
     if (!validateChatHistoryParams(params)) {
       respond(
         false,
@@ -1247,6 +1248,9 @@ export const chatHandlers: GatewayRequestHandlers = {
       limit?: number;
       maxChars?: number;
     };
+    if (!enforceEmployeeSessionKey(client, sessionKey, respond, "chat history")) {
+      return;
+    }
     const { cfg, storePath, entry } = loadSessionEntry(sessionKey);
     const configMaxChars = cfg.gateway?.webchat?.chatHistoryMaxChars;
     const effectiveMaxChars =
@@ -1328,6 +1332,9 @@ export const chatHandlers: GatewayRequestHandlers = {
       sessionKey: string;
       runId?: string;
     };
+    if (!enforceEmployeeSessionKey(client, rawSessionKey, respond, "chat abort")) {
+      return;
+    }
 
     const ops = createChatAbortOps(context);
     const requester = resolveChatAbortRequester(client);
@@ -1425,6 +1432,9 @@ export const chatHandlers: GatewayRequestHandlers = {
       systemProvenanceReceipt?: string;
       idempotencyKey: string;
     };
+    if (!enforceEmployeeSessionKey(client, p.sessionKey, respond, "chat send")) {
+      return;
+    }
     const explicitOriginResult = normalizeExplicitChatSendOrigin({
       originatingChannel: p.originatingChannel,
       originatingTo: p.originatingTo,

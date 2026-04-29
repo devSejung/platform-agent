@@ -14,6 +14,7 @@ import {
 } from "./app-render.helpers.ts";
 import { warnQueryToken } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
+import { agentLogoUrl, employeeLogoUrl } from "./views/agents-utils.ts";
 import { loadAgentFileContent, loadAgentFiles, saveAgentFile } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
@@ -103,13 +104,22 @@ import {
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import "./components/dashboard-header.ts";
 import { icons } from "./icons.ts";
-import { normalizeBasePath, TAB_GROUPS, subtitleForTab, titleForTab } from "./navigation.ts";
 import {
   buildAgentMainSessionKey,
   parseAgentSessionKey,
   resolveAgentIdFromSessionKey,
 } from "./session-key.ts";
-import { agentLogoUrl } from "./views/agents-utils.ts";
+import {
+  normalizeBasePath,
+  subtitleForTab,
+  tabGroupsForMode,
+  titleForTab,
+} from "./navigation.ts";
+import {
+  dismissEmployeeAnnouncement,
+  isEmployeeAnnouncementDismissed,
+  resolveEmployeeAnnouncement,
+} from "./employee-announcement.ts";
 import {
   resolveAgentConfig,
   resolveConfiguredCronModelSuggestions,
@@ -339,6 +349,214 @@ function resolveAssistantAvatarUrl(state: AppViewState): string | undefined {
   return identity?.avatarUrl;
 }
 
+function trimStringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function resolveWorkspaceDocsUrl(state: AppViewState): string | null {
+  const configDocsUrl = trimStringOrNull(
+    (state.configSnapshot?.config as { gateway?: { controlUi?: { docsUrl?: unknown } } } | null)?.gateway
+      ?.controlUi?.docsUrl,
+  );
+  return configDocsUrl ?? state.employeeUi.docsUrl;
+}
+
+function renderEmployeeLoginNotice(state: AppViewState) {
+  if (!state.employeeMode || !state.employeeLoginNotice) {
+    return nothing;
+  }
+  return html`
+    <div class="callout info" role="status">
+      <strong>${state.employeeLoginNotice.title}</strong>
+      <div>${state.employeeLoginNotice.body}</div>
+      <div style="margin-top:8px;">
+        <button
+          class="btn btn--sm"
+          type="button"
+          @click=${() => {
+            state.employeeLoginNotice = null;
+          }}
+        >
+          확인
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderEmployeeIdentitySummary(state: AppViewState, navCollapsed: boolean) {
+  if (!state.employeeMode || navCollapsed) {
+    return nothing;
+  }
+  const employeeId = trimStringOrNull(state.employeeProfile.employeeId);
+  const employeeName = trimStringOrNull(state.employeeProfile.name);
+  const department = trimStringOrNull(state.employeeProfile.department);
+  const agentId = trimStringOrNull(state.employeeProfile.agentId);
+  if (!employeeId && !employeeName && !department && !agentId) {
+    return nothing;
+  }
+  return html`
+    <section class="sidebar-identity" aria-label="Employee identity">
+      <div class="sidebar-identity__header">
+        <span class="sidebar-identity__title">Signed in</span>
+        ${employeeId ? html`<span class="sidebar-identity__badge">${employeeId}</span>` : nothing}
+      </div>
+      ${employeeName
+        ? html`<div class="sidebar-identity__primary">${employeeName}</div>`
+        : nothing}
+      <div class="sidebar-identity__meta">
+        ${department
+          ? html`
+              <div class="sidebar-identity__row">
+                <span class="sidebar-identity__label">Department</span>
+                <strong>${department}</strong>
+              </div>
+            `
+          : nothing}
+        ${agentId
+          ? html`
+              <div class="sidebar-identity__row">
+                <span class="sidebar-identity__label">Agent</span>
+                <strong>${agentId}</strong>
+              </div>
+            `
+          : nothing}
+      </div>
+    </section>
+  `;
+}
+
+function formatEmployeeDateTime(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return "기록 없음";
+  }
+  return new Intl.DateTimeFormat("ko-KR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(value);
+}
+
+function formatEmployeeRelative(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return "아직 기록이 없습니다.";
+  }
+  const diffMs = Date.now() - value;
+  const absMinutes = Math.max(1, Math.round(Math.abs(diffMs) / 60_000));
+  if (absMinutes < 60) {
+    return `${absMinutes}분 ${diffMs >= 0 ? "전" : "후"}`;
+  }
+  const absHours = Math.round(absMinutes / 60);
+  if (absHours < 24) {
+    return `${absHours}시간 ${diffMs >= 0 ? "전" : "후"}`;
+  }
+  const absDays = Math.round(absHours / 24);
+  return `${absDays}일 ${diffMs >= 0 ? "전" : "후"}`;
+}
+
+function renderEmployeeHeartbeat(state: AppViewState) {
+  const heartbeat = state.debugHeartbeat as
+    | {
+        ts?: number;
+        status?: string;
+        channel?: string;
+        to?: string;
+        durationMs?: number;
+        reason?: string;
+        preview?: string;
+        config?: {
+          enabled?: boolean;
+          every?: string;
+          target?: string;
+        };
+      }
+    | null
+    | undefined;
+  const heartbeatConfig =
+    heartbeat && typeof heartbeat === "object" && heartbeat.config && typeof heartbeat.config === "object"
+      ? heartbeat.config
+      : null;
+  const status = heartbeat?.status?.trim() || "unknown";
+  const statusTone =
+    status === "ok-empty" || status === "ok-token"
+      ? "ok"
+      : status === "failed"
+        ? "error"
+        : "warn";
+  const preview = heartbeat?.preview?.trim() || "최근 heartbeat 미리보기가 없습니다.";
+  const statusHeadline =
+    status === "ok-empty" || status === "ok-token" ? "Heartbeat stable" : "Heartbeat monitor";
+  const statusSummary = heartbeat?.reason?.trim() || "최근 전달 상태를 기준으로 자동 갱신됩니다.";
+  const mascotUrl = employeeLogoUrl(state.basePath);
+  return html`
+    <section class="employee-workspace__panel employee-workspace__panel--heartbeat">
+      <div class="employee-panel__header">
+        <div>
+          <div class="employee-panel__eyebrow">Heartbeat</div>
+          <h2 class="employee-panel__title">에이전트 상태</h2>
+          <p class="employee-panel__sub">현재 담당 에이전트의 최근 전달 상태와 기상 신호를 확인합니다.</p>
+        </div>
+      </div>
+      <div class="employee-heartbeat-grid">
+        <article class="employee-heartbeat-card">
+          <div class="employee-heartbeat-card__label">최근 상태</div>
+          <div class="employee-heartbeat-card__value employee-heartbeat-card__value--${statusTone}">
+            ${status}
+          </div>
+          <div class="employee-heartbeat-card__meta">${formatEmployeeRelative(heartbeat?.ts)}</div>
+        </article>
+        <article class="employee-heartbeat-card">
+          <div class="employee-heartbeat-card__label">설정 상태</div>
+          <div class="employee-heartbeat-card__value">
+            ${heartbeatConfig?.enabled ? "enabled" : "disabled"}
+          </div>
+          <div class="employee-heartbeat-card__meta">${heartbeatConfig?.every?.trim() || "주기 없음"}</div>
+        </article>
+        <article class="employee-heartbeat-card">
+          <div class="employee-heartbeat-card__label">전달 대상</div>
+          <div class="employee-heartbeat-card__value">${heartbeatConfig?.target?.trim() || "none"}</div>
+          <div class="employee-heartbeat-card__meta">
+            ${heartbeat?.channel?.trim() || "채널 기록 없음"}
+          </div>
+        </article>
+      </div>
+      <div class="employee-heartbeat-details">
+        <div class="employee-heartbeat-details__section employee-heartbeat-details__section--hero">
+          <div class="employee-heartbeat-details__label employee-heartbeat-details__label--icon">
+            <span class="employee-heartbeat-details__icon employee-heartbeat-details__icon--${statusTone}"
+              >${icons.radio}</span
+            >
+            <span>${statusHeadline}</span>
+          </div>
+          <div class="employee-heartbeat-details__mascot">
+            <span class="employee-heartbeat-details__mascot-badge">
+              <img src=${mascotUrl} alt="PlatformClaw" loading="lazy" />
+            </span>
+          </div>
+          <div class="employee-heartbeat-details__summary-chips">
+            <span class="employee-heartbeat-details__chip">
+              ${heartbeatConfig?.enabled ? "heartbeat on" : "heartbeat off"}
+            </span>
+            <span class="employee-heartbeat-details__chip">${heartbeatConfig?.every?.trim() || "no cadence"}</span>
+            <span class="employee-heartbeat-details__chip">${heartbeatConfig?.target?.trim() || "none"}</span>
+          </div>
+          <div class="employee-heartbeat-details__value">${statusSummary}</div>
+        </div>
+        <div class="employee-heartbeat-details__section">
+          <div class="employee-heartbeat-details__label">최근 수신 시각</div>
+          <div class="employee-heartbeat-details__value">${formatEmployeeDateTime(heartbeat?.ts)}</div>
+        </div>
+        <div class="employee-heartbeat-details__section">
+          <div class="employee-heartbeat-details__label">최근 전달 정보</div>
+          <div class="employee-heartbeat-details__preview">
+            ${typeof heartbeat?.durationMs === "number" ? `${heartbeat.durationMs}ms` : "-"} ·
+            ${heartbeat?.to?.trim() || "대상 없음"}<br />${preview}
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 export function renderApp(state: AppViewState) {
   const updatableState = state as AppViewState & { requestUpdate?: () => void };
   const requestHostUpdate =
@@ -352,12 +570,21 @@ export function renderApp(state: AppViewState) {
   if (!state.connected) {
     return html` ${renderLoginGate(state)} ${renderGatewayUrlConfirmation(state)} `;
   }
+  const visibleTabGroups = tabGroupsForMode(state.employeeMode);
+  const allowedTabs = new Set(visibleTabGroups.flatMap((group) => [...group.tabs]));
+  if (!allowedTabs.has(state.tab)) {
+    queueMicrotask(() => state.setTab("chat"));
+  }
 
   const presenceCount = state.presenceEntries.length;
   const sessionsCount = state.sessionsResult?.count ?? null;
   const cronNext = state.cronStatus?.nextWakeAtMs ?? null;
   const chatDisabledReason = state.connected ? null : t("chat.disconnected");
   const isChat = state.tab === "chat";
+  const docsUrl = resolveWorkspaceDocsUrl(state);
+  const employeeAnnouncement = resolveEmployeeAnnouncement(state.employeeMode, state.employeeUi);
+  const showEmployeeAnnouncement =
+    employeeAnnouncement && !isEmployeeAnnouncementDismissed(employeeAnnouncement);
   const chatFocus = isChat && (state.settings.chatFocusMode || state.onboarding);
   const navDrawerOpen = Boolean(state.navDrawerOpen && !chatFocus && !state.onboarding);
   const navCollapsed = Boolean(state.settings.navCollapsed && !navDrawerOpen);
@@ -456,6 +683,268 @@ export function renderApp(state: AppViewState) {
     state.cronForm.deliveryMode === "webhook"
       ? rawDeliveryToSuggestions.filter((value) => isHttpUrl(value))
       : rawDeliveryToSuggestions;
+  const employeeAgentId = state.employeeProfile.agentId?.trim() || resolvedAgentId || "main";
+  const employeeCronForm = normalizeCronFormState({
+    ...state.cronForm,
+    agentId: employeeAgentId,
+    clearAgent: false,
+  });
+
+  const chatView =
+    state.tab === "chat"
+      ? renderChat({
+          employeeMode: state.employeeMode,
+          sessionKey: state.sessionKey,
+          onSessionKeyChange: (next) => {
+            state.sessionKey = next;
+            state.chatMessage = "";
+            state.chatAttachments = [];
+            state.chatStream = null;
+            state.chatStreamStartedAt = null;
+            state.chatRunId = null;
+            state.chatQueue = [];
+            state.resetToolStream();
+            state.resetChatScroll();
+            state.applySettings({
+              ...state.settings,
+              sessionKey: next,
+              lastActiveSessionKey: next,
+            });
+            void state.loadAssistantIdentity();
+            void loadChatHistory(state);
+            void refreshChatAvatar(state);
+          },
+          thinkingLevel: state.chatThinkingLevel,
+          showThinking,
+          showToolCalls,
+          loading: state.chatLoading,
+          sending: state.chatSending,
+          compactionStatus: state.compactionStatus,
+          fallbackStatus: state.fallbackStatus,
+          assistantAvatarUrl: chatAvatarUrl,
+          messages: state.chatMessages,
+          toolMessages: state.chatToolMessages,
+          streamSegments: state.chatStreamSegments,
+          stream: state.chatStream,
+          streamStartedAt: state.chatStreamStartedAt,
+          draft: state.chatMessage,
+          queue: state.chatQueue,
+          connected: state.connected,
+          canSend: state.connected,
+          disabledReason: chatDisabledReason,
+          error: state.lastError,
+          sessions: state.sessionsResult,
+          focusMode: chatFocus,
+          onRefresh: () => {
+            state.resetToolStream();
+            return Promise.all([loadChatHistory(state), refreshChatAvatar(state)]);
+          },
+          onToggleFocusMode: () => {
+            if (state.onboarding) {
+              return;
+            }
+            state.applySettings({
+              ...state.settings,
+              chatFocusMode: !state.settings.chatFocusMode,
+            });
+          },
+          onChatScroll: (event) => state.handleChatScroll(event),
+          getDraft: () => state.chatMessage,
+          onDraftChange: (next) => (state.chatMessage = next),
+          onRequestUpdate: requestHostUpdate,
+          attachments: state.chatAttachments,
+          onAttachmentsChange: (next) => (state.chatAttachments = next),
+          onSend: () => state.handleSendChat(),
+          canAbort: Boolean(state.chatRunId),
+          onAbort: () => void state.handleAbortChat(),
+          onQueueRemove: (id) => state.removeQueuedMessage(id),
+          onNewSession: () => state.handleSendChat("/new", { restoreDraft: true }),
+          onClearHistory: async () => {
+            if (!state.client || !state.connected) {
+              return;
+            }
+            try {
+              await state.client.request("sessions.reset", { key: state.sessionKey });
+              state.chatMessages = [];
+              state.chatStream = null;
+              state.chatRunId = null;
+              await loadChatHistory(state);
+            } catch (err) {
+              state.lastError = String(err);
+            }
+          },
+          agentsList: state.agentsList,
+          currentAgentId: resolvedAgentId ?? "main",
+          onAgentChange: (agentId: string) => {
+            state.sessionKey = buildAgentMainSessionKey({ agentId });
+            state.chatMessages = [];
+            state.chatStream = null;
+            state.chatRunId = null;
+            state.applySettings({
+              ...state.settings,
+              sessionKey: state.sessionKey,
+              lastActiveSessionKey: state.sessionKey,
+            });
+            void loadChatHistory(state);
+            void state.loadAssistantIdentity();
+          },
+          onNavigateToAgent: state.employeeMode
+            ? undefined
+            : () => {
+                state.agentsSelectedId = resolvedAgentId;
+                state.setTab("agents" as import("./navigation.ts").Tab);
+              },
+          onSessionSelect: state.employeeMode
+            ? undefined
+            : (key: string) => {
+                switchChatSession(state, key);
+              },
+          showNewMessages: state.chatNewMessagesBelow && !state.chatManualRefreshInFlight,
+          onScrollToBottom: () => state.scrollToBottom(),
+          sidebarOpen: state.sidebarOpen,
+          sidebarContent: state.sidebarContent,
+          sidebarError: state.sidebarError,
+          splitRatio: state.splitRatio,
+          onOpenSidebar: (content: string) => state.handleOpenSidebar(content),
+          onCloseSidebar: () => state.handleCloseSidebar(),
+          onSplitRatioChange: (ratio: number) => state.handleSplitRatioChange(ratio),
+          assistantName: state.assistantName,
+          assistantAvatar: state.assistantAvatar,
+          basePath: state.basePath ?? "",
+        })
+      : nothing;
+
+  const cronView = state.tab === "cron"
+    ? lazyRender(lazyCron, (m) =>
+        m.renderCron({
+          basePath: state.basePath,
+          employeeMode: state.employeeMode,
+          lockedAgentId: state.employeeMode ? employeeAgentId : null,
+          loading: state.cronLoading,
+          status: state.cronStatus,
+          jobs: visibleCronJobs,
+          jobsLoadingMore: state.cronJobsLoadingMore,
+          jobsTotal: state.cronJobsTotal,
+          jobsHasMore: state.cronJobsHasMore,
+          jobsQuery: state.cronJobsQuery,
+          jobsEnabledFilter: state.cronJobsEnabledFilter,
+          jobsScheduleKindFilter: state.cronJobsScheduleKindFilter,
+          jobsLastStatusFilter: state.cronJobsLastStatusFilter,
+          jobsSortBy: state.cronJobsSortBy,
+          jobsSortDir: state.cronJobsSortDir,
+          editingJobId: state.cronEditingJobId,
+          error: state.cronError,
+          busy: state.cronBusy,
+          form: state.employeeMode ? employeeCronForm : state.cronForm,
+          channels: state.channelsSnapshot?.channelMeta?.length
+            ? state.channelsSnapshot.channelMeta.map((entry) => entry.id)
+            : (state.channelsSnapshot?.channelOrder ?? []),
+          channelLabels: state.channelsSnapshot?.channelLabels ?? {},
+          channelMeta: state.channelsSnapshot?.channelMeta ?? [],
+          runsJobId: state.cronRunsJobId,
+          runs: state.cronRuns,
+          runsTotal: state.cronRunsTotal,
+          runsHasMore: state.cronRunsHasMore,
+          runsLoadingMore: state.cronRunsLoadingMore,
+          runsScope: state.cronRunsScope,
+          runsStatuses: state.cronRunsStatuses,
+          runsDeliveryStatuses: state.cronRunsDeliveryStatuses,
+          runsStatusFilter: state.cronRunsStatusFilter,
+          runsQuery: state.cronRunsQuery,
+          runsSortDir: state.cronRunsSortDir,
+          fieldErrors: state.cronFieldErrors,
+          canSubmit: !hasCronFormErrors(state.cronFieldErrors),
+          agentSuggestions: state.employeeMode ? [employeeAgentId] : cronAgentSuggestions,
+          modelSuggestions: cronModelSuggestions,
+          thinkingSuggestions: CRON_THINKING_SUGGESTIONS,
+          timezoneSuggestions: CRON_TIMEZONE_SUGGESTIONS,
+          deliveryToSuggestions,
+          accountSuggestions,
+          onFormChange: (patch) => {
+            const base = state.employeeMode ? employeeCronForm : state.cronForm;
+            const next = normalizeCronFormState({
+              ...base,
+              ...patch,
+              ...(state.employeeMode ? { agentId: employeeAgentId, clearAgent: false } : {}),
+            });
+            state.cronForm = next;
+            state.cronFieldErrors = validateCronForm(next);
+          },
+          onRefresh: () => state.loadCron(),
+          onAdd: () => {
+            if (state.employeeMode) {
+              state.cronForm = employeeCronForm;
+              state.cronFieldErrors = validateCronForm(employeeCronForm);
+            }
+            return addCronJob(state);
+          },
+          onEdit: (job) => {
+            startCronEdit(state, job);
+            if (state.employeeMode) {
+              state.cronForm = normalizeCronFormState({
+                ...state.cronForm,
+                agentId: employeeAgentId,
+                clearAgent: false,
+              });
+            }
+          },
+          onClone: (job) => {
+            startCronClone(state, job);
+            if (state.employeeMode) {
+              state.cronForm = normalizeCronFormState({
+                ...state.cronForm,
+                agentId: employeeAgentId,
+                clearAgent: false,
+              });
+            }
+          },
+          onCancelEdit: () => cancelCronEdit(state),
+          onToggle: (job, enabled) => toggleCronJob(state, job, enabled),
+          onRun: (job, mode) => runCronJob(state, job, mode ?? "force"),
+          onRemove: (job) => removeCronJob(state, job),
+          onLoadRuns: async (jobId) => {
+            updateCronRunsFilter(state, { cronRunsScope: "job" });
+            await loadCronRuns(state, jobId);
+          },
+          onLoadMoreJobs: () => loadMoreCronJobs(state),
+          onJobsFiltersChange: async (patch) => {
+            updateCronJobsFilter(state, patch);
+            const shouldReload =
+              typeof patch.cronJobsQuery === "string" ||
+              Boolean(patch.cronJobsEnabledFilter) ||
+              Boolean(patch.cronJobsSortBy) ||
+              Boolean(patch.cronJobsSortDir);
+            if (shouldReload) {
+              await reloadCronJobs(state);
+            }
+          },
+          onJobsFiltersReset: async () => {
+            updateCronJobsFilter(state, {
+              cronJobsQuery: "",
+              cronJobsEnabledFilter: "all",
+              cronJobsScheduleKindFilter: "all",
+              cronJobsLastStatusFilter: "all",
+              cronJobsSortBy: "nextRunAtMs",
+              cronJobsSortDir: "asc",
+            });
+            await reloadCronJobs(state);
+          },
+          onLoadMoreRuns: () => loadMoreCronRuns(state),
+          onRunsFiltersChange: async (patch) => {
+            updateCronRunsFilter(state, patch);
+            if (state.cronRunsScope === "all") {
+              await loadCronRuns(state, null);
+              return;
+            }
+            await loadCronRuns(state, state.cronRunsJobId);
+          },
+          onNavigateToChat: (sessionKey) => {
+            switchChatSession(state, sessionKey);
+            state.setTab("chat" as import("./navigation.ts").Tab);
+          },
+        }),
+      )
+    : nothing;
 
   return html`
     ${renderCommandPalette({
@@ -525,6 +1014,13 @@ export function renderApp(state: AppViewState) {
             </button>
             <div class="topbar-status">
               ${isChat ? renderChatMobileToggle(state) : nothing}
+              ${state.employeeMode
+                ? html`
+                    <button class="btn btn--sm" type="button" @click=${() => state.handleEmployeeLogout()}>
+                      Logout
+                    </button>
+                  `
+                : nothing}
               ${renderTopbarThemeModeToggle(state)}
             </div>
           </div>
@@ -540,12 +1036,14 @@ export function renderApp(state: AppViewState) {
                   : html`
                       <img
                         class="sidebar-brand__logo"
-                        src="${agentLogoUrl(basePath)}"
-                        alt="OpenClaw"
+                        src="${employeeLogoUrl(basePath)}"
+                        alt="Soc PlatformClaw"
                       />
                       <span class="sidebar-brand__copy">
-                        <span class="sidebar-brand__eyebrow">${t("nav.control")}</span>
-                        <span class="sidebar-brand__title">OpenClaw</span>
+                        <span class="sidebar-brand__eyebrow"
+                          >${state.employeeMode ? "Workspace" : t("nav.control")}</span
+                        >
+                        <span class="sidebar-brand__title">PlatformClaw</span>
                       </span>
                     `}
               </div>
@@ -566,8 +1064,10 @@ export function renderApp(state: AppViewState) {
               </button>
             </div>
             <div class="sidebar-shell__body">
-              <nav class="sidebar-nav">
-                ${TAB_GROUPS.map((group) => {
+              <div class="sidebar-body-stack">
+                ${renderEmployeeIdentitySummary(state, navCollapsed)}
+                <nav class="sidebar-nav">
+                ${visibleTabGroups.map((group) => {
                   const isGroupCollapsed = state.settings.navGroupsCollapsed[group.label] ?? false;
                   const hasActiveTab = group.tabs.some((tab) => tab === state.tab);
                   const showItems = navCollapsed || hasActiveTab || !isGroupCollapsed;
@@ -603,25 +1103,43 @@ export function renderApp(state: AppViewState) {
                     </section>
                   `;
                 })}
-              </nav>
+                </nav>
+              </div>
             </div>
             <div class="sidebar-shell__footer">
               <div class="sidebar-utility-group">
-                <a
-                  class="nav-item nav-item--external sidebar-utility-link"
-                  href="https://docs.openclaw.ai"
-                  target=${EXTERNAL_LINK_TARGET}
-                  rel=${buildExternalLinkRel()}
-                  title="${t("common.docs")} (opens in new tab)"
-                >
-                  <span class="nav-item__icon" aria-hidden="true">${icons.book}</span>
-                  ${!navCollapsed
-                    ? html`
-                        <span class="nav-item__text">${t("common.docs")}</span>
-                        <span class="nav-item__external-icon">${icons.externalLink}</span>
-                      `
-                    : nothing}
-                </a>
+                ${state.employeeMode
+                  ? html`
+                      <button
+                        class="nav-item sidebar-utility-link"
+                        type="button"
+                        @click=${() => state.handleEmployeeLogout()}
+                        title="Logout"
+                      >
+                        <span class="nav-item__icon" aria-hidden="true">${icons.logOut}</span>
+                        ${!navCollapsed ? html`<span class="nav-item__text">Logout</span>` : nothing}
+                      </button>
+                    `
+                  : nothing}
+                ${docsUrl
+                  ? html`
+                      <a
+                        class="nav-item nav-item--external sidebar-utility-link"
+                        href=${docsUrl}
+                        target=${EXTERNAL_LINK_TARGET}
+                        rel=${buildExternalLinkRel()}
+                        title="${t("common.docs")} (opens in new tab)"
+                      >
+                        <span class="nav-item__icon" aria-hidden="true">${icons.book}</span>
+                        ${!navCollapsed
+                          ? html`
+                              <span class="nav-item__text">${t("common.docs")}</span>
+                              <span class="nav-item__external-icon">${icons.externalLink}</span>
+                            `
+                          : nothing}
+                      </a>
+                    `
+                  : nothing}
                 <div class="sidebar-mode-switch">${renderTopbarThemeModeToggle(state)}</div>
                 ${(() => {
                   const version = state.hello?.server?.version ?? "";
@@ -645,6 +1163,42 @@ export function renderApp(state: AppViewState) {
         </aside>
       </div>
       <main class="content ${isChat ? "content--chat" : ""}">
+        ${renderEmployeeLoginNotice(state)}
+        ${showEmployeeAnnouncement
+          ? html`
+              <div class="callout warning employee-announcement" role="status">
+                <button
+                  class="update-banner__close employee-announcement__close"
+                  type="button"
+                  title="Dismiss notice"
+                  aria-label="Dismiss notice"
+                  @click=${() => {
+                    dismissEmployeeAnnouncement(employeeAnnouncement);
+                    (state as AppViewState & { requestUpdate?: () => void }).requestUpdate?.();
+                  }}
+                >
+                  ${icons.x}
+                </button>
+                ${employeeAnnouncement.title
+                  ? html`<strong>${employeeAnnouncement.title}</strong>`
+                  : nothing}
+                ${employeeAnnouncement.body ? html`<div>${employeeAnnouncement.body}</div>` : nothing}
+                ${employeeAnnouncement.linkUrl
+                  ? html`
+                      <div>
+                        <a
+                          href=${employeeAnnouncement.linkUrl}
+                          target=${EXTERNAL_LINK_TARGET}
+                          rel=${buildExternalLinkRel()}
+                        >
+                          ${employeeAnnouncement.linkLabel || "Open notice"}
+                        </a>
+                      </div>
+                    `
+                  : nothing}
+              </div>
+            `
+          : nothing}
         ${state.updateAvailable &&
         state.updateAvailable.latestVersion !== state.updateAvailable.currentVersion &&
         !isUpdateBannerDismissed(state.updateAvailable)
@@ -919,105 +1473,8 @@ export function renderApp(state: AppViewState) {
             )
           : nothing}
         ${renderUsageTab(state)}
-        ${state.tab === "cron"
-          ? lazyRender(lazyCron, (m) =>
-              m.renderCron({
-                basePath: state.basePath,
-                loading: state.cronLoading,
-                status: state.cronStatus,
-                jobs: visibleCronJobs,
-                jobsLoadingMore: state.cronJobsLoadingMore,
-                jobsTotal: state.cronJobsTotal,
-                jobsHasMore: state.cronJobsHasMore,
-                jobsQuery: state.cronJobsQuery,
-                jobsEnabledFilter: state.cronJobsEnabledFilter,
-                jobsScheduleKindFilter: state.cronJobsScheduleKindFilter,
-                jobsLastStatusFilter: state.cronJobsLastStatusFilter,
-                jobsSortBy: state.cronJobsSortBy,
-                jobsSortDir: state.cronJobsSortDir,
-                editingJobId: state.cronEditingJobId,
-                error: state.cronError,
-                busy: state.cronBusy,
-                form: state.cronForm,
-                channels: state.channelsSnapshot?.channelMeta?.length
-                  ? state.channelsSnapshot.channelMeta.map((entry) => entry.id)
-                  : (state.channelsSnapshot?.channelOrder ?? []),
-                channelLabels: state.channelsSnapshot?.channelLabels ?? {},
-                channelMeta: state.channelsSnapshot?.channelMeta ?? [],
-                runsJobId: state.cronRunsJobId,
-                runs: state.cronRuns,
-                runsTotal: state.cronRunsTotal,
-                runsHasMore: state.cronRunsHasMore,
-                runsLoadingMore: state.cronRunsLoadingMore,
-                runsScope: state.cronRunsScope,
-                runsStatuses: state.cronRunsStatuses,
-                runsDeliveryStatuses: state.cronRunsDeliveryStatuses,
-                runsStatusFilter: state.cronRunsStatusFilter,
-                runsQuery: state.cronRunsQuery,
-                runsSortDir: state.cronRunsSortDir,
-                fieldErrors: state.cronFieldErrors,
-                canSubmit: !hasCronFormErrors(state.cronFieldErrors),
-                agentSuggestions: cronAgentSuggestions,
-                modelSuggestions: cronModelSuggestions,
-                thinkingSuggestions: CRON_THINKING_SUGGESTIONS,
-                timezoneSuggestions: CRON_TIMEZONE_SUGGESTIONS,
-                deliveryToSuggestions,
-                accountSuggestions,
-                onFormChange: (patch) => {
-                  state.cronForm = normalizeCronFormState({ ...state.cronForm, ...patch });
-                  state.cronFieldErrors = validateCronForm(state.cronForm);
-                },
-                onRefresh: () => state.loadCron(),
-                onAdd: () => addCronJob(state),
-                onEdit: (job) => startCronEdit(state, job),
-                onClone: (job) => startCronClone(state, job),
-                onCancelEdit: () => cancelCronEdit(state),
-                onToggle: (job, enabled) => toggleCronJob(state, job, enabled),
-                onRun: (job, mode) => runCronJob(state, job, mode ?? "force"),
-                onRemove: (job) => removeCronJob(state, job),
-                onLoadRuns: async (jobId) => {
-                  updateCronRunsFilter(state, { cronRunsScope: "job" });
-                  await loadCronRuns(state, jobId);
-                },
-                onLoadMoreJobs: () => loadMoreCronJobs(state),
-                onJobsFiltersChange: async (patch) => {
-                  updateCronJobsFilter(state, patch);
-                  const shouldReload =
-                    typeof patch.cronJobsQuery === "string" ||
-                    Boolean(patch.cronJobsEnabledFilter) ||
-                    Boolean(patch.cronJobsSortBy) ||
-                    Boolean(patch.cronJobsSortDir);
-                  if (shouldReload) {
-                    await reloadCronJobs(state);
-                  }
-                },
-                onJobsFiltersReset: async () => {
-                  updateCronJobsFilter(state, {
-                    cronJobsQuery: "",
-                    cronJobsEnabledFilter: "all",
-                    cronJobsScheduleKindFilter: "all",
-                    cronJobsLastStatusFilter: "all",
-                    cronJobsSortBy: "nextRunAtMs",
-                    cronJobsSortDir: "asc",
-                  });
-                  await reloadCronJobs(state);
-                },
-                onLoadMoreRuns: () => loadMoreCronRuns(state),
-                onRunsFiltersChange: async (patch) => {
-                  updateCronRunsFilter(state, patch);
-                  if (state.cronRunsScope === "all") {
-                    await loadCronRuns(state, null);
-                    return;
-                  }
-                  await loadCronRuns(state, state.cronRunsJobId);
-                },
-                onNavigateToChat: (sessionKey) => {
-                  switchChatSession(state, sessionKey);
-                  state.setTab("chat" as import("./navigation.ts").Tab);
-                },
-              }),
-            )
-          : nothing}
+        ${cronView}
+        ${state.tab === "heartbeat" ? renderEmployeeHeartbeat(state) : nothing}
         ${state.tab === "agents"
           ? lazyRender(lazyAgents, (m) =>
               m.renderAgents({
@@ -1417,10 +1874,11 @@ export function renderApp(state: AppViewState) {
         ${state.tab === "skills"
           ? lazyRender(lazySkills, (m) =>
               m.renderSkills({
+                readOnly: state.employeeMode,
                 connected: state.connected,
-                loading: state.skillsLoading,
-                report: state.skillsReport,
-                error: state.skillsError,
+                loading: state.employeeMode ? state.agentSkillsLoading : state.skillsLoading,
+                report: state.employeeMode ? state.agentSkillsReport : state.skillsReport,
+                error: state.employeeMode ? state.agentSkillsError : state.skillsError,
                 filter: state.skillsFilter,
                 statusFilter: state.skillsStatusFilter,
                 edits: state.skillEdits,
@@ -1439,12 +1897,24 @@ export function renderApp(state: AppViewState) {
                 clawhubInstallMessage: state.clawhubInstallMessage,
                 onFilterChange: (next) => (state.skillsFilter = next),
                 onStatusFilterChange: (next) => (state.skillsStatusFilter = next),
-                onRefresh: () => loadSkills(state, { clearMessages: true }),
-                onToggle: (key, enabled) => updateSkillEnabled(state, key, enabled),
+                onRefresh: () =>
+                  state.employeeMode
+                    ? loadAgentSkills(
+                        state,
+                        state.employeeProfile.agentId?.trim() ||
+                          resolveAgentIdFromSessionKey(state.sessionKey) ||
+                          "main",
+                      )
+                    : loadSkills(state, { clearMessages: true }),
+                onToggle: (key, enabled) =>
+                  state.employeeMode ? Promise.resolve() : updateSkillEnabled(state, key, enabled),
                 onEdit: (key, value) => updateSkillEdit(state, key, value),
-                onSaveKey: (key) => saveSkillApiKey(state, key),
+                onSaveKey: (key) =>
+                  state.employeeMode ? Promise.resolve() : saveSkillApiKey(state, key),
                 onInstall: (skillKey, name, installId) =>
-                  installSkill(state, skillKey, name, installId),
+                  state.employeeMode
+                    ? Promise.resolve()
+                    : installSkill(state, skillKey, name, installId),
                 onDetailOpen: (key) => (state.skillsDetailKey = key),
                 onDetailClose: () => (state.skillsDetailKey = null),
                 onClawHubQueryChange: (query) => {
@@ -1538,124 +2008,7 @@ export function renderApp(state: AppViewState) {
               }),
             )
           : nothing}
-        ${state.tab === "chat"
-          ? renderChat({
-              sessionKey: state.sessionKey,
-              onSessionKeyChange: (next) => {
-                state.sessionKey = next;
-                state.chatMessage = "";
-                state.chatAttachments = [];
-                state.chatStream = null;
-                state.chatStreamStartedAt = null;
-                state.chatRunId = null;
-                state.chatQueue = [];
-                state.resetToolStream();
-                state.resetChatScroll();
-                state.applySettings({
-                  ...state.settings,
-                  sessionKey: next,
-                  lastActiveSessionKey: next,
-                });
-                void state.loadAssistantIdentity();
-                void loadChatHistory(state);
-                void refreshChatAvatar(state);
-              },
-              thinkingLevel: state.chatThinkingLevel,
-              showThinking,
-              showToolCalls,
-              loading: state.chatLoading,
-              sending: state.chatSending,
-              compactionStatus: state.compactionStatus,
-              fallbackStatus: state.fallbackStatus,
-              assistantAvatarUrl: chatAvatarUrl,
-              messages: state.chatMessages,
-              toolMessages: state.chatToolMessages,
-              streamSegments: state.chatStreamSegments,
-              stream: state.chatStream,
-              streamStartedAt: state.chatStreamStartedAt,
-              draft: state.chatMessage,
-              queue: state.chatQueue,
-              connected: state.connected,
-              canSend: state.connected,
-              disabledReason: chatDisabledReason,
-              error: state.lastError,
-              sessions: state.sessionsResult,
-              focusMode: chatFocus,
-              onRefresh: () => {
-                state.resetToolStream();
-                return Promise.all([loadChatHistory(state), refreshChatAvatar(state)]);
-              },
-              onToggleFocusMode: () => {
-                if (state.onboarding) {
-                  return;
-                }
-                state.applySettings({
-                  ...state.settings,
-                  chatFocusMode: !state.settings.chatFocusMode,
-                });
-              },
-              onChatScroll: (event) => state.handleChatScroll(event),
-              getDraft: () => state.chatMessage,
-              onDraftChange: (next) => (state.chatMessage = next),
-              onRequestUpdate: requestHostUpdate,
-              attachments: state.chatAttachments,
-              onAttachmentsChange: (next) => (state.chatAttachments = next),
-              onSend: () => state.handleSendChat(),
-              canAbort: Boolean(state.chatRunId),
-              onAbort: () => void state.handleAbortChat(),
-              onQueueRemove: (id) => state.removeQueuedMessage(id),
-              onNewSession: () => state.handleSendChat("/new", { restoreDraft: true }),
-              onClearHistory: async () => {
-                if (!state.client || !state.connected) {
-                  return;
-                }
-                try {
-                  await state.client.request("sessions.reset", { key: state.sessionKey });
-                  state.chatMessages = [];
-                  state.chatStream = null;
-                  state.chatRunId = null;
-                  await loadChatHistory(state);
-                } catch (err) {
-                  state.lastError = String(err);
-                }
-              },
-              agentsList: state.agentsList,
-              currentAgentId: resolvedAgentId ?? "main",
-              onAgentChange: (agentId: string) => {
-                state.sessionKey = buildAgentMainSessionKey({ agentId });
-                state.chatMessages = [];
-                state.chatStream = null;
-                state.chatRunId = null;
-                state.applySettings({
-                  ...state.settings,
-                  sessionKey: state.sessionKey,
-                  lastActiveSessionKey: state.sessionKey,
-                });
-                void loadChatHistory(state);
-                void state.loadAssistantIdentity();
-              },
-              onNavigateToAgent: () => {
-                state.agentsSelectedId = resolvedAgentId;
-                state.setTab("agents" as import("./navigation.ts").Tab);
-              },
-              onSessionSelect: (key: string) => {
-                switchChatSession(state, key);
-              },
-              showNewMessages: state.chatNewMessagesBelow && !state.chatManualRefreshInFlight,
-              onScrollToBottom: () => state.scrollToBottom(),
-              // Sidebar props for tool output viewing
-              sidebarOpen: state.sidebarOpen,
-              sidebarContent: state.sidebarContent,
-              sidebarError: state.sidebarError,
-              splitRatio: state.splitRatio,
-              onOpenSidebar: (content: string) => state.handleOpenSidebar(content),
-              onCloseSidebar: () => state.handleCloseSidebar(),
-              onSplitRatioChange: (ratio: number) => state.handleSplitRatioChange(ratio),
-              assistantName: state.assistantName,
-              assistantAvatar: state.assistantAvatar,
-              basePath: state.basePath ?? "",
-            })
-          : nothing}
+        ${chatView}
         ${state.tab === "config"
           ? renderConfig({
               raw: state.configRaw,

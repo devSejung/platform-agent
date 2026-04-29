@@ -9,6 +9,7 @@ type LazyLocaleRegistration = {
 };
 
 export const DEFAULT_LOCALE: Locale = "en";
+export const INITIAL_LOCALE: Locale = "ko";
 
 const LAZY_LOCALES: readonly LazyLocale[] = [
   "zh-CN",
@@ -26,6 +27,10 @@ const LAZY_LOCALES: readonly LazyLocale[] = [
 ];
 
 const LAZY_LOCALE_REGISTRY: Record<LazyLocale, LazyLocaleRegistration> = {
+  ko: {
+    exportName: "ko",
+    loader: () => import("../locales/ko.ts"),
+  },
   "zh-CN": {
     exportName: "zh_CN",
     loader: () => import("../locales/zh-CN.ts"),
@@ -49,10 +54,6 @@ const LAZY_LOCALE_REGISTRY: Record<LazyLocale, LazyLocaleRegistration> = {
   "ja-JP": {
     exportName: "ja_JP",
     loader: () => import("../locales/ja-JP.ts"),
-  },
-  ko: {
-    exportName: "ko",
-    loader: () => import("../locales/ko.ts"),
   },
   fr: {
     exportName: "fr",
@@ -87,6 +88,9 @@ function isLazyLocale(locale: Locale): locale is LazyLocale {
 }
 
 export function resolveNavigatorLocale(navLang: string): Locale {
+  if (navLang.startsWith("ko")) {
+    return "ko";
+  }
   if (navLang.startsWith("zh")) {
     return navLang === "zh-TW" || navLang === "zh-HK" ? "zh-TW" : "zh-CN";
   }
@@ -120,7 +124,7 @@ export function resolveNavigatorLocale(navLang: string): Locale {
   if (navLang.startsWith("pl")) {
     return "pl";
   }
-  return DEFAULT_LOCALE;
+  return INITIAL_LOCALE;
 }
 
 export async function loadLazyLocaleTranslation(locale: Locale): Promise<TranslationMap | null> {

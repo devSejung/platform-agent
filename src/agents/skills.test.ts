@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -67,12 +68,14 @@ async function writeEnvSkill(workspaceDir: string) {
 beforeAll(async () => {
   await fixtureSuite.setup();
   tempHome = await createTempHomeEnv("openclaw-skills-home-");
+  vi.spyOn(os, "homedir").mockReturnValue(tempHome.home);
   await fs.mkdir(path.join(tempHome.home, ".openclaw", "agents", "main", "sessions"), {
     recursive: true,
   });
 });
 
 afterAll(async () => {
+  vi.restoreAllMocks();
   if (tempHome) {
     await tempHome.restore();
     tempHome = null;
@@ -273,7 +276,7 @@ describe("buildWorkspaceSkillsPrompt", () => {
     expect(prompt).toContain(path.join(bundledSkillDir, "SKILL.md"));
   });
 
-  it("loads extra skill folders from config (lowest precedence)", async () => {
+  it("loads extra skill folders from config above bundled/managed and below workspace", async () => {
     const workspaceDir = await makeWorkspace();
     const extraDir = path.join(workspaceDir, ".extra");
     const bundledDir = path.join(workspaceDir, ".bundled");
@@ -314,6 +317,21 @@ describe("buildWorkspaceSkillsPrompt", () => {
     expect(prompt).not.toContain("Managed version");
     expect(prompt).not.toContain("Bundled version");
     expect(prompt).not.toContain("Extra version");
+
+    await fs.rm(path.join(workspaceDir, "skills", "demo-skill"), {
+      recursive: true,
+      force: true,
+    });
+
+    const promptWithoutWorkspaceOverride = buildWorkspaceSkillsPrompt(workspaceDir, {
+      bundledSkillsDir: bundledDir,
+      managedSkillsDir: managedDir,
+      config: { skills: { load: { extraDirs: [extraDir] } } },
+    });
+
+    expect(promptWithoutWorkspaceOverride).toContain("Extra version");
+    expect(promptWithoutWorkspaceOverride).not.toContain("Managed version");
+    expect(promptWithoutWorkspaceOverride).not.toContain("Bundled version");
   });
 
   it("loads skills from workspace skills/", async () => {

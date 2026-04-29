@@ -16,6 +16,8 @@ import {
   renderSkillStatusChips,
 } from "./skills-shared.ts";
 
+type SkillScope = "workspace" | "global" | "bundled";
+
 function safeExternalHref(raw?: string): string | null {
   if (!raw) {
     return null;
@@ -26,6 +28,7 @@ function safeExternalHref(raw?: string): string | null {
 export type SkillsStatusFilter = "all" | "ready" | "needs-setup" | "disabled";
 
 export type SkillsProps = {
+  readOnly?: boolean;
   connected: boolean;
   loading: boolean;
   report: SkillStatusReport | null;
@@ -90,7 +93,47 @@ function skillStatusClass(skill: SkillStatusEntry): string {
   return skill.eligible ? "ok" : "warn";
 }
 
+function normalizePathForScope(value?: string | null): string {
+  return typeof value === "string" ? value.replace(/\\/g, "/").trim().replace(/\/+$/, "") : "";
+}
+
+function resolveSkillScope(
+  skill: SkillStatusEntry,
+  report: SkillStatusReport | null,
+): SkillScope {
+  if (skill.bundled) {
+    return "bundled";
+  }
+  const baseDir = normalizePathForScope(skill.baseDir);
+  const filePath = normalizePathForScope(skill.filePath);
+  const workspaceDir = normalizePathForScope(report?.workspaceDir);
+  const managedSkillsDir = normalizePathForScope(report?.managedSkillsDir);
+  if (workspaceDir && (baseDir.startsWith(workspaceDir) || filePath.startsWith(workspaceDir))) {
+    return "workspace";
+  }
+  if (
+    managedSkillsDir &&
+    (baseDir.startsWith(managedSkillsDir) || filePath.startsWith(managedSkillsDir))
+  ) {
+    return "global";
+  }
+  return skill.source === "openclaw-bundled" ? "bundled" : "global";
+}
+
+function formatSkillScope(scope: SkillScope): string {
+  switch (scope) {
+    case "workspace":
+      return "Workspace";
+    case "bundled":
+      return "Bundled";
+    case "global":
+    default:
+      return "Global";
+  }
+}
+
 export function renderSkills(props: SkillsProps) {
+  const readOnly = Boolean(props.readOnly);
   const skills = props.report?.skills ?? [];
 
   const statusCounts: Record<SkillsStatusFilter, number> = {
@@ -131,7 +174,9 @@ export function renderSkills(props: SkillsProps) {
       <div class="row" style="justify-content: space-between;">
         <div>
           <div class="card-title">Skills</div>
-          <div class="card-sub">Installed skills and their status.</div>
+          <div class="card-sub">
+            ${readOnly ? "Skills available for this workspace." : "Installed skills and their status."}
+          </div>
         </div>
         <button
           class="btn"
@@ -159,6 +204,16 @@ export function renderSkills(props: SkillsProps) {
         class="filters"
         style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px;"
       >
+        ${readOnly
+          ? nothing
+          : html`<a
+              class="btn btn--sm"
+              href="https://clawhub.com"
+              target="_blank"
+              rel="noreferrer"
+              title="Browse skills on ClawHub"
+              >Browse Skills Store</a
+            >`}
         <label class="field" style="flex: 1; min-width: 180px;">
           <input
             .value=${props.filter}
@@ -228,7 +283,14 @@ export function renderSkills(props: SkillsProps) {
                       <span class="muted">${group.skills.length}</span>
                     </summary>
                     <div class="list skills-grid">
-                      ${group.skills.map((skill) => renderSkill(skill, props))}
+                      ${group.skills.map((skill) =>
+                        renderSkill(
+                          skill,
+                          props,
+                          readOnly,
+                          resolveSkillScope(skill, props.report),
+                        ),
+                      )}
                     </div>
                   </details>
                 `;
@@ -375,7 +437,12 @@ function renderClawHubDetailDialog(props: SkillsProps) {
   `;
 }
 
-function renderSkill(skill: SkillStatusEntry, props: SkillsProps) {
+function renderSkill(
+  skill: SkillStatusEntry,
+  props: SkillsProps,
+  readOnly: boolean,
+  scope: SkillScope,
+) {
   const busy = props.busyKey === skill.skillKey;
   const dotClass = skillStatusClass(skill);
 
@@ -386,6 +453,7 @@ function renderSkill(skill: SkillStatusEntry, props: SkillsProps) {
           <span class="statusDot ${dotClass}"></span>
           ${skill.emoji ? html`<span>${skill.emoji}</span>` : nothing}
           <span>${skill.name}</span>
+          <span class="chip">${formatSkillScope(scope)}</span>
         </div>
         <div class="list-sub">${clampText(skill.description, 140)}</div>
       </div>
@@ -393,25 +461,29 @@ function renderSkill(skill: SkillStatusEntry, props: SkillsProps) {
         class="list-meta"
         style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;"
       >
-        <label class="skill-toggle-wrap" @click=${(e: Event) => e.stopPropagation()}>
-          <input
-            type="checkbox"
-            class="skill-toggle"
-            .checked=${!skill.disabled}
-            ?disabled=${busy}
-            @change=${(e: Event) => {
-              e.stopPropagation();
-              props.onToggle(skill.skillKey, skill.disabled);
-            }}
-          />
-        </label>
+        ${readOnly
+          ? html`<span class="muted">${skill.disabled ? "Disabled" : "Enabled"}</span>`
+          : html`<label class="skill-toggle-wrap" @click=${(e: Event) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                class="skill-toggle"
+                .checked=${!skill.disabled}
+                ?disabled=${busy}
+                @change=${(e: Event) => {
+                  e.stopPropagation();
+                  props.onToggle(skill.skillKey, skill.disabled);
+                }}
+              />
+            </label>`}
       </div>
     </div>
   `;
 }
 
 function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
+  const readOnly = Boolean(props.readOnly);
   const busy = props.busyKey === skill.skillKey;
+  const scope = resolveSkillScope(skill, props.report);
   const apiKey = props.edits[skill.skillKey] ?? "";
   const message = props.messages[skill.skillKey] ?? null;
   const canInstall = skill.install.length > 0 && skill.missing.bins.length > 0;
@@ -461,6 +533,9 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
             <div style="font-size: 14px; line-height: 1.5; color: var(--text);">
               ${skill.description}
             </div>
+            <div class="chip-row" style="margin-top: 6px;">
+              <span class="chip">${formatSkillScope(scope)}</span>
+            </div>
             ${renderSkillStatusChips({ skill, showBundledBadge })}
           </div>
 
@@ -482,27 +557,33 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
             : nothing}
 
           <div style="display: flex; align-items: center; gap: 12px;">
-            <label class="skill-toggle-wrap">
-              <input
-                type="checkbox"
-                class="skill-toggle"
-                .checked=${!skill.disabled}
-                ?disabled=${busy}
-                @change=${() => props.onToggle(skill.skillKey, skill.disabled)}
-              />
-            </label>
-            <span style="font-size: 13px; font-weight: 500;">
-              ${skill.disabled ? "Disabled" : "Enabled"}
-            </span>
-            ${canInstall
-              ? html`<button
-                  class="btn"
-                  ?disabled=${busy}
-                  @click=${() => props.onInstall(skill.skillKey, skill.name, skill.install[0].id)}
-                >
-                  ${busy ? "Installing\u2026" : skill.install[0].label}
-                </button>`
-              : nothing}
+            ${readOnly
+              ? html`<span style="font-size: 13px; font-weight: 500;">
+                  ${skill.disabled ? "Disabled" : "Enabled"}
+                </span>`
+              : html`
+                  <label class="skill-toggle-wrap">
+                    <input
+                      type="checkbox"
+                      class="skill-toggle"
+                      .checked=${!skill.disabled}
+                      ?disabled=${busy}
+                      @change=${() => props.onToggle(skill.skillKey, skill.disabled)}
+                    />
+                  </label>
+                  <span style="font-size: 13px; font-weight: 500;">
+                    ${skill.disabled ? "Disabled" : "Enabled"}
+                  </span>
+                  ${canInstall
+                    ? html`<button
+                        class="btn"
+                        ?disabled=${busy}
+                        @click=${() => props.onInstall(skill.skillKey, skill.name, skill.install[0].id)}
+                      >
+                        ${busy ? "Installing\u2026" : skill.install[0].label}
+                      </button>`
+                    : nothing}
+                `}
           </div>
 
           ${message
@@ -510,7 +591,7 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
                 ${message.message}
               </div>`
             : nothing}
-          ${skill.primaryEnv
+          ${!readOnly && skill.primaryEnv
             ? html`
                 <div style="display: grid; gap: 8px;">
                   <div class="field">

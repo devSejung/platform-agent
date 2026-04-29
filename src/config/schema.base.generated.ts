@@ -20441,6 +20441,21 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 description:
                   "Optional filesystem root for Control UI assets (defaults to dist/control-ui).",
               },
+              docsUrl: {
+                type: "string",
+              },
+              announcementTitle: {
+                type: "string",
+              },
+              announcementBody: {
+                type: "string",
+              },
+              announcementLinkLabel: {
+                type: "string",
+              },
+              announcementLinkUrl: {
+                type: "string",
+              },
               allowedOrigins: {
                 type: "array",
                 items: {
@@ -23886,6 +23901,36 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       label: "Control UI Assets Root",
       help: "Optional filesystem root for Control UI assets (defaults to dist/control-ui).",
       placeholder: "dist/control-ui",
+      tags: ["network"],
+    },
+    "gateway.controlUi.docsUrl": {
+      label: "Workspace Docs URL",
+      help: "Optional docs/help URL rendered in the web UI sidebar. Leave empty to hide the Docs shortcut entirely.",
+      placeholder: "https://intranet.company.example/platformclaw/help",
+      tags: ["network"],
+    },
+    "gateway.controlUi.announcementTitle": {
+      label: "Employee Announcement Title",
+      help: "Optional employee-facing announcement title shown on the login screen and inside the employee workspace.",
+      placeholder: "Scheduled maintenance",
+      tags: ["network"],
+    },
+    "gateway.controlUi.announcementBody": {
+      label: "Employee Announcement Body",
+      help: "Optional employee-facing announcement body text. Keep it short and operational, such as maintenance windows or service notices.",
+      placeholder: "PlatformClaw will be read-only on April 12 from 22:00 to 23:00 KST.",
+      tags: ["network"],
+    },
+    "gateway.controlUi.announcementLinkLabel": {
+      label: "Employee Announcement Link Label",
+      help: "Optional CTA label for the employee announcement link, such as 'Learn more' or 'Open notice'.",
+      placeholder: "View notice",
+      tags: ["network"],
+    },
+    "gateway.controlUi.announcementLinkUrl": {
+      label: "Employee Announcement Link URL",
+      help: "Optional CTA URL for the employee announcement. Use a full HTTPS URL to your intranet notice or policy page.",
+      placeholder: "https://intranet.company.example/notices/platformclaw-maintenance",
       tags: ["network"],
     },
     "gateway.controlUi.allowedOrigins": {

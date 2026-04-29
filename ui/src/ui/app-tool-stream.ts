@@ -263,8 +263,10 @@ export type FallbackStatus = {
 type CompactionHost = ToolStreamHost & {
   compactionStatus?: CompactionStatus | null;
   compactionClearTimer?: number | null;
+  compactionRefreshTimer?: number | null;
   fallbackStatus?: FallbackStatus | null;
   fallbackClearTimer?: number | null;
+  requestUpdate?: () => void;
 };
 
 const COMPACTION_TOAST_DURATION_MS = 5000;
@@ -277,14 +279,33 @@ function clearCompactionTimer(host: CompactionHost) {
   }
 }
 
+function clearCompactionRefreshTimer(host: CompactionHost) {
+  if (host.compactionRefreshTimer != null) {
+    window.clearInterval(host.compactionRefreshTimer);
+    host.compactionRefreshTimer = null;
+  }
+}
+
+function ensureCompactionRefreshTimer(host: CompactionHost) {
+  if (host.compactionRefreshTimer != null) {
+    return;
+  }
+  host.compactionRefreshTimer = window.setInterval(() => {
+    host.requestUpdate?.();
+  }, 1_000);
+}
+
 function scheduleCompactionClear(host: CompactionHost) {
   host.compactionClearTimer = window.setTimeout(() => {
     host.compactionStatus = null;
     host.compactionClearTimer = null;
+    clearCompactionRefreshTimer(host);
+    host.requestUpdate?.();
   }, COMPACTION_TOAST_DURATION_MS);
 }
 
 function setCompactionComplete(host: CompactionHost, runId: string) {
+  clearCompactionRefreshTimer(host);
   host.compactionStatus = {
     phase: "complete",
     runId,
@@ -295,6 +316,10 @@ function setCompactionComplete(host: CompactionHost, runId: string) {
 }
 
 export function handleCompactionEvent(host: CompactionHost, payload: AgentEventPayload) {
+  const accepted = resolveAcceptedSession(host, payload, { allowSessionScopedWhenIdle: true });
+  if (!accepted.accepted) {
+    return;
+  }
   const data = payload.data ?? {};
   const phase = typeof data.phase === "string" ? data.phase : "";
   const completed = data.completed === true;
@@ -308,6 +333,7 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
       startedAt: Date.now(),
       completedAt: null,
     };
+    ensureCompactionRefreshTimer(host);
     return;
   }
   if (phase === "end") {
@@ -320,6 +346,7 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
         startedAt: host.compactionStatus?.startedAt ?? Date.now(),
         completedAt: null,
       };
+      ensureCompactionRefreshTimer(host);
       return;
     }
     if (completed) {
@@ -327,6 +354,7 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
       return;
     }
     host.compactionStatus = null;
+    clearCompactionRefreshTimer(host);
   }
 }
 

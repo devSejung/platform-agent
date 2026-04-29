@@ -13,6 +13,7 @@ import type { ConnectParams, ErrorShape, RequestFrame } from "../protocol/index.
 import type { GatewayBroadcastFn, GatewayBroadcastToConnIdsFn } from "../server-broadcast.js";
 import type { ChannelRuntimeSnapshot } from "../server-channels.js";
 import type { DedupeEntry } from "../server-shared.js";
+import type { VerifiedEmployeeAccess } from "../employee-auth.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
 
@@ -26,6 +27,7 @@ export type GatewayClient = {
   /** Internal-only auth context that cannot be supplied through gateway RPC payloads. */
   internal?: {
     allowModelOverride?: boolean;
+    employee?: VerifiedEmployeeAccess;
   };
 };
 

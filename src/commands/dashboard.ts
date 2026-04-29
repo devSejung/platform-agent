@@ -22,7 +22,8 @@ export async function dashboardCommand(
   const cfg = snapshot.valid ? (snapshot.sourceConfig ?? snapshot.config) : {};
   const port = resolveGatewayPort(cfg);
   const bind = cfg.gateway?.bind ?? "loopback";
-  const basePath = cfg.gateway?.controlUi?.basePath;
+  const basePath =
+    typeof cfg.gateway?.controlUi?.basePath === "string" ? cfg.gateway.controlUi.basePath : "/controlui";
   const customBindHost = cfg.gateway?.customBindHost;
   const resolvedToken = await resolveGatewayAuthToken({
     cfg,

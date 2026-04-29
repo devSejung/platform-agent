@@ -33,6 +33,12 @@ export default defineConfig(() => {
       sourcemap: true,
       // Keep CI/onboard logs clean; current control UI chunking is intentionally above 500 kB.
       chunkSizeWarningLimit: 1024,
+      rollupOptions: {
+        input: {
+          index: path.resolve(here, "index.html"),
+          employee: path.resolve(here, "employee.html"),
+        },
+      },
     },
     server: {
       host: true,

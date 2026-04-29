@@ -1,0 +1,9 @@
+{
+  "docsUrl": "https://intranet.company.example/platformclaw/help",
+  "announcement": {
+    "title": "Scheduled maintenance",
+    "body": "PlatformClaw will be read-only on April 12 from 22:00 to 23:00 KST.",
+    "linkLabel": "View notice",
+    "linkUrl": "https://intranet.company.example/notices/platformclaw-maintenance"
+  }
+}

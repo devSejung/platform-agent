@@ -447,7 +447,7 @@ describe("chat view", () => {
     );
     expect(welcomeImage).toBeNull();
     expect(logoImage).not.toBeNull();
-    expect(logoImage?.getAttribute("src")).toBe("favicon.svg");
+    expect(logoImage?.getAttribute("src")).toBe("/favicon.svg");
   });
 
   it("keeps the welcome logo fallback under the mounted base path", () => {
@@ -530,15 +530,16 @@ describe("chat view", () => {
     await i18n.setLocale("en");
   });
 
-  it("renders compacting indicator as a badge", () => {
+  it("renders compacting indicator as a persistent status banner", () => {
     const container = document.createElement("div");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(10_000);
     render(
       renderChat(
         createProps({
           compactionStatus: {
             phase: "active",
             runId: "run-1",
-            startedAt: Date.now(),
+            startedAt: 8_000,
             completedAt: null,
           },
         }),
@@ -548,18 +549,21 @@ describe("chat view", () => {
 
     const indicator = container.querySelector(".compaction-indicator--active");
     expect(indicator).not.toBeNull();
-    expect(indicator?.textContent).toContain("Compacting context...");
+    expect(indicator?.textContent).toContain("Context compaction in progress");
+    expect(indicator?.textContent).toContain("Elapsed 2s");
+    nowSpy.mockRestore();
   });
 
-  it("renders retry-pending compaction indicator as a badge", () => {
+  it("renders retry-pending compaction indicator as a persistent status banner", () => {
     const container = document.createElement("div");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(125_000);
     render(
       renderChat(
         createProps({
           compactionStatus: {
             phase: "retrying",
             runId: "run-1",
-            startedAt: Date.now(),
+            startedAt: 5_000,
             completedAt: null,
           },
         }),
@@ -569,7 +573,9 @@ describe("chat view", () => {
 
     const indicator = container.querySelector(".compaction-indicator--active");
     expect(indicator).not.toBeNull();
-    expect(indicator?.textContent).toContain("Retrying after compaction...");
+    expect(indicator?.textContent).toContain("Continuing after compaction");
+    expect(indicator?.textContent).toContain("Elapsed 2m 0s");
+    nowSpy.mockRestore();
   });
 
   it("renders completion indicator shortly after compaction", () => {
@@ -591,7 +597,7 @@ describe("chat view", () => {
 
     const indicator = container.querySelector(".compaction-indicator--complete");
     expect(indicator).not.toBeNull();
-    expect(indicator?.textContent).toContain("Context compacted");
+    expect(indicator?.textContent).toContain("Context compaction complete");
     nowSpy.mockRestore();
   });
 
@@ -1102,6 +1108,27 @@ describe("chat view", () => {
     );
     expect(modelSelect).not.toBeNull();
     expect(modelSelect?.disabled).toBe(true);
+  });
+
+  it("shows an in-flight request callout while sending", () => {
+    const container = document.createElement("div");
+    render(renderChat(createProps({ sending: true, streamStartedAt: Date.now() - 12_000 })), container);
+    expect(container.textContent).toContain("API request in progress...");
+  });
+
+  it("shows a waiting callout after the request is accepted and before streaming starts", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(createProps({ canAbort: true, stream: null, sending: false, streamStartedAt: Date.now() - 7_000 })),
+      container,
+    );
+    expect(container.textContent).toContain("API request in progress...");
+  });
+
+  it("shows a timeout-specific failure callout", () => {
+    const container = document.createElement("div");
+    render(renderChat(createProps({ error: "provider timeout after 60000ms" })), container);
+    expect(container.textContent).toContain("Request failed. Timed out.");
   });
 
   it("keeps the selected model visible when the active session is absent from sessions.list", async () => {

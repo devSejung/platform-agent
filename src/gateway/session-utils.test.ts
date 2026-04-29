@@ -698,6 +698,35 @@ describe("listSessionsFromStore selected model display", () => {
     expect(result.sessions[0]?.modelProvider).toBe("anthropic");
     expect(result.sessions[0]?.model).toBe("claude-opus-4-6");
   });
+
+  test("does not let heartbeat origin relabel the main session", () => {
+    const cfg = {
+      session: { mainKey: "main" },
+      agents: { list: [{ id: "eon", default: true }] },
+    } as OpenClawConfig;
+
+    const result = listSessionsFromStore({
+      cfg,
+      storePath: "/tmp/sessions.json",
+      store: {
+        "agent:eon:main": {
+          sessionId: "sess-main",
+          updatedAt: Date.now(),
+          origin: {
+            provider: "webchat",
+            surface: "webchat",
+            label: "heartbeat",
+            from: "heartbeat",
+            to: "heartbeat",
+          },
+        } as SessionEntry,
+      },
+      opts: {},
+    });
+
+    expect(result.sessions[0]?.key).toBe("agent:eon:main");
+    expect(result.sessions[0]?.displayName).not.toBe("heartbeat");
+  });
 });
 
 describe("resolveSessionModelIdentityRef", () => {

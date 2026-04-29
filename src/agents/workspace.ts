@@ -35,6 +35,8 @@ export const DEFAULT_MEMORY_ALT_FILENAME = "memory.md";
 const WORKSPACE_STATE_DIRNAME = ".openclaw";
 const WORKSPACE_STATE_FILENAME = "workspace-state.json";
 const WORKSPACE_STATE_VERSION = 1;
+const AUTO_USER_BLOCK_START = "<!-- OPENCLAW_AUTO_USER_START -->";
+const AUTO_USER_BLOCK_END = "<!-- OPENCLAW_AUTO_USER_END -->";
 
 const workspaceTemplateCache = new Map<string, Promise<string>>();
 let gitAvailabilityPromise: Promise<boolean> | null = null;
@@ -148,6 +150,13 @@ export type WorkspaceBootstrapFile = {
   missing: boolean;
 };
 
+export type WorkspaceUserProfileSeed = {
+  employeeId: string;
+  name?: string;
+  department?: string;
+  email?: string;
+};
+
 export type ExtraBootstrapLoadDiagnosticCode =
   | "invalid-bootstrap-filename"
   | "missing"
@@ -193,6 +202,65 @@ async function writeFileIfMissing(filePath: string, content: string): Promise<bo
     }
     return false;
   }
+}
+
+async function writeFileAtomically(filePath: string, content: string): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now().toString(36)}`;
+  try {
+    await fs.writeFile(tmpPath, content, { encoding: "utf-8" });
+    await fs.rename(tmpPath, filePath);
+  } catch (err) {
+    await fs.unlink(tmpPath).catch(() => {});
+    throw err;
+  }
+}
+
+function buildWorkspaceUserAutoBlock(profile: WorkspaceUserProfileSeed): string {
+  const lines = [
+    AUTO_USER_BLOCK_START,
+    "## Auto Profile",
+    "",
+    `- Employee ID: ${profile.employeeId}`,
+    `- Jira ID: ${profile.employeeId}`,
+  ];
+  if (profile.name?.trim()) {
+    lines.push(`- Name: ${profile.name.trim()}`);
+  }
+  if (profile.department?.trim()) {
+    lines.push(`- Department: ${profile.department.trim()}`);
+  }
+  if (profile.email?.trim()) {
+    lines.push(`- Email: ${profile.email.trim()}`);
+  }
+  lines.push(AUTO_USER_BLOCK_END);
+  return lines.join("\n");
+}
+
+export async function upsertWorkspaceUserProfile(params: {
+  workspaceDir: string;
+  profile: WorkspaceUserProfileSeed;
+}): Promise<{ path: string; seeded: boolean }> {
+  const userPath = path.join(resolveUserPath(params.workspaceDir), DEFAULT_USER_FILENAME);
+  const existing = await fs.readFile(userPath, "utf-8").catch(() => "");
+  const block = buildWorkspaceUserAutoBlock(params.profile);
+  const start = existing.indexOf(AUTO_USER_BLOCK_START);
+  const end = existing.indexOf(AUTO_USER_BLOCK_END);
+  const seeded = !(start >= 0 && end >= start);
+
+  let nextContent = existing;
+  if (start >= 0 && end >= start) {
+    const before = existing.slice(0, start).replace(/\s*$/, "");
+    const after = existing.slice(end + AUTO_USER_BLOCK_END.length).replace(/^\s*/, "");
+    nextContent = [before, block, after].filter(Boolean).join("\n\n");
+  } else if (existing.trim()) {
+    nextContent = `${existing.replace(/\s*$/, "")}\n\n${block}\n`;
+  } else {
+    nextContent = `${block}\n`;
+  }
+
+  await writeFileAtomically(userPath, nextContent);
+  return { path: userPath, seeded };
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -327,6 +395,7 @@ export async function ensureAgentWorkspace(params?: {
   ensureBootstrapFiles?: boolean;
 }): Promise<{
   dir: string;
+  workspaceCreated?: boolean;
   agentsPath?: string;
   soulPath?: string;
   toolsPath?: string;
@@ -340,7 +409,7 @@ export async function ensureAgentWorkspace(params?: {
   await fs.mkdir(dir, { recursive: true });
 
   if (!params?.ensureBootstrapFiles) {
-    return { dir };
+    return { dir, workspaceCreated: false };
   }
 
   const agentsPath = path.join(dir, DEFAULT_AGENTS_FILENAME);
@@ -452,6 +521,7 @@ export async function ensureAgentWorkspace(params?: {
 
   return {
     dir,
+    workspaceCreated: isBrandNewWorkspace,
     agentsPath,
     soulPath,
     toolsPath,

@@ -102,6 +102,7 @@ const METHOD_SCOPE_GROUPS: Record<OperatorScope, readonly string[]> = {
     "gateway.identity.get",
     "system-presence",
     "last-heartbeat",
+    "heartbeat.summary.get",
     "node.list",
     "node.describe",
     "chat.history",

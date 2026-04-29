@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   emitHeartbeatEvent,
   getLastHeartbeatEvent,
+  getLastHeartbeatEventForAgent,
   onHeartbeatEvent,
   resetHeartbeatEventsForTest,
   resolveIndicatorType,
@@ -44,6 +45,24 @@ describe("heartbeat events", () => {
       status: "sent",
       to: "+123",
       preview: "ping",
+    });
+  });
+
+  it("stores the last event per agent when agentId is provided", () => {
+    emitHeartbeatEvent({ agentId: "eon", sessionKey: "agent:eon:main", status: "ok-token" });
+    emitHeartbeatEvent({ agentId: "minji", sessionKey: "agent:minji:main", status: "failed" });
+
+    expect(getLastHeartbeatEventForAgent("eon")).toEqual({
+      ts: 1767960000000,
+      agentId: "eon",
+      sessionKey: "agent:eon:main",
+      status: "ok-token",
+    });
+    expect(getLastHeartbeatEventForAgent("minji")).toEqual({
+      ts: 1767960000000,
+      agentId: "minji",
+      sessionKey: "agent:minji:main",
+      status: "failed",
     });
   });
 

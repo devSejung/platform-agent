@@ -17,6 +17,7 @@ import { generateUUID } from "./uuid.ts";
 
 export type ChatHost = {
   client: GatewayBrowserClient | null;
+  employeeMode?: boolean;
   chatMessages: unknown[];
   chatStream: string | null;
   connected: boolean;

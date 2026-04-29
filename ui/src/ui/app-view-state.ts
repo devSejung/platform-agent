@@ -14,6 +14,7 @@ import type { Tab } from "./navigation.ts";
 import type { UiSettings } from "./storage.ts";
 import type { ThemeTransitionContext } from "./theme-transition.ts";
 import type { ResolvedTheme, ThemeMode, ThemeName } from "./theme.ts";
+import type { EmployeeUiLoginNotice } from "../../../src/gateway/employee-ui-contract.ts";
 import type {
   AgentsListResult,
   AgentsFilesListResult,
@@ -43,6 +44,27 @@ import type { SessionLogEntry } from "./views/usage.ts";
 
 export type AppViewState = {
   settings: UiSettings;
+  employeeMode: boolean;
+  employeeBootstrapToken: string | null;
+  employeeBootstrapReady: boolean;
+  employeeBootstrapError: string | null;
+  employeeLoginNotice: EmployeeUiLoginNotice | null;
+  employeeLoginIdentifier: string;
+  employeeLoginPassword: string;
+  employeeLoginSubmitting: boolean;
+  employeeUi: {
+    docsUrl: string | null;
+    announcementTitle: string | null;
+    announcementBody: string | null;
+    announcementLinkLabel: string | null;
+    announcementLinkUrl: string | null;
+  };
+  employeeProfile: {
+    employeeId: string | null;
+    name: string | null;
+    department: string | null;
+    agentId: string | null;
+  };
   password: string;
   loginShowGatewayToken: boolean;
   loginShowGatewayPassword: boolean;
@@ -362,8 +384,11 @@ export type AppViewState = {
     handleNostrProfileImport: () => Promise<void>;
     handleNostrProfileToggleAdvanced: () => void;
     handleExecApprovalDecision: (decision: "allow-once" | "allow-always" | "deny") => Promise<void>;
-    handleGatewayUrlConfirm: () => void;
-    handleGatewayUrlCancel: () => void;
+  handleGatewayUrlConfirm: () => void;
+  handleGatewayUrlCancel: () => void;
+  handleEmployeeLogin: () => Promise<void>;
+  handleEmployeeAdSso: () => Promise<void>;
+  handleEmployeeLogout: () => Promise<void>;
     handleConfigLoad: () => Promise<void>;
     handleConfigSave: () => Promise<void>;
     handleConfigApply: () => Promise<void>;

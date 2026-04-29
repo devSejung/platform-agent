@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "employees": {
+    "eon": {
+      "agentId": "eon",
+      "activatedAt": "2026-04-20T15:54:18.008Z",
+      "name": "Eon",
+      "department": "Samsung"
+    }
+  }
+}

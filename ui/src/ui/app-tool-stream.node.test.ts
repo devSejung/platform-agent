@@ -5,6 +5,7 @@ type ToolStreamHost = Parameters<typeof handleAgentEvent>[0];
 type MutableHost = ToolStreamHost & {
   compactionStatus?: unknown;
   compactionClearTimer?: number | null;
+  compactionRefreshTimer?: number | null;
   fallbackStatus?: FallbackStatus | null;
   fallbackClearTimer?: number | null;
 };
@@ -22,8 +23,10 @@ function createHost(overrides?: Partial<MutableHost>): MutableHost {
     toolStreamSyncTimer: null,
     compactionStatus: null,
     compactionClearTimer: null,
+    compactionRefreshTimer: null,
     fallbackStatus: null,
     fallbackClearTimer: null,
+    requestUpdate: vi.fn(),
     ...overrides,
   };
 }
@@ -161,6 +164,7 @@ describe("app-tool-stream fallback lifecycle handling", () => {
       startedAt: expect.any(Number),
       completedAt: null,
     });
+    expect(host.compactionRefreshTimer).not.toBeNull();
 
     handleAgentEvent(host, {
       runId: "run-1",
@@ -178,6 +182,7 @@ describe("app-tool-stream fallback lifecycle handling", () => {
       completedAt: null,
     });
     expect(host.compactionClearTimer).toBeNull();
+    expect(host.compactionRefreshTimer).not.toBeNull();
 
     handleAgentEvent(host, {
       runId: "run-2",
@@ -211,10 +216,12 @@ describe("app-tool-stream fallback lifecycle handling", () => {
       completedAt: expect.any(Number),
     });
     expect(host.compactionClearTimer).not.toBeNull();
+    expect(host.compactionRefreshTimer).toBeNull();
 
     vi.advanceTimersByTime(5_000);
     expect(host.compactionStatus).toBeNull();
     expect(host.compactionClearTimer).toBeNull();
+    expect(host.compactionRefreshTimer).toBeNull();
 
     vi.useRealTimers();
   });
@@ -264,10 +271,12 @@ describe("app-tool-stream fallback lifecycle handling", () => {
       completedAt: expect.any(Number),
     });
     expect(host.compactionClearTimer).not.toBeNull();
+    expect(host.compactionRefreshTimer).toBeNull();
 
     vi.advanceTimersByTime(5_000);
     expect(host.compactionStatus).toBeNull();
     expect(host.compactionClearTimer).toBeNull();
+    expect(host.compactionRefreshTimer).toBeNull();
 
     vi.useRealTimers();
   });
@@ -296,6 +305,7 @@ describe("app-tool-stream fallback lifecycle handling", () => {
 
     expect(host.compactionStatus).toBeNull();
     expect(host.compactionClearTimer).toBeNull();
+    expect(host.compactionRefreshTimer).toBeNull();
 
     handleAgentEvent(host, {
       runId: "run-1",
@@ -308,7 +318,26 @@ describe("app-tool-stream fallback lifecycle handling", () => {
 
     expect(host.compactionStatus).toBeNull();
     expect(host.compactionClearTimer).toBeNull();
+    expect(host.compactionRefreshTimer).toBeNull();
 
+    vi.useRealTimers();
+  });
+
+  it("ignores compaction events for other sessions while idle", () => {
+    vi.useFakeTimers();
+    const host = createHost();
+
+    handleAgentEvent(host, {
+      runId: "run-1",
+      seq: 1,
+      stream: "compaction",
+      ts: Date.now(),
+      sessionKey: "agent:other:main",
+      data: { phase: "start" },
+    });
+
+    expect(host.compactionStatus).toBeNull();
+    expect(host.compactionRefreshTimer).toBeNull();
     vi.useRealTimers();
   });
 });

@@ -67,6 +67,13 @@ import { handleOpenAiModelsHttpRequest } from "./models-http.js";
 import { resolveRequestClientIp } from "./net.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
+import { EMPLOYEE_BOOTSTRAP_PATH } from "./employee-ui-contract.js";
+import {
+  handleEmployeeAdSsoRequest,
+  handleEmployeeBootstrapRequest,
+  handleEmployeeLoginRequest,
+  handleEmployeeLogoutRequest,
+} from "./employee-web-auth.js";
 import { DEDUPE_MAX, DEDUPE_TTL_MS } from "./server-constants.js";
 import { authorizeCanvasRequest, isCanvasPath } from "./server/http-auth.js";
 import { resolvePluginRouteRuntimeOperatorScopes } from "./server/plugin-route-runtime-scopes.js";
@@ -155,6 +162,19 @@ function shouldEnforceDefaultPluginGatewayAuth(pathContext: PluginRoutePathConte
     pathContext.decodePassLimitReached ||
     isProtectedPluginRoutePathFromContext(pathContext)
   );
+}
+
+function resolveGatewayWebsocketUrl(req: IncomingMessage): string | undefined {
+  const host = typeof req.headers.host === "string" ? req.headers.host.trim() : "";
+  if (!host) {
+    return undefined;
+  }
+  const forwardedProto =
+    typeof req.headers["x-forwarded-proto"] === "string"
+      ? req.headers["x-forwarded-proto"].split(",")[0]?.trim().toLowerCase()
+      : "";
+  const protocol = forwardedProto === "https" ? "wss" : "ws";
+  return `${protocol}://${host}`;
 }
 
 async function canRevealReadinessDetails(params: {
@@ -786,7 +806,26 @@ export function createGatewayHttpServer(opts: {
     }
 
     try {
-      const configSnapshot = loadConfig();
+      const rawRequestPath = new URL(req.url ?? "/", "http://localhost").pathname;
+      let configSnapshot;
+      try {
+        configSnapshot = loadConfig();
+      } catch (err) {
+        if (
+          await handleGatewayProbeRequest(
+            req,
+            res,
+            rawRequestPath,
+            resolvedAuth,
+            [],
+            false,
+            getReadiness,
+          )
+        ) {
+          return;
+        }
+        throw err;
+      }
       const trustedProxies = configSnapshot.gateway?.trustedProxies ?? [];
       const allowRealIpFallback = configSnapshot.gateway?.allowRealIpFallback === true;
       const scopedCanvas = normalizeCanvasScopedUrl(req.url ?? "/");
@@ -940,6 +979,55 @@ export function createGatewayHttpServer(opts: {
         }),
       );
 
+      requestStages.push({
+        name: "employee-adsso",
+        run: () =>
+          handleEmployeeAdSsoRequest({
+            req,
+            res,
+            config: configSnapshot,
+            context: {
+              clientIp: resolveRequestClientIp(req, trustedProxies, allowRealIpFallback),
+              gatewayUrl: resolveGatewayWebsocketUrl(req),
+              userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined,
+            },
+            rateLimiter,
+          }),
+      });
+
+      requestStages.push({
+        name: "employee-login",
+        run: () =>
+          handleEmployeeLoginRequest({
+            req,
+            res,
+            config: configSnapshot,
+            readJsonBody,
+            context: {
+              clientIp: resolveRequestClientIp(req, trustedProxies, allowRealIpFallback),
+              gatewayUrl: resolveGatewayWebsocketUrl(req),
+              userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined,
+            },
+            rateLimiter,
+          }),
+      });
+
+      requestStages.push({
+        name: "employee-logout",
+        run: () => handleEmployeeLogoutRequest(req, res),
+      });
+
+      requestStages.push({
+        name: "employee-bootstrap",
+        run: () =>
+          handleEmployeeBootstrapRequest(
+            req,
+            res,
+            configSnapshot,
+            resolveGatewayWebsocketUrl(req),
+          ),
+      });
+
       if (controlUiEnabled) {
         requestStages.push({
           name: "control-ui-avatar",
@@ -948,6 +1036,17 @@ export function createGatewayHttpServer(opts: {
               basePath: controlUiBasePath,
               resolveAvatar: (agentId) =>
                 resolveAgentAvatar(configSnapshot, agentId, { includeUiOverride: true }),
+            }),
+        });
+        requestStages.push({
+          name: "employee-ui-http",
+          run: () =>
+            handleControlUiHttpRequest(req, res, {
+              basePath: "",
+              config: configSnapshot,
+              root: controlUiRoot,
+              entryHtml: "employee.html",
+              reservedRootPrefixes: [controlUiBasePath],
             }),
         });
         requestStages.push({

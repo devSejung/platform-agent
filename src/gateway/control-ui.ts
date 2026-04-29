@@ -39,6 +39,8 @@ export type ControlUiRequestOptions = {
   config?: OpenClawConfig;
   agentId?: string;
   root?: ControlUiRootState;
+  entryHtml?: "index.html" | "employee.html";
+  reservedRootPrefixes?: string[];
 };
 
 export type ControlUiRootState =
@@ -99,6 +101,8 @@ const STATIC_ASSET_EXTENSIONS = new Set([
   ".ico",
   ".txt",
 ]);
+
+const EMPLOYEE_UI_PREFIX = "/employee";
 
 export type ControlUiAvatarResolution =
   | { kind: "none"; reason: string }
@@ -323,6 +327,15 @@ export function handleControlUiHttpRequest(
     search: url.search,
     method: req.method,
   });
+  if (
+    !basePath &&
+    Array.isArray(opts?.reservedRootPrefixes) &&
+    opts.reservedRootPrefixes.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    )
+  ) {
+    return false;
+  }
   if (route.kind === "not-control-ui") {
     return false;
   }
@@ -407,8 +420,10 @@ export function handleControlUiHttpRequest(
     return true;
   }
 
+  const defaultEntryHtml = opts?.entryHtml ?? "index.html";
   const uiPath =
     basePath && pathname.startsWith(`${basePath}/`) ? pathname.slice(basePath.length) : pathname;
+  const isEmployeeUiRoute = uiPath === EMPLOYEE_UI_PREFIX || uiPath.startsWith(`${EMPLOYEE_UI_PREFIX}/`);
   const rel = (() => {
     if (uiPath === ROOT_PREFIX) {
       return "";
@@ -420,7 +435,14 @@ export function handleControlUiHttpRequest(
     return uiPath.slice(1);
   })();
   const requested = rel && !rel.endsWith("/") ? rel : `${rel}index.html`;
-  const fileRel = requested || "index.html";
+  const isRootMountedEmployeeEntry =
+    !basePath && defaultEntryHtml === "employee.html" && uiPath === ROOT_PREFIX;
+  const fileRel =
+    isRootMountedEmployeeEntry
+      ? "employee.html"
+      : isEmployeeUiRoute && (!requested || requested === "employee" || requested.startsWith("employee/"))
+        ? "employee.html"
+        : requested || defaultEntryHtml;
   if (!isSafeRelativePath(fileRel)) {
     respondControlUiNotFound(res);
     return true;
@@ -469,7 +491,7 @@ export function handleControlUiHttpRequest(
   }
 
   // SPA fallback (client-side router): serve index.html for unknown paths.
-  const indexPath = path.join(root, "index.html");
+  const indexPath = path.join(root, isEmployeeUiRoute ? "employee.html" : defaultEntryHtml);
   const safeIndex = resolveSafeControlUiFile(rootReal, indexPath, rejectHardlinks);
   if (safeIndex) {
     try {

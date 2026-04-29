@@ -1,8 +1,4 @@
-import {
-  listAgentIds,
-  resolveAgentWorkspaceDir,
-  resolveDefaultAgentId,
-} from "../../agents/agent-scope.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { canExecRequestNode } from "../../agents/exec-defaults.js";
 import {
   installSkillFromClawHub,
@@ -20,6 +16,7 @@ import { formatErrorMessage } from "../../infra/errors.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
+import { enforceEmployeeAgent, getEmployeeAgentId } from "../employee-access.js";
 import {
   ErrorCodes,
   errorShape,
@@ -65,7 +62,7 @@ function collectSkillBins(entries: SkillEntry[]): string[] {
 }
 
 export const skillsHandlers: GatewayRequestHandlers = {
-  "skills.status": ({ params, respond }) => {
+  "skills.status": ({ params, respond, client }) => {
     if (!validateSkillsStatusParams(params)) {
       respond(
         false,
@@ -79,18 +76,18 @@ export const skillsHandlers: GatewayRequestHandlers = {
     }
     const cfg = loadConfig();
     const agentIdRaw = typeof params?.agentId === "string" ? params.agentId.trim() : "";
-    const agentId = agentIdRaw ? normalizeAgentId(agentIdRaw) : resolveDefaultAgentId(cfg);
-    if (agentIdRaw) {
-      const knownAgents = listAgentIds(cfg);
-      if (!knownAgents.includes(agentId)) {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.INVALID_REQUEST, `unknown agent id "${agentIdRaw}"`),
-        );
+    const employeeAgentId = getEmployeeAgentId(client);
+    if (employeeAgentId && agentIdRaw) {
+      const requestedAgentId = normalizeAgentId(agentIdRaw);
+      if (!enforceEmployeeAgent(client, requestedAgentId, respond, "skills status")) {
         return;
       }
     }
+    const agentId = employeeAgentId
+      ? employeeAgentId
+      : agentIdRaw
+        ? normalizeAgentId(agentIdRaw)
+        : resolveDefaultAgentId(cfg);
     const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
     const report = buildWorkspaceSkillStatus(workspaceDir, {
       config: cfg,

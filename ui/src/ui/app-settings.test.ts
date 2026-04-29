@@ -18,6 +18,7 @@ type Tab =
   | "sessions"
   | "usage"
   | "cron"
+  | "heartbeat"
   | "skills"
   | "nodes"
   | "chat"
@@ -63,6 +64,7 @@ type SettingsHost = {
   themeMediaHandler: ((event: MediaQueryListEvent) => void) | null;
   logsPollInterval: number | null;
   debugPollInterval: number | null;
+  heartbeatPollInterval: number | null;
   pendingGatewayUrl?: string | null;
   pendingGatewayToken?: string | null;
   dreamingStatusLoading: boolean;
@@ -151,6 +153,7 @@ const createHost = (tab: Tab): SettingsHost => ({
   themeMediaHandler: null,
   logsPollInterval: null,
   debugPollInterval: null,
+  heartbeatPollInterval: null,
   pendingGatewayUrl: null,
   pendingGatewayToken: null,
   dreamingStatusLoading: false,
@@ -193,6 +196,16 @@ describe("setTabFromRoute", () => {
 
     setTabFromRoute(host, "chat");
     expect(host.debugPollInterval).toBeNull();
+  });
+
+  it("starts and stops heartbeat polling based on the tab", () => {
+    const host = createHost("chat");
+
+    setTabFromRoute(host, "heartbeat");
+    expect(host.heartbeatPollInterval).not.toBeNull();
+
+    setTabFromRoute(host, "chat");
+    expect(host.heartbeatPollInterval).toBeNull();
   });
 
   it("re-resolves the active palette when only themeMode changes", () => {
@@ -353,6 +366,21 @@ describe("applySettingsFromUrl", () => {
     host.sessionKey = "agent:test_old:main";
 
     applySettingsFromUrl(host);
+
+    expect(host.sessionKey).toBe("agent:test_new:main");
+    expect(host.settings.sessionKey).toBe("agent:test_new:main");
+    expect(host.settings.lastActiveSessionKey).toBe("agent:test_new:main");
+  });
+
+  it("keeps host.sessionKey in sync when settings are applied directly", () => {
+    const host = createHost("chat");
+    host.sessionKey = "agent:test_old:main";
+
+    applySettings(host, {
+      ...host.settings,
+      sessionKey: "agent:test_new:main",
+      lastActiveSessionKey: "agent:test_new:main",
+    });
 
     expect(host.sessionKey).toBe("agent:test_new:main");
     expect(host.settings.sessionKey).toBe("agent:test_new:main");

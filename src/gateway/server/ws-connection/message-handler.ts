@@ -40,6 +40,7 @@ import {
   type DeviceBootstrapProfile,
 } from "../../../shared/device-bootstrap-profile.js";
 import { roleScopesAllow } from "../../../shared/operator-scope-compat.js";
+import { inspectEmployeeBootstrapToken, verifyEmployeeBootstrapToken } from "../../employee-auth.js";
 import {
   isBrowserOperatorUiClient,
   isGatewayCliClient,
@@ -438,6 +439,9 @@ export function attachGatewayWsMessageHandler(params: {
         // Note: If the client does not present a device identity, we can't bind scopes to a paired
         // device/token, so we will clear scopes after auth to avoid self-declared permissions.
         let scopes = Array.isArray(connectParams.scopes) ? connectParams.scopes : [];
+        if (role === "employee") {
+          scopes = [];
+        }
         connectParams.role = role;
         connectParams.scopes = scopes;
 
@@ -497,6 +501,10 @@ export function attachGatewayWsMessageHandler(params: {
           deviceRaw,
         });
         const device = controlUiAuthPolicy.device;
+        const employeeAccess =
+          role === "employee"
+            ? verifyEmployeeBootstrapToken(connectParams.auth?.bootstrapToken)
+            : null;
 
         let {
           authResult,
@@ -548,6 +556,33 @@ export function attachGatewayWsMessageHandler(params: {
           });
           close(1008, truncateCloseReason(authMessage));
         };
+        if (role === "employee") {
+          if (!employeeAccess) {
+            const employeeBootstrapDiag = inspectEmployeeBootstrapToken(
+              connectParams.auth?.bootstrapToken,
+            );
+            markHandshakeFailure("employee-auth-invalid", {
+              authMode: "employee-bootstrap-token",
+              reason: employeeBootstrapDiag.ok ? "unknown" : employeeBootstrapDiag.reason,
+            });
+            logWsControl.warn(
+              `employee bootstrap token invalid conn=${connId} remote=${remoteAddr ?? "?"} client=${clientLabel} reason=${employeeBootstrapDiag.ok ? "unknown" : employeeBootstrapDiag.reason}`,
+            );
+            sendHandshakeErrorResponse(
+              ErrorCodes.INVALID_REQUEST,
+              "employee bootstrap token invalid",
+              {
+                details: {
+                  code: ConnectErrorDetailCodes.AUTH_BOOTSTRAP_TOKEN_INVALID,
+                },
+              },
+            );
+            close(1008, "employee bootstrap token invalid");
+            return;
+          }
+          authOk = true;
+          authMethod = "bootstrap-token";
+        }
         const clearUnboundScopes = () => {
           if (scopes.length > 0) {
             scopes = [];
@@ -622,10 +657,10 @@ export function attachGatewayWsMessageHandler(params: {
           close(1008, "device identity required");
           return false;
         };
-        if (!handleMissingDeviceIdentity()) {
+        if (role !== "employee" && !handleMissingDeviceIdentity()) {
           return;
         }
-        if (device) {
+        if (role !== "employee" && device) {
           const rejectDeviceAuthInvalid = (reason: string, message: string) => {
             setHandshakeState("failed");
             setCloseCause("device-auth-invalid", {
@@ -690,37 +725,39 @@ export function attachGatewayWsMessageHandler(params: {
           }
         }
 
-        ({ authResult, authOk, authMethod } = await resolveConnectAuthDecision({
-          state: {
-            authResult,
-            authOk,
-            authMethod,
-            sharedAuthOk,
-            sharedAuthProvided: hasSharedAuth,
-            bootstrapTokenCandidate,
-            deviceTokenCandidate,
-            deviceTokenCandidateSource,
-          },
-          hasDeviceIdentity: Boolean(device),
-          deviceId: device?.id,
-          publicKey: device?.publicKey,
-          role,
-          scopes,
-          rateLimiter: authRateLimiter,
-          clientIp: browserRateLimitClientIp,
-          verifyBootstrapToken: async ({ deviceId, publicKey, token, role, scopes }) =>
-            await verifyDeviceBootstrapToken({
-              deviceId,
-              publicKey,
-              token,
-              role,
-              scopes,
-            }),
-          verifyDeviceToken,
-        }));
-        if (!authOk) {
-          rejectUnauthorized(authResult);
-          return;
+        if (role !== "employee") {
+          ({ authResult, authOk, authMethod } = await resolveConnectAuthDecision({
+            state: {
+              authResult,
+              authOk,
+              authMethod,
+              sharedAuthOk,
+              sharedAuthProvided: hasSharedAuth,
+              bootstrapTokenCandidate,
+              deviceTokenCandidate,
+              deviceTokenCandidateSource,
+            },
+            hasDeviceIdentity: Boolean(device),
+            deviceId: device?.id,
+            publicKey: device?.publicKey,
+            role,
+            scopes,
+            rateLimiter: authRateLimiter,
+            clientIp: browserRateLimitClientIp,
+            verifyBootstrapToken: async ({ deviceId, publicKey, token, role, scopes }) =>
+              await verifyDeviceBootstrapToken({
+                deviceId,
+                publicKey,
+                token,
+                role,
+                scopes,
+              }),
+            verifyDeviceToken,
+          }));
+          if (!authOk) {
+            rejectUnauthorized(authResult);
+            return;
+          }
         }
         const sharedGatewaySessionGeneration =
           authMethod === "token" || authMethod === "password"
@@ -775,7 +812,9 @@ export function attachGatewayWsMessageHandler(params: {
           trustedProxyAuthOk,
           resolvedAuth.mode,
         );
-        if (device && devicePublicKey) {
+        const skipPairing =
+          skipLocalBackendSelfPairing || skipControlUiPairingForDevice;
+        if (role !== "employee" && device && devicePublicKey && !skipPairing) {
           const formatAuditList = (items: string[] | undefined): string => {
             if (!items || items.length === 0) {
               return "<none>";
@@ -1241,6 +1280,7 @@ export function attachGatewayWsMessageHandler(params: {
           canvasHostUrl,
           canvasCapability,
           canvasCapabilityExpiresAtMs,
+          internal: employeeAccess ? { employee: employeeAccess } : undefined,
         };
         setSocketMaxPayload(socket, MAX_PAYLOAD_BYTES);
         setClient(nextClient);

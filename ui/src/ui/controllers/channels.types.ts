@@ -4,6 +4,7 @@ import type { ChannelsStatusSnapshot } from "../types.ts";
 export type ChannelsState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
+  employeeMode?: boolean;
   channelsLoading: boolean;
   channelsSnapshot: ChannelsStatusSnapshot | null;
   channelsError: string | null;

@@ -85,6 +85,16 @@ export type GatewayControlUiConfig = {
   basePath?: string;
   /** Optional filesystem root for Control UI assets (defaults to dist/control-ui). */
   root?: string;
+  /** Optional docs/help URL rendered in the web UI. Hidden when omitted. */
+  docsUrl?: string;
+  /** Optional employee announcement title shown in login/workspace. */
+  announcementTitle?: string;
+  /** Optional employee announcement body shown in login/workspace. */
+  announcementBody?: string;
+  /** Optional employee announcement CTA label. */
+  announcementLinkLabel?: string;
+  /** Optional employee announcement CTA URL. */
+  announcementLinkUrl?: string;
   /** Allowed browser origins for Control UI/WebChat websocket connections. */
   allowedOrigins?: string[];
   /**

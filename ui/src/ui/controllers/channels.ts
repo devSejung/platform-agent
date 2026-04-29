@@ -11,6 +11,9 @@ export async function loadChannels(state: ChannelsState, probe: boolean) {
   if (!state.client || !state.connected) {
     return;
   }
+  if (state.employeeMode) {
+    return;
+  }
   if (state.channelsLoading) {
     return;
   }

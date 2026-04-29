@@ -11,11 +11,16 @@ import { makeMockHttpResponse } from "./test-http-response.js";
 describe("handleControlUiHttpRequest", () => {
   async function withControlUiRoot<T>(params: {
     indexHtml?: string;
+    employeeHtml?: string;
     fn: (tmp: string) => Promise<T>;
   }) {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-ui-"));
     try {
       await fs.writeFile(path.join(tmp, "index.html"), params.indexHtml ?? "<html></html>\n");
+      await fs.writeFile(
+        path.join(tmp, "employee.html"),
+        params.employeeHtml ?? "<html>employee</html>\n",
+      );
       return await params.fn(tmp);
     } finally {
       await fs.rm(tmp, { recursive: true, force: true });
@@ -171,6 +176,27 @@ describe("handleControlUiHttpRequest", () => {
         );
         expect(handled).toBe(true);
         expect(end).toHaveBeenCalledWith(html);
+      },
+    });
+  });
+
+  it("serves employee.html for a root-mounted employee entry", async () => {
+    await withControlUiRoot({
+      indexHtml: "<html>control</html>\n",
+      employeeHtml: "<html>employee-root</html>\n",
+      fn: async (tmp) => {
+        const { res, end } = makeMockHttpResponse();
+        const handled = handleControlUiHttpRequest(
+          { url: "/", method: "GET" } as IncomingMessage,
+          res,
+          {
+            root: { kind: "resolved", path: tmp },
+            entryHtml: "employee.html",
+            reservedRootPrefixes: ["/controlui"],
+          },
+        );
+        expect(handled).toBe(true);
+        expect(String(end.mock.calls[0]?.[0] ?? "")).toBe("<html>employee-root</html>\n");
       },
     });
   });

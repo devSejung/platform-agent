@@ -70,14 +70,38 @@ export function handleAutoCompactionEnd(
     ctx.maybeResolveCompactionWait();
     clearStaleAssistantUsageOnSessionMessages(ctx);
   }
+  const compactionResult =
+    evt.result && typeof evt.result === "object"
+      ? (evt.result as { tokensBefore?: unknown; tokensAfter?: unknown })
+      : null;
+  const tokensBefore =
+    typeof compactionResult?.tokensBefore === "number" && Number.isFinite(compactionResult.tokensBefore)
+      ? compactionResult.tokensBefore
+      : undefined;
+  const tokensAfter =
+    typeof compactionResult?.tokensAfter === "number" && Number.isFinite(compactionResult.tokensAfter)
+      ? compactionResult.tokensAfter
+      : undefined;
   emitAgentEvent({
     runId: ctx.params.runId,
     stream: "compaction",
-    data: { phase: "end", willRetry, completed: hasResult && !wasAborted },
+    data: {
+      phase: "end",
+      willRetry,
+      completed: hasResult && !wasAborted,
+      ...(tokensBefore !== undefined ? { tokensBefore } : {}),
+      ...(tokensAfter !== undefined ? { tokensAfter } : {}),
+    },
   });
   void ctx.params.onAgentEvent?.({
     stream: "compaction",
-    data: { phase: "end", willRetry, completed: hasResult && !wasAborted },
+    data: {
+      phase: "end",
+      willRetry,
+      completed: hasResult && !wasAborted,
+      ...(tokensBefore !== undefined ? { tokensBefore } : {}),
+      ...(tokensAfter !== undefined ? { tokensAfter } : {}),
+    },
   });
 
   // Run after_compaction plugin hook (fire-and-forget)

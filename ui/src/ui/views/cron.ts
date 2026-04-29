@@ -24,6 +24,8 @@ import type { CronFormState } from "../ui-types.ts";
 
 export type CronProps = {
   basePath: string;
+  employeeMode?: boolean;
+  lockedAgentId?: string | null;
   loading: boolean;
   jobsLoadingMore: boolean;
   status: CronStatus | null;
@@ -378,6 +380,7 @@ export function renderCron(props: CronProps) {
     props.form.sessionTarget !== "main" && props.form.payloadKind === "agentTurn";
   const selectedDeliveryMode =
     props.form.deliveryMode === "announce" && !supportsAnnounce ? "none" : props.form.deliveryMode;
+  const lockedAgentId = props.lockedAgentId?.trim() || "";
   const blockingFields = collectBlockingFields(props.fieldErrors, props.form, selectedDeliveryMode);
   const blockedByValidation = !props.busy && blockingFields.length > 0;
   const hasActiveJobsFilters =
@@ -738,19 +741,31 @@ export function renderCron(props: CronProps) {
                     props.onFormChange({ description: (e.target as HTMLInputElement).value })}
                 />
               </label>
-              <label class="field">
-                ${renderFieldLabel(t("cron.form.agentId"))}
-                <input
-                  id="cron-agent-id"
-                  .value=${props.form.agentId}
-                  list="cron-agent-suggestions"
-                  ?disabled=${props.form.clearAgent}
-                  @input=${(e: Event) =>
-                    props.onFormChange({ agentId: (e.target as HTMLInputElement).value })}
-                  placeholder=${t("cron.form.agentPlaceholder")}
-                />
-                <div class="cron-help">${t("cron.form.agentHelp")}</div>
-              </label>
+              ${props.employeeMode
+                ? html`
+                    <label class="field">
+                      ${renderFieldLabel("담당 에이전트")}
+                      <input id="cron-agent-id" .value=${lockedAgentId || props.form.agentId} disabled />
+                      <div class="cron-help">
+                        직원용 스케줄은 본인에게 연결된 에이전트에서만 실행됩니다.
+                      </div>
+                    </label>
+                  `
+                : html`
+                    <label class="field">
+                      ${renderFieldLabel(t("cron.form.agentId"))}
+                      <input
+                        id="cron-agent-id"
+                        .value=${props.form.agentId}
+                        list="cron-agent-suggestions"
+                        ?disabled=${props.form.clearAgent}
+                        @input=${(e: Event) =>
+                          props.onFormChange({ agentId: (e.target as HTMLInputElement).value })}
+                        placeholder=${t("cron.form.agentPlaceholder")}
+                      />
+                      <div class="cron-help">${t("cron.form.agentHelp")}</div>
+                    </label>
+                  `}
               <label class="field checkbox cron-checkbox cron-checkbox-inline">
                 <input
                   type="checkbox"
@@ -1011,31 +1026,35 @@ export function renderCron(props: CronProps) {
                 <span class="field-checkbox__label">${t("cron.form.deleteAfterRun")}</span>
                 <div class="cron-help">${t("cron.form.deleteAfterRunHelp")}</div>
               </label>
-              <label class="field checkbox cron-checkbox">
-                <input
-                  type="checkbox"
-                  .checked=${props.form.clearAgent}
-                  @change=${(e: Event) =>
-                    props.onFormChange({
-                      clearAgent: (e.target as HTMLInputElement).checked,
-                    })}
-                />
-                <span class="field-checkbox__label">${t("cron.form.clearAgentOverride")}</span>
-                <div class="cron-help">${t("cron.form.clearAgentHelp")}</div>
-              </label>
-              <label class="field cron-span-2">
-                ${renderFieldLabel("Session key")}
-                <input
-                  id="cron-session-key"
-                  .value=${props.form.sessionKey}
-                  @input=${(e: Event) =>
-                    props.onFormChange({
-                      sessionKey: (e.target as HTMLInputElement).value,
-                    })}
-                  placeholder="agent:main:main"
-                />
-                <div class="cron-help">Optional routing key for job delivery and wake routing.</div>
-              </label>
+              ${props.employeeMode
+                ? nothing
+                : html`
+                    <label class="field checkbox cron-checkbox">
+                      <input
+                        type="checkbox"
+                        .checked=${props.form.clearAgent}
+                        @change=${(e: Event) =>
+                          props.onFormChange({
+                            clearAgent: (e.target as HTMLInputElement).checked,
+                          })}
+                      />
+                      <span class="field-checkbox__label">${t("cron.form.clearAgentOverride")}</span>
+                      <div class="cron-help">${t("cron.form.clearAgentHelp")}</div>
+                    </label>
+                    <label class="field cron-span-2">
+                      ${renderFieldLabel("Session key")}
+                      <input
+                        id="cron-session-key"
+                        .value=${props.form.sessionKey}
+                        @input=${(e: Event) =>
+                          props.onFormChange({
+                            sessionKey: (e.target as HTMLInputElement).value,
+                          })}
+                        placeholder="agent:main:main"
+                      />
+                      <div class="cron-help">Optional routing key for job delivery and wake routing.</div>
+                    </label>
+                  `}
               ${isCronSchedule
                 ? html`
                     <label class="field checkbox cron-checkbox cron-span-2">

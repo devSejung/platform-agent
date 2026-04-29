@@ -17,6 +17,25 @@ import {
 } from "./skills-shared.ts";
 
 type SkillScope = "workspace" | "global" | "bundled";
+type SkillSourceSummary = {
+  id: string;
+  label: string;
+  description: string;
+  count: number;
+  ready: number;
+  blocked: number;
+  unavailable: number;
+  roots: string[];
+};
+type SkillDiagnostics = {
+  ready: number;
+  needsSetup: number;
+  disabled: number;
+  unavailable: number;
+  configuredGlobal: number;
+  sources: SkillSourceSummary[];
+  issueSkills: SkillStatusEntry[];
+};
 
 function safeExternalHref(raw?: string): string | null {
   if (!raw) {
@@ -97,10 +116,7 @@ function normalizePathForScope(value?: string | null): string {
   return typeof value === "string" ? value.replace(/\\/g, "/").trim().replace(/\/+$/, "") : "";
 }
 
-function resolveSkillScope(
-  skill: SkillStatusEntry,
-  report: SkillStatusReport | null,
-): SkillScope {
+function resolveSkillScope(skill: SkillStatusEntry, report: SkillStatusReport | null): SkillScope {
   if (skill.bundled) {
     return "bundled";
   }
@@ -130,6 +146,282 @@ function formatSkillScope(scope: SkillScope): string {
     default:
       return "Global";
   }
+}
+
+function normalizeSkillSource(source: string): {
+  id: string;
+  label: string;
+  description: string;
+} {
+  switch (source) {
+    case "openclaw-workspace":
+      return {
+        id: "workspace",
+        label: "Workspace",
+        description: "<workspace>/skills",
+      };
+    case "openclaw-extra":
+      return {
+        id: "configured-global",
+        label: "Configured Global",
+        description: "skills.load.extraDirs",
+      };
+    case "agents-skills-project":
+      return {
+        id: "project-global",
+        label: "Project Global",
+        description: "<workspace>/.agents/skills",
+      };
+    case "agents-skills-personal":
+      return {
+        id: "personal-global",
+        label: "Personal Global",
+        description: "~/.agents/skills",
+      };
+    case "openclaw-managed":
+      return {
+        id: "managed",
+        label: "Managed",
+        description: "OpenClaw managed skills",
+      };
+    case "openclaw-bundled":
+      return {
+        id: "bundled",
+        label: "Built-in",
+        description: "Bundled with OpenClaw",
+      };
+    default:
+      return {
+        id: source || "unknown",
+        label: source || "Unknown",
+        description: "Unknown source",
+      };
+  }
+}
+
+function parentDir(value?: string | null): string {
+  const normalized = normalizePathForScope(value);
+  if (!normalized) {
+    return "";
+  }
+  const index = normalized.lastIndexOf("/");
+  return index > 0 ? normalized.slice(0, index) : normalized;
+}
+
+function compactPath(value?: string | null, max = 56): string {
+  const normalized = normalizePathForScope(value);
+  if (!normalized || normalized.length <= max) {
+    return normalized;
+  }
+  const tail = normalized.slice(Math.max(0, normalized.length - max + 1));
+  const slash = tail.indexOf("/");
+  return `...${slash >= 0 ? tail.slice(slash) : tail}`;
+}
+
+function isEnvironmentUnavailable(skill: SkillStatusEntry): boolean {
+  return (
+    !skill.disabled &&
+    !skill.blockedByAllowlist &&
+    skill.source === "openclaw-bundled" &&
+    skill.missing.os.length > 0 &&
+    skill.missing.bins.length === 0 &&
+    skill.missing.env.length === 0 &&
+    skill.missing.config.length === 0
+  );
+}
+
+function buildSkillDiagnostics(skills: SkillStatusEntry[]): SkillDiagnostics {
+  const sourceMap = new Map<string, SkillSourceSummary>();
+  const issueSkills: SkillStatusEntry[] = [];
+  let ready = 0;
+  let needsSetup = 0;
+  let disabled = 0;
+  let unavailable = 0;
+  let configuredGlobal = 0;
+
+  for (const skill of skills) {
+    const environmentUnavailable = isEnvironmentUnavailable(skill);
+    if (skill.disabled) {
+      disabled++;
+    } else if (skill.eligible) {
+      ready++;
+    } else if (environmentUnavailable) {
+      unavailable++;
+    } else {
+      needsSetup++;
+    }
+    if (
+      (!skill.eligible || skill.disabled || skill.blockedByAllowlist) &&
+      !environmentUnavailable
+    ) {
+      issueSkills.push(skill);
+    }
+
+    const source = normalizeSkillSource(skill.source);
+    const existing =
+      sourceMap.get(source.id) ??
+      ({
+        id: source.id,
+        label: source.label,
+        description: source.description,
+        count: 0,
+        ready: 0,
+        blocked: 0,
+        unavailable: 0,
+        roots: [],
+      } satisfies SkillSourceSummary);
+    existing.count++;
+    if (!skill.disabled && skill.eligible) {
+      existing.ready++;
+    } else if (environmentUnavailable) {
+      existing.unavailable++;
+    } else {
+      existing.blocked++;
+    }
+    const root = parentDir(skill.baseDir);
+    if (root && !existing.roots.includes(root)) {
+      existing.roots.push(root);
+    }
+    sourceMap.set(source.id, existing);
+
+    if (skill.source === "openclaw-extra") {
+      configuredGlobal++;
+    }
+  }
+
+  const orderedSources = [
+    "workspace",
+    "configured-global",
+    "project-global",
+    "personal-global",
+    "managed",
+    "bundled",
+  ];
+  const sources = [...sourceMap.values()].toSorted((a, b) => {
+    const left = orderedSources.indexOf(a.id);
+    const right = orderedSources.indexOf(b.id);
+    if (left !== -1 || right !== -1) {
+      return (
+        (left === -1 ? Number.MAX_SAFE_INTEGER : left) -
+        (right === -1 ? Number.MAX_SAFE_INTEGER : right)
+      );
+    }
+    return a.label.localeCompare(b.label);
+  });
+
+  return {
+    ready,
+    needsSetup,
+    disabled,
+    unavailable,
+    configuredGlobal,
+    sources,
+    issueSkills,
+  };
+}
+
+function renderSkillsDiagnostics(
+  report: SkillStatusReport | null,
+  skills: SkillStatusEntry[],
+  onDetailOpen: (skillKey: string) => void,
+) {
+  if (!report || skills.length === 0) {
+    return nothing;
+  }
+  const diagnostics = buildSkillDiagnostics(skills);
+  const issuePreview = diagnostics.issueSkills.slice(0, 3);
+
+  return html`
+    <div class="skills-diagnostics" aria-label="Skills diagnostics">
+      <div class="skills-diagnostics__header">
+        <div>
+          <div class="skills-diagnostics__title">Skill Diagnostics</div>
+          <div class="skills-diagnostics__subtitle">
+            Final merged view for this workspace. Configured Global maps to
+            <code>skills.load.extraDirs</code>.
+          </div>
+        </div>
+        <div class="skills-diagnostics__root" title=${report.workspaceDir}>
+          Workspace: ${compactPath(report.workspaceDir, 44)}
+        </div>
+      </div>
+
+      <div class="skills-diagnostics__stats">
+        <div class="skills-diagnostics__stat">
+          <span>Ready</span>
+          <strong>${diagnostics.ready}</strong>
+        </div>
+        <div class="skills-diagnostics__stat ${diagnostics.needsSetup ? "is-warn" : ""}">
+          <span>Needs Setup</span>
+          <strong>${diagnostics.needsSetup}</strong>
+        </div>
+        <div class="skills-diagnostics__stat ${diagnostics.disabled ? "is-muted" : ""}">
+          <span>Disabled</span>
+          <strong>${diagnostics.disabled}</strong>
+        </div>
+        <div class="skills-diagnostics__stat ${diagnostics.unavailable ? "is-muted" : ""}">
+          <span>Unavailable</span>
+          <strong>${diagnostics.unavailable}</strong>
+        </div>
+        <div class="skills-diagnostics__stat ${diagnostics.configuredGlobal ? "is-info" : ""}">
+          <span>Configured Global</span>
+          <strong>${diagnostics.configuredGlobal}</strong>
+        </div>
+      </div>
+
+      <div class="skills-source-strip">
+        ${diagnostics.sources.map(
+          (source) => html`
+            <div class="skills-source-card">
+              <div class="skills-source-card__top">
+                <span>${source.label}</span>
+                <strong>${source.count}</strong>
+              </div>
+              <div class="skills-source-card__desc">${source.description}</div>
+              <div class="skills-source-card__meta">
+                ${source.ready}
+                ready${source.blocked ? `, ${source.blocked} blocked` : ""}${source.unavailable
+                  ? `, ${source.unavailable} unavailable`
+                  : ""}
+              </div>
+              ${source.roots.length
+                ? html`<div class="skills-source-card__path" title=${source.roots.join("\n")}>
+                    ${compactPath(source.roots[0], 52)}${source.roots.length > 1
+                      ? ` +${source.roots.length - 1}`
+                      : ""}
+                  </div>`
+                : nothing}
+            </div>
+          `,
+        )}
+      </div>
+
+      ${issuePreview.length
+        ? html`
+            <div class="skills-issue-panel">
+              <div class="skills-issue-panel__title">Needs attention</div>
+              <div class="skills-issue-panel__items">
+                ${issuePreview.map((skill) => {
+                  const missing = computeSkillMissing(skill);
+                  const reasons = computeSkillReasons(skill);
+                  const detail = [...reasons, ...missing].join(", ") || "not eligible";
+                  return html`
+                    <button
+                      class="skills-issue-pill"
+                      title=${detail}
+                      @click=${() => onDetailOpen(skill.skillKey)}
+                    >
+                      <span>${skill.name}</span>
+                      <small>${compactPath(detail, 38)}</small>
+                    </button>
+                  `;
+                })}
+              </div>
+            </div>
+          `
+        : nothing}
+    </div>
+  `;
 }
 
 export function renderSkills(props: SkillsProps) {
@@ -175,7 +467,9 @@ export function renderSkills(props: SkillsProps) {
         <div>
           <div class="card-title">Skills</div>
           <div class="card-sub">
-            ${readOnly ? "Skills available for this workspace." : "Installed skills and their status."}
+            ${readOnly
+              ? "Skills available for this workspace."
+              : "Installed skills and their status."}
           </div>
         </div>
         <button
@@ -226,6 +520,8 @@ export function renderSkills(props: SkillsProps) {
         <div class="muted">${filtered.length} shown</div>
       </div>
 
+      ${renderSkillsDiagnostics(props.report, skills, props.onDetailOpen)}
+
       <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
           <div style="font-weight: 600;">ClawHub</div>
@@ -267,10 +563,19 @@ export function renderSkills(props: SkillsProps) {
         : nothing}
       ${filtered.length === 0
         ? html`
-            <div class="muted" style="margin-top: 16px">
-              ${!props.connected && !props.report
-                ? "Not connected to gateway."
-                : "No skills found."}
+            <div class="skills-empty-state">
+              <div class="skills-empty-state__title">
+                ${!props.connected && !props.report
+                  ? "Not connected to gateway."
+                  : "No skills match the current view."}
+              </div>
+              <div class="skills-empty-state__body">
+                ${!props.connected && !props.report
+                  ? "Connect to the gateway, then refresh skill status."
+                  : props.statusFilter !== "all" || props.filter.trim()
+                    ? "Clear the status filter or search text to see the full merged skill set."
+                    : "Check that SKILL.md exists directly under each skill folder and includes name and description frontmatter."}
+              </div>
             </div>
           `
         : html`
@@ -284,12 +589,7 @@ export function renderSkills(props: SkillsProps) {
                     </summary>
                     <div class="list skills-grid">
                       ${group.skills.map((skill) =>
-                        renderSkill(
-                          skill,
-                          props,
-                          readOnly,
-                          resolveSkillScope(skill, props.report),
-                        ),
+                        renderSkill(skill, props, readOnly, resolveSkillScope(skill, props.report)),
                       )}
                     </div>
                   </details>
@@ -539,6 +839,21 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
             ${renderSkillStatusChips({ skill, showBundledBadge })}
           </div>
 
+          <div class="skills-detail-paths">
+            <div>
+              <span>Source</span>
+              <code>${normalizeSkillSource(skill.source).label}</code>
+            </div>
+            <div>
+              <span>SKILL.md</span>
+              <code title=${skill.filePath}>${compactPath(skill.filePath, 92)}</code>
+            </div>
+            <div>
+              <span>Base dir</span>
+              <code title=${skill.baseDir}>${compactPath(skill.baseDir, 92)}</code>
+            </div>
+          </div>
+
           ${missing.length > 0
             ? html`
                 <div
@@ -578,7 +893,8 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
                     ? html`<button
                         class="btn"
                         ?disabled=${busy}
-                        @click=${() => props.onInstall(skill.skillKey, skill.name, skill.install[0].id)}
+                        @click=${() =>
+                          props.onInstall(skill.skillKey, skill.name, skill.install[0].id)}
                       >
                         ${busy ? "Installing\u2026" : skill.install[0].label}
                       </button>`

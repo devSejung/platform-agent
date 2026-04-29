@@ -34,13 +34,13 @@ import {
   toAgentStoreSessionKey,
 } from "../../routing/session-key.js";
 import { normalizeOptionalString, readStringValue } from "../../shared/string-coerce.js";
-import { GATEWAY_CLIENT_IDS } from "../protocol/client-info.js";
 import {
   enforceEmployeeAgent,
   enforceEmployeeSessionKey,
   filterEmployeeSessionRows,
   isEmployeeClient,
 } from "../employee-access.js";
+import { GATEWAY_CLIENT_IDS } from "../protocol/client-info.js";
 import {
   ErrorCodes,
   errorShape,
@@ -286,10 +286,7 @@ function rejectEmployeeSessionsPatch(params: {
     .map(([key]) => key)
     .filter(
       (key) =>
-        key !== "model" &&
-        key !== "thinkingLevel" &&
-        key !== "fastMode" &&
-        key !== "verboseLevel",
+        key !== "model" && key !== "thinkingLevel" && key !== "fastMode" && key !== "verboseLevel",
     );
   if (disallowedKeys.length === 0) {
     return false;
@@ -1705,7 +1702,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
             sessionKey: target.canonicalKey,
             seq: 2,
             phase: "end",
-            completed: result?.ok === true && result?.compacted === true,
+            completed: result?.ok === true && result?.compacted,
             trigger: "manual",
             tokensBefore:
               typeof result?.result?.tokensBefore === "number" &&

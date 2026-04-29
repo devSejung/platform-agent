@@ -28,19 +28,24 @@ function makeSkill(
 }
 
 describe("groupSkills", () => {
-  it("places global skills below workspace and above built-in", () => {
+  it("places configured global skills between workspace and other global skills", () => {
     const groups = groupSkills([
       makeSkill("workspace-skill", "openclaw-workspace"),
+      makeSkill("configured-global-skill", "openclaw-extra"),
       makeSkill("global-skill", "agents-skills-personal"),
       makeSkill("managed-skill", "openclaw-managed"),
       makeSkill("builtin-skill", "openclaw-bundled"),
     ]);
 
-    expect(groups.map((group) => group.id)).toEqual(["workspace", "global", "built-in"]);
-    expect(groups[1]?.label).toBe("Global Skills");
-    expect(groups[1]?.skills.map((skill) => skill.name)).toEqual([
-      "global-skill",
-      "managed-skill",
+    expect(groups.map((group) => group.id)).toEqual([
+      "workspace",
+      "configured-global",
+      "global",
+      "built-in",
     ]);
+    expect(groups[1]?.label).toBe("Configured Global Skills");
+    expect(groups[1]?.skills.map((skill) => skill.name)).toEqual(["configured-global-skill"]);
+    expect(groups[2]?.label).toBe("Global Skills");
+    expect(groups[2]?.skills.map((skill) => skill.name)).toEqual(["global-skill", "managed-skill"]);
   });
 });

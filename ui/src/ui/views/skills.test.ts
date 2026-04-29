@@ -119,6 +119,40 @@ describe("renderSkills", () => {
     expect(container.querySelector("dialog")?.hasAttribute("open")).toBe(true);
   });
 
+  it("shows source and SKILL.md paths in the skill detail dialog", async () => {
+    const container = document.createElement("div");
+    installDialogMethod("showModal", function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    });
+
+    render(
+      renderSkills(
+        createProps({
+          detailKey: "repo-skill",
+          report: {
+            workspaceDir: "/work/main",
+            managedSkillsDir: "/tmp/skills",
+            skills: [
+              createSkill({
+                source: "openclaw-extra",
+                filePath: "/opt/platformclaw/skills/repo-skill/SKILL.md",
+                baseDir: "/opt/platformclaw/skills/repo-skill",
+              }),
+            ],
+          },
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    const text = normalizeText(container);
+    expect(text).toContain("Source Configured Global");
+    expect(text).toContain("SKILL.md");
+    expect(text).toContain("Base dir");
+    expect(text).toContain("/opt/platformclaw/skills/repo-skill/SKILL.md");
+  });
+
   it("closes the skill detail dialog through the dialog close event", async () => {
     const container = document.createElement("div");
     const onDetailClose = vi.fn();
@@ -187,6 +221,75 @@ describe("renderSkills", () => {
     expect(onClawHubDetailOpen).toHaveBeenCalledWith("github");
     expect(onClawHubInstall).toHaveBeenCalledTimes(1);
     expect(onClawHubInstall).toHaveBeenCalledWith("github");
+  });
+
+  it("renders skill diagnostics with configured global source and attention shortcuts", async () => {
+    const container = document.createElement("div");
+    const onDetailOpen = vi.fn();
+
+    render(
+      renderSkills(
+        createProps({
+          report: {
+            workspaceDir: "/work/main",
+            managedSkillsDir: "/home/node/.openclaw/skills",
+            skills: [
+              createSkill({
+                name: "Jira Company",
+                source: "openclaw-extra",
+                filePath: "/opt/platformclaw/skills/jira-company/SKILL.md",
+                baseDir: "/opt/platformclaw/skills/jira-company",
+                skillKey: "jira-company",
+              }),
+              createSkill({
+                name: "Broken Skill",
+                source: "agents-skills-project",
+                filePath: "/work/main/.agents/skills/broken/SKILL.md",
+                baseDir: "/work/main/.agents/skills/broken",
+                skillKey: "broken",
+                eligible: false,
+                missing: {
+                  bins: ["jira"],
+                  env: [],
+                  config: [],
+                  os: [],
+                },
+              }),
+              createSkill({
+                name: "Apple Notes",
+                source: "openclaw-bundled",
+                filePath: "/app/skills/apple-notes/SKILL.md",
+                baseDir: "/app/skills/apple-notes",
+                skillKey: "apple-notes",
+                bundled: true,
+                eligible: false,
+                missing: {
+                  bins: [],
+                  env: [],
+                  config: [],
+                  os: ["darwin"],
+                },
+              }),
+            ],
+          },
+          onDetailOpen,
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    const text = normalizeText(container);
+    expect(text).toContain("Skill Diagnostics");
+    expect(text).toContain("Configured Global");
+    expect(text).toContain("skills.load.extraDirs");
+    expect(text).toContain("Unavailable");
+    expect(text).toContain("Needs attention");
+    expect(text).toContain("Broken Skill");
+    expect(text).not.toContain("Apple Notes os:darwin");
+
+    container.querySelector<HTMLButtonElement>(".skills-issue-pill")?.click();
+    expect(onDetailOpen).toHaveBeenCalledWith("broken");
   });
 
   it("opens the ClawHub detail dialog and renders install feedback", async () => {

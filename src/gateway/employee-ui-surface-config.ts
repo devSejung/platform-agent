@@ -42,12 +42,17 @@ function normalizeSurfaceConfigExtra(value: unknown): EmployeeUiSurfaceConfig | 
   const parsed = value as EmployeeUiSurfaceExtraFile;
   const docsUrl = trimOptionalString(parsed.docsUrl);
   const announcement: EmployeeUiAnnouncement = {
-    title: trimOptionalString(parsed.announcement?.title) ?? trimOptionalString(parsed.announcementTitle),
-    body: trimOptionalString(parsed.announcement?.body) ?? trimOptionalString(parsed.announcementBody),
+    title:
+      trimOptionalString(parsed.announcement?.title) ??
+      trimOptionalString(parsed.announcementTitle),
+    body:
+      trimOptionalString(parsed.announcement?.body) ?? trimOptionalString(parsed.announcementBody),
     linkLabel:
       trimOptionalString(parsed.announcement?.linkLabel) ??
       trimOptionalString(parsed.announcementLinkLabel),
-    linkUrl: trimOptionalString(parsed.announcement?.linkUrl) ?? trimOptionalString(parsed.announcementLinkUrl),
+    linkUrl:
+      trimOptionalString(parsed.announcement?.linkUrl) ??
+      trimOptionalString(parsed.announcementLinkUrl),
   };
   const hasAnnouncement = Boolean(
     announcement.title || announcement.body || announcement.linkLabel || announcement.linkUrl,
@@ -135,10 +140,10 @@ export function resolveEmployeeUiSurfaceConfig(
     return undefined;
   }
   return {
-    ...(base ?? {}),
-    ...(extra ?? {}),
+    ...base,
+    ...extra,
     announcement: {
-      ...(base?.announcement ?? {}),
+      ...base?.announcement,
       ...Object.fromEntries(
         Object.entries(extra?.announcement ?? {}).filter(([, value]) => value !== undefined),
       ),

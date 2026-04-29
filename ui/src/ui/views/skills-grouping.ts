@@ -8,15 +8,11 @@ export type SkillGroup = {
 
 const SKILL_SOURCE_GROUPS: Array<{ id: string; label: string; sources: string[] }> = [
   { id: "workspace", label: "Workspace Skills", sources: ["openclaw-workspace"] },
+  { id: "configured-global", label: "Configured Global Skills", sources: ["openclaw-extra"] },
   {
     id: "global",
     label: "Global Skills",
-    sources: [
-      "agents-skills-personal",
-      "agents-skills-project",
-      "openclaw-managed",
-      "openclaw-extra",
-    ],
+    sources: ["agents-skills-personal", "agents-skills-project", "openclaw-managed"],
   },
   { id: "built-in", label: "Built-in Skills", sources: ["openclaw-bundled"] },
 ];

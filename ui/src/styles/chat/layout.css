@@ -398,8 +398,8 @@
 }
 
 .agent-chat__input:focus-within {
-  border-color: var(--border-strong);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--border-strong) 24%, transparent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
 }
 
 @supports (backdrop-filter: blur(1px)) {
@@ -490,7 +490,7 @@
 
 .agent-chat__input-btn--active {
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: var(--accent-subtle);
 }
 
 .agent-chat__input-divider {

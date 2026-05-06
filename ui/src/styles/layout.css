@@ -88,9 +88,9 @@
   padding: 0 24px;
   min-height: 58px;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(12px) saturate(1.6);
-  -webkit-backdrop-filter: blur(12px) saturate(1.6);
+  background: color-mix(in srgb, var(--chrome) 94%, transparent);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
 }
 
 .topnav-shell {
@@ -328,7 +328,7 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: color-mix(in srgb, var(--bg) 96%, var(--bg-elevated) 4%);
+  background: color-mix(in srgb, var(--panel) 96%, var(--bg-elevated) 4%);
 }
 
 :root[data-theme-mode="light"] .sidebar {
@@ -398,7 +398,7 @@
   height: 32px;
   flex-shrink: 0;
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 18px color-mix(in srgb, black 12%, transparent);
+  box-shadow: none;
 }
 
 .sidebar-brand__copy {
@@ -448,7 +448,7 @@
   border-radius: var(--radius-xl);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 96%, transparent), var(--card));
-  box-shadow: 0 10px 28px color-mix(in srgb, black 10%, transparent);
+  box-shadow: none;
 }
 
 .sidebar-identity__header {
@@ -534,7 +534,7 @@
     transform var(--duration-fast) ease;
   margin-bottom: 0;
   color: var(--muted);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+  box-shadow: none;
 }
 
 .nav-collapse-toggle:hover {
@@ -768,7 +768,7 @@
   width: 3px;
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--accent) 86%, transparent);
-  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 34%, transparent);
+  box-shadow: none;
 }
 
 .sidebar--collapsed .nav-item.active,
@@ -779,9 +779,7 @@
     color-mix(in srgb, var(--accent) 8%, var(--bg) 92%) 100%
   );
   border-color: color-mix(in srgb, var(--accent) 18%, var(--border) 82%);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, white 8%, transparent),
-    0 10px 20px color-mix(in srgb, black 18%, transparent);
+  box-shadow: none;
 }
 
 .sidebar--collapsed .nav-collapse-toggle {
@@ -789,18 +787,14 @@
   height: 42px;
   border-color: color-mix(in srgb, var(--border) 82%, transparent);
   background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, white 8%, transparent),
-    0 8px 18px color-mix(in srgb, black 16%, transparent);
+  box-shadow: none;
 }
 
 .sidebar--collapsed .sidebar-brand__logo {
   width: 34px;
   height: 34px;
   border-radius: var(--radius-md);
-  box-shadow:
-    0 10px 20px color-mix(in srgb, black 20%, transparent),
-    inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+  box-shadow: none;
 }
 
 .sidebar-utility-group {

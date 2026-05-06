@@ -1,33 +1,78 @@
-<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="platformclaw-shell" x1="12" y1="10" x2="102" y2="108" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#E35B5B"/>
-      <stop offset="1" stop-color="#7E2323"/>
-    </linearGradient>
-    <linearGradient id="platformclaw-accent" x1="32" y1="24" x2="88" y2="92" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#79E5D1"/>
-      <stop offset="1" stop-color="#3AAE98"/>
-    </linearGradient>
-  </defs>
-  <path d="M60 10 C30 10 15 35 15 55 C15 75 30 95 45 100 L45 110 L55 110 L55 100 C55 100 60 102 65 100 L65 110 L75 110 L75 100 C90 95 105 75 105 55 C105 35 90 10 60 10Z" fill="url(#platformclaw-shell)"/>
-  <path d="M20 45 C5 40 0 50 5 60 C10 70 20 65 25 55 C28 48 25 45 20 45Z" fill="url(#platformclaw-shell)"/>
-  <path d="M100 45 C115 40 120 50 115 60 C110 70 100 65 95 55 C92 48 95 45 100 45Z" fill="url(#platformclaw-shell)"/>
-  <path d="M45 15 Q35 5 30 8" stroke="#D85B5B" stroke-width="3" stroke-linecap="round"/>
-  <path d="M75 15 Q85 5 90 8" stroke="#D85B5B" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="45" cy="35" r="6" fill="#0C1118"/>
-  <circle cx="75" cy="35" r="6" fill="#0C1118"/>
-  <circle cx="46" cy="34" r="2.5" fill="url(#platformclaw-accent)"/>
-  <circle cx="76" cy="34" r="2.5" fill="url(#platformclaw-accent)"/>
-  <text
-    x="60"
-    y="86"
-    text-anchor="middle"
-    font-family="Georgia, 'Times New Roman', serif"
-    font-size="28"
-    font-weight="700"
-    fill="#F4F7FB"
-    opacity="0.94"
-  >
-    P
-  </text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" role="img" aria-label="OpenClaw pixel crab icon - #0F7C72 solid">
+  <path fill="#0F7C72" fill-rule="evenodd" d="
+    M 307 282
+    L 307 339
+    L 250 341
+    L 250 511
+    L 306 511
+    L 307 571
+    L 360 573
+    L 360 678
+    L 308 680
+    L 308 783
+    L 360 784
+    L 360 841
+    L 308 842
+    L 308 969
+    L 360 969
+    L 360 912
+    L 404 911
+    L 405 871
+    L 448 871
+    L 449 912
+    L 515 912
+    L 517 853
+    L 738 853
+    L 740 912
+    L 806 912
+    L 807 871
+    L 850 871
+    L 852 912
+    L 895 912
+    L 895 969
+    L 947 970
+    L 947 842
+    L 895 841
+    L 895 784
+    L 947 783
+    L 947 679
+    L 895 678
+    L 895 573
+    L 948 571
+    L 949 511
+    L 1004 511
+    L 1004 340
+    L 947 339
+    L 947 282
+    L 860 282
+    L 858 412
+    L 806 411
+    L 805 340
+    L 739 341
+    L 739 510
+    L 792 512
+    L 792 572
+    L 835 572
+    L 835 612
+    L 420 612
+    L 420 572
+    L 463 572
+    L 463 512
+    L 515 511
+    L 516 341
+    L 450 340
+    L 449 411
+    L 396 412
+    L 396 283
+    Z
+    M 701 673
+    L 739 674
+    L 738 747
+    L 700 746
+    Z
+    M 517 673
+    L 555 674
+    L 554 747
+    L 516 746
+    Z"/>
 </svg>

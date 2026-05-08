@@ -310,28 +310,197 @@ function normalizeChatErrorMessage(error: string): string {
   return `Request failed. ${trimmed}`;
 }
 
-function formatRequestElapsedSeconds(startedAt: number | null): string {
+function formatRunElapsed(startedAt: number | null): string {
   if (!startedAt || !Number.isFinite(startedAt)) {
-    return "0s";
+    return "00:00";
   }
-  return `${Math.max(0, Math.floor((Date.now() - startedAt) / 1000))}s`;
+  const totalSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+type LiveRunStatus = {
+  phase: "sending" | "waiting" | "streaming" | "tool" | "compacting" | "retrying" | "queued";
+  tone: "normal" | "attention" | "compaction" | "tool";
+  title: string;
+  body: string;
+  meta: string;
+  icon: TemplateResult;
+  startedAt: number | null;
+  elapsedMs: number;
+  queueDepth: number;
+};
+
+function waitCopy(elapsedMs: number) {
+  if (elapsedMs >= 180_000) {
+    return {
+      title: "Still working",
+      body: "The model API is taking longer than usual. Keep this tab open, or send /stop if you want to cancel.",
+      tone: "attention" as const,
+    };
+  }
+  if (elapsedMs >= 60_000) {
+    return {
+      title: "Waiting for model response",
+      body: "Company model latency is higher than usual. The run is still active.",
+      tone: "attention" as const,
+    };
+  }
+  if (elapsedMs >= 20_000) {
+    return {
+      title: "Waiting for model response",
+      body: "No output yet. This can happen while the model prepares a long answer.",
+      tone: "normal" as const,
+    };
+  }
+  return {
+    title: "Preparing response",
+    body: "Request accepted. Waiting for the first assistant update.",
+    tone: "normal" as const,
+  };
+}
+
+function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
+  const compaction = props.compactionStatus;
+  const compactionActive =
+    compaction?.phase === "active" || compaction?.phase === "retrying";
+  const startedAt = compactionActive
+    ? (compaction.startedAt ?? props.streamStartedAt)
+    : props.streamStartedAt;
+  const elapsedMs =
+    startedAt && Number.isFinite(startedAt) ? Math.max(0, Date.now() - startedAt) : 0;
+  const elapsed = formatRunElapsed(startedAt);
+  const queueDepth = props.queue.length;
+
+  if (compactionActive) {
+    const retrying = compaction?.phase === "retrying";
+    return {
+      phase: retrying ? "retrying" : "compacting",
+      tone: "compaction",
+      title: retrying ? "Continuing after compaction" : "Compacting context",
+      body: retrying
+        ? "Context was compressed successfully. The assistant is resuming the response."
+        : "Long conversation context is being compressed before the answer continues.",
+      meta: `${elapsed} elapsed`,
+      icon: retrying ? icons.check : icons.loader,
+      startedAt,
+      elapsedMs,
+      queueDepth,
+    };
+  }
+
+  if (props.toolMessages.length > 0) {
+    return {
+      phase: "tool",
+      tone: "tool",
+      title: "Running tools",
+      body: "Tool activity is streaming into the conversation. Results will be folded into the final answer.",
+      meta: `${elapsed} elapsed`,
+      icon: icons.terminal,
+      startedAt,
+      elapsedMs,
+      queueDepth,
+    };
+  }
+
+  if (props.stream !== null && props.stream.trim().length > 0) {
+    return {
+      phase: "streaming",
+      tone: "normal",
+      title: "Writing response",
+      body: "Assistant output is arriving. The final message will settle when the run completes.",
+      meta: `${elapsed} elapsed`,
+      icon: icons.spark,
+      startedAt,
+      elapsedMs,
+      queueDepth,
+    };
+  }
+
+  if (props.sending) {
+    return {
+      phase: "sending",
+      tone: "normal",
+      title: "Sending request",
+      body: "The browser is handing this message to the gateway.",
+      meta: `${elapsed} elapsed`,
+      icon: icons.loader,
+      startedAt,
+      elapsedMs,
+      queueDepth,
+    };
+  }
+
+  if (props.canAbort || props.stream !== null) {
+    const copy = waitCopy(elapsedMs);
+    return {
+      phase: "waiting",
+      tone: copy.tone,
+      title: copy.title,
+      body: copy.body,
+      meta: `${elapsed} elapsed`,
+      icon: icons.brain,
+      startedAt,
+      elapsedMs,
+      queueDepth,
+    };
+  }
+
+  if (queueDepth > 0) {
+    return {
+      phase: "queued",
+      tone: "normal",
+      title: "Queued for next run",
+      body: "This message will start after the current request completes.",
+      meta: `${queueDepth} queued`,
+      icon: icons.loader,
+      startedAt: null,
+      elapsedMs: 0,
+      queueDepth,
+    };
+  }
+
+  return null;
 }
 
 function renderRequestStatus(props: ChatProps) {
   if (props.error) {
     return html`<div class="callout danger">${normalizeChatErrorMessage(props.error)}</div>`;
   }
-  const elapsed = formatRequestElapsedSeconds(props.streamStartedAt);
-  if (props.sending) {
-    return html`<div class="callout">API request in progress... (${elapsed})</div>`;
+  const status = deriveLiveRunStatus(props);
+  if (!status) {
+    return nothing;
   }
-  if (props.canAbort && props.stream === null) {
-    return html`<div class="callout">API request in progress... (${elapsed})</div>`;
-  }
-  if (props.stream !== null) {
-    return html`<div class="callout">Receiving response... (${elapsed})</div>`;
-  }
-  return nothing;
+  const phaseLabel = status.phase.replace("-", " ");
+  return html`
+    <div
+      class="live-run-status live-run-status--${status.tone}"
+      role="status"
+      aria-live="polite"
+      data-phase=${status.phase}
+    >
+      <div class="live-run-status__rail" aria-hidden="true"></div>
+      <div class="live-run-status__icon" aria-hidden="true">${status.icon}</div>
+      <div class="live-run-status__main">
+        <div class="live-run-status__topline">
+          <span class="live-run-status__title">${status.title}</span>
+          <span class="live-run-status__phase">${phaseLabel}</span>
+        </div>
+        <div class="live-run-status__body">${status.body}</div>
+      </div>
+      <div class="live-run-status__meta">
+        <span>${status.meta}</span>
+        ${status.queueDepth > 0 && status.phase !== "queued"
+          ? html`<span>${status.queueDepth} queued</span>`
+          : nothing}
+      </div>
+    </div>
+  `;
 }
 
 /**

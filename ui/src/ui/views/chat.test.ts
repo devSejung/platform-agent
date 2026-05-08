@@ -1110,19 +1110,21 @@ describe("chat view", () => {
     expect(modelSelect?.disabled).toBe(true);
   });
 
-  it("shows an in-flight request callout while sending", () => {
+  it("shows live run status while sending", () => {
     const container = document.createElement("div");
     render(renderChat(createProps({ sending: true, streamStartedAt: Date.now() - 12_000 })), container);
-    expect(container.textContent).toContain("API request in progress...");
+    expect(container.querySelector(".live-run-status")).not.toBeNull();
+    expect(container.textContent).toContain("Sending request");
   });
 
-  it("shows a waiting callout after the request is accepted and before streaming starts", () => {
+  it("shows live waiting status after the request is accepted and before streaming starts", () => {
     const container = document.createElement("div");
     render(
       renderChat(createProps({ canAbort: true, stream: null, sending: false, streamStartedAt: Date.now() - 7_000 })),
       container,
     );
-    expect(container.textContent).toContain("API request in progress...");
+    expect(container.querySelector('.live-run-status[data-phase="waiting"]')).not.toBeNull();
+    expect(container.textContent).toContain("Preparing response");
   });
 
   it("shows a timeout-specific failure callout", () => {

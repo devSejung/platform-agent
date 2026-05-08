@@ -2017,6 +2017,211 @@
   color: var(--ok);
 }
 
+/* Live run status */
+.live-run-status {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 15px 13px 18px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-subtle) 72%, transparent) 0%, transparent 46%),
+    color-mix(in srgb, var(--card) 94%, var(--bg-muted) 6%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 52%, transparent);
+  color: var(--text);
+  isolation: isolate;
+}
+
+.live-run-status::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 12% 50%, color-mix(in srgb, var(--accent) 12%, transparent) 0 18%, transparent 36%),
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 7%, transparent), transparent);
+  background-size: 100% 100%, 220% 100%;
+  opacity: 0.86;
+  animation: live-status-sheen 3.2s var(--ease-in-out) infinite;
+}
+
+.live-run-status__rail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent-2) 72%, var(--accent)));
+}
+
+.live-run-status__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.live-run-status__icon svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.live-run-status[data-phase="sending"] .live-run-status__icon svg,
+.live-run-status[data-phase="waiting"] .live-run-status__icon svg,
+.live-run-status[data-phase="compacting"] .live-run-status__icon svg {
+  animation: compaction-spin 1.1s linear infinite;
+}
+
+.live-run-status__main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.live-run-status__topline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.live-run-status__title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-run-status__phase {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.045em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.live-run-status__body {
+  color: var(--muted-strong);
+  font-size: 12px;
+  line-height: 1.42;
+}
+
+.live-run-status__meta {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.live-run-status--attention {
+  border-color: color-mix(in srgb, var(--warn) 32%, var(--border));
+}
+
+.live-run-status--attention .live-run-status__rail {
+  background: linear-gradient(180deg, var(--warn), var(--accent));
+}
+
+.live-run-status--attention .live-run-status__icon,
+.live-run-status--attention .live-run-status__phase {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, var(--card));
+}
+
+.live-run-status--tool {
+  border-color: color-mix(in srgb, var(--accent-2) 26%, var(--border));
+}
+
+.live-run-status--tool .live-run-status__rail {
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+}
+
+.live-run-status--tool .live-run-status__icon,
+.live-run-status--tool .live-run-status__phase {
+  color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent-2) 10%, var(--card));
+}
+
+.live-run-status--compaction {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent) 0%, transparent 52%),
+    color-mix(in srgb, var(--card) 92%, var(--bg-muted) 8%);
+}
+
+@keyframes live-status-sheen {
+  0% {
+    background-position: 0 0, 120% 0;
+  }
+  50% {
+    background-position: 0 0, 0 0;
+  }
+  100% {
+    background-position: 0 0, -120% 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .live-run-status {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .live-run-status__meta {
+    grid-column: 2;
+    align-items: flex-start;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .live-run-status__topline {
+    flex-wrap: wrap;
+  }
+
+  .live-run-status__title {
+    white-space: normal;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-run-status::before,
+  .live-run-status[data-phase="sending"] .live-run-status__icon svg,
+  .live-run-status[data-phase="waiting"] .live-run-status__icon svg,
+  .live-run-status[data-phase="compacting"] .live-run-status__icon svg {
+    animation: none;
+  }
+}
+
 /* Compaction indicator */
 .compaction-indicator {
   display: flex;

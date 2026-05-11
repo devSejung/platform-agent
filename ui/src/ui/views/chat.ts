@@ -31,6 +31,7 @@ import {
 } from "../chat/slash-commands.ts";
 import { isSttSupported, startStt, stopStt } from "../chat/speech.ts";
 import { icons } from "../icons.ts";
+import { renderEmployeeCrabMascot, type EmployeeCrabMascotPhase } from "../mascot.ts";
 import { detectTextDirection } from "../text-direction.ts";
 import type { GatewaySessionRow, SessionsListResult } from "../types.ts";
 import type { ChatItem, MessageGroup } from "../types/chat-types.ts";
@@ -331,6 +332,7 @@ type LiveRunStatus = {
   body: string;
   meta: string;
   icon: TemplateResult;
+  mascotPhase: EmployeeCrabMascotPhase;
   startedAt: number | null;
   elapsedMs: number;
   queueDepth: number;
@@ -367,8 +369,7 @@ function waitCopy(elapsedMs: number) {
 
 function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
   const compaction = props.compactionStatus;
-  const compactionActive =
-    compaction?.phase === "active" || compaction?.phase === "retrying";
+  const compactionActive = compaction?.phase === "active" || compaction?.phase === "retrying";
   const startedAt = compactionActive
     ? (compaction.startedAt ?? props.streamStartedAt)
     : props.streamStartedAt;
@@ -388,6 +389,7 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
         : "Long conversation context is being compressed before the answer continues.",
       meta: `${elapsed} elapsed`,
       icon: retrying ? icons.check : icons.loader,
+      mascotPhase: retrying ? "retrying" : "compacting",
       startedAt,
       elapsedMs,
       queueDepth,
@@ -402,6 +404,7 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
       body: "Tool activity is streaming into the conversation. Results will be folded into the final answer.",
       meta: `${elapsed} elapsed`,
       icon: icons.terminal,
+      mascotPhase: "tool",
       startedAt,
       elapsedMs,
       queueDepth,
@@ -416,6 +419,7 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
       body: "Assistant output is arriving. The final message will settle when the run completes.",
       meta: `${elapsed} elapsed`,
       icon: icons.spark,
+      mascotPhase: "streaming",
       startedAt,
       elapsedMs,
       queueDepth,
@@ -430,6 +434,7 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
       body: "The browser is handing this message to the gateway.",
       meta: `${elapsed} elapsed`,
       icon: icons.loader,
+      mascotPhase: "sending",
       startedAt,
       elapsedMs,
       queueDepth,
@@ -445,6 +450,7 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
       body: copy.body,
       meta: `${elapsed} elapsed`,
       icon: icons.brain,
+      mascotPhase: copy.tone === "attention" ? "attention" : "waiting",
       startedAt,
       elapsedMs,
       queueDepth,
@@ -459,6 +465,7 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
       body: "This message will start after the current request completes.",
       meta: `${queueDepth} queued`,
       icon: icons.loader,
+      mascotPhase: "queued",
       startedAt: null,
       elapsedMs: 0,
       queueDepth,
@@ -485,7 +492,9 @@ function renderRequestStatus(props: ChatProps) {
       data-phase=${status.phase}
     >
       <div class="live-run-status__rail" aria-hidden="true"></div>
-      <div class="live-run-status__icon" aria-hidden="true">${status.icon}</div>
+      <div class="live-run-status__icon" aria-hidden="true">
+        ${renderEmployeeCrabMascot(status.mascotPhase)}
+      </div>
       <div class="live-run-status__main">
         <div class="live-run-status__topline">
           <span class="live-run-status__title">${status.title}</span>
@@ -907,15 +916,15 @@ function renderWelcomeState(props: ChatProps): TemplateResult {
             alt=${displayName}
             style="width:56px; height:56px; border-radius:50%; object-fit:cover;"
           />`
-          : html`<div class="agent-chat__avatar agent-chat__avatar--logo">
+        : html`<div class="agent-chat__avatar agent-chat__avatar--logo">
             <img src=${logoUrl} alt=${displayName} />
-          </div>`
-      }
+          </div>`}
       <h2>${displayName}</h2>
       <div class="agent-chat__badges">
         <span class="agent-chat__badge"
-          ><img src=${logoUrl} alt="" />
-          ${props.employeeMode ? "PlatformClaw Workspace" : "Ready to chat"}</span
+          ><img src=${logoUrl} alt="" /> ${props.employeeMode
+            ? "PlatformClaw Workspace"
+            : "Ready to chat"}</span
         >
       </div>
       <p class="agent-chat__hint">
@@ -1618,17 +1627,17 @@ export function renderChat(props: ChatProps) {
             ${canAbort
               ? nothing
               : props.employeeMode
-              ? nothing
-              : html`
-                  <button
-                    class="btn btn--ghost"
-                    @click=${props.onNewSession}
-                    title="New session"
-                    aria-label="New session"
-                  >
-                    ${icons.plus}
-                  </button>
-                `}
+                ? nothing
+                : html`
+                    <button
+                      class="btn btn--ghost"
+                      @click=${props.onNewSession}
+                      title="New session"
+                      aria-label="New session"
+                    >
+                      ${icons.plus}
+                    </button>
+                  `}
             <button
               class="btn btn--ghost"
               @click=${() => exportMarkdown(props)}

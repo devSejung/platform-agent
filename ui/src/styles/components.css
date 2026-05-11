@@ -2021,11 +2021,12 @@
 .live-run-status {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: 68px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 13px 15px 13px 18px;
+  min-height: 64px;
+  padding: 8px 16px 8px 14px;
   margin-bottom: 10px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
@@ -2036,6 +2037,22 @@
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 52%, transparent);
   color: var(--text);
   isolation: isolate;
+}
+
+.live-run-status::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 7px;
+  bottom: 7px;
+  width: 70px;
+  z-index: -1;
+  border-radius: calc(var(--radius-lg) - 4px);
+  background:
+    radial-gradient(circle at 36% 48%, color-mix(in srgb, var(--accent) 11%, transparent) 0 18%, transparent 54%),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent);
+  opacity: 0.65;
+  mask-image: linear-gradient(90deg, black 0%, black 62%, transparent 100%);
 }
 
 .live-run-status::before {
@@ -2064,12 +2081,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  width: 65px;
+  height: 48px;
   color: var(--accent);
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  position: relative;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .live-run-status__icon svg {
@@ -2082,10 +2101,170 @@
   stroke-linejoin: round;
 }
 
-.live-run-status[data-phase="sending"] .live-run-status__icon svg,
-.live-run-status[data-phase="waiting"] .live-run-status__icon svg,
-.live-run-status[data-phase="compacting"] .live-run-status__icon svg {
-  animation: compaction-spin 1.1s linear infinite;
+.employee-crab-mascot-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 48px;
+  color: currentColor;
+  overflow: visible;
+}
+
+.employee-crab-mascot__halo,
+.employee-crab-mascot-wrap::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 3px;
+  height: 8px;
+  z-index: -1;
+  border-radius: 999px;
+  background: currentColor;
+  filter: blur(6px);
+  opacity: 0.12;
+  transform: scaleX(0.82);
+}
+
+.live-run-status__icon .employee-crab-mascot {
+  display: block;
+  width: 27px;
+  height: 20px;
+  overflow: visible;
+  fill: currentColor;
+  stroke: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  filter: drop-shadow(0 2px 0 color-mix(in srgb, var(--card) 68%, transparent));
+}
+
+.employee-crab-mascot__body {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.employee-crab-mascot__spark,
+.employee-crab-mascot__dot,
+.employee-crab-mascot__tool {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.employee-crab-mascot__spark {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: currentColor;
+  transform: rotate(45deg) scale(0.6);
+}
+
+.employee-crab-mascot__spark--a {
+  top: 4px;
+  right: 8px;
+}
+
+.employee-crab-mascot__spark--b {
+  left: 8px;
+  bottom: 10px;
+}
+
+.employee-crab-mascot__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+}
+
+.employee-crab-mascot__dot--a {
+  left: 12px;
+  top: 15px;
+}
+
+.employee-crab-mascot__dot--b {
+  right: 12px;
+  top: 26px;
+}
+
+.employee-crab-mascot__tool {
+  right: 18px;
+  bottom: 11px;
+  width: 15px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: rotate(-32deg) translateY(2px);
+  filter: drop-shadow(0 1px 0 color-mix(in srgb, var(--card) 70%, transparent));
+}
+
+.employee-crab-mascot__tool::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  top: -4px;
+  width: 6px;
+  height: 9px;
+  border-radius: 2px;
+  border: 2px solid currentColor;
+  border-left: 0;
+}
+
+.employee-crab-mascot-wrap[data-phase="sending"] .employee-crab-mascot {
+  animation: mascot-track-nudge 1.08s var(--ease-in-out) infinite;
+}
+
+.employee-crab-mascot-wrap[data-phase="waiting"] .employee-crab-mascot,
+.employee-crab-mascot-wrap[data-phase="queued"] .employee-crab-mascot {
+  animation: mascot-crab-breathe 2.25s var(--ease-in-out) infinite;
+}
+
+.employee-crab-mascot-wrap[data-phase="streaming"] .employee-crab-mascot {
+  animation: mascot-track-write 1.65s var(--ease-in-out) infinite;
+}
+
+.employee-crab-mascot-wrap[data-phase="tool"] .employee-crab-mascot {
+  animation: mascot-track-scan 1.45s var(--ease-in-out) infinite;
+}
+
+.employee-crab-mascot-wrap[data-phase="compacting"] .employee-crab-mascot {
+  animation: mascot-track-sort 1.55s var(--ease-in-out) infinite;
+}
+
+.employee-crab-mascot-wrap[data-phase="retrying"] .employee-crab-mascot {
+  animation: mascot-crab-bounce 1.18s var(--ease-out) infinite;
+}
+
+.employee-crab-mascot-wrap[data-phase="attention"] .employee-crab-mascot {
+  animation: mascot-crab-alert 1.25s var(--ease-in-out) infinite;
+}
+
+.employee-crab-mascot-wrap[data-phase="streaming"] .employee-crab-mascot__spark,
+.employee-crab-mascot-wrap[data-phase="retrying"] .employee-crab-mascot__spark {
+  animation: mascot-spark-pop 1.35s var(--ease-in-out) infinite;
+}
+
+.employee-crab-mascot-wrap[data-phase="streaming"] .employee-crab-mascot__spark--b,
+.employee-crab-mascot-wrap[data-phase="retrying"] .employee-crab-mascot__spark--b {
+  animation-delay: 0.35s;
+}
+
+.employee-crab-mascot-wrap[data-phase="tool"] .employee-crab-mascot__tool {
+  opacity: 0.62;
+  animation: mascot-tool-tap 1.25s var(--ease-in-out) infinite;
+}
+
+.employee-crab-mascot-wrap[data-phase="compacting"] .employee-crab-mascot__dot {
+  animation: mascot-dot-sort 1.55s var(--ease-in-out) infinite;
+}
+
+.employee-crab-mascot-wrap[data-phase="compacting"] .employee-crab-mascot__dot--b {
+  animation-delay: 0.18s;
+}
+
+.employee-crab-mascot-wrap[data-phase="attention"] .employee-crab-mascot__spark--a {
+  animation: mascot-spark-pop 1.25s var(--ease-in-out) infinite;
 }
 
 .live-run-status__main {
@@ -2156,21 +2335,31 @@
 .live-run-status--attention .live-run-status__icon,
 .live-run-status--attention .live-run-status__phase {
   color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 10%, var(--card));
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
 }
 
 .live-run-status--tool {
   border-color: color-mix(in srgb, var(--accent-2) 26%, var(--border));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-2-subtle) 72%, transparent) 0%, transparent 44%),
+    color-mix(in srgb, var(--card) 94%, var(--bg-muted) 6%);
 }
 
 .live-run-status--tool .live-run-status__rail {
   background: linear-gradient(180deg, var(--accent-2), var(--accent));
 }
 
+.live-run-status--tool::after {
+  background:
+    radial-gradient(circle at 38% 48%, color-mix(in srgb, var(--accent-2) 9%, transparent) 0 17%, transparent 54%),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent-2) 5%, transparent), transparent);
+  opacity: 0.5;
+}
+
 .live-run-status--tool .live-run-status__icon,
 .live-run-status--tool .live-run-status__phase {
   color: var(--accent-2);
-  background: color-mix(in srgb, var(--accent-2) 10%, var(--card));
+  background: color-mix(in srgb, var(--accent-2) 10%, transparent);
 }
 
 .live-run-status--compaction {
@@ -2192,9 +2381,120 @@
   }
 }
 
+@keyframes mascot-crab-breathe {
+  0%,
+  100% {
+    transform: translateX(-1px) scale(1);
+    opacity: 0.92;
+  }
+  50% {
+    transform: translateX(1px) scale(1.02);
+    opacity: 1;
+  }
+}
+
+@keyframes mascot-track-nudge {
+  0%,
+  100% {
+    transform: translateX(-8px) scale(1);
+  }
+  50% {
+    transform: translateX(10px) scale(1.1);
+  }
+}
+
+@keyframes mascot-track-write {
+  0%,
+  100% {
+    transform: translateX(-12px) rotate(-2deg);
+  }
+  50% {
+    transform: translateX(14px) rotate(2deg);
+  }
+}
+
+@keyframes mascot-track-scan {
+  0%,
+  100% {
+    transform: translateX(-12px) rotate(-1deg);
+  }
+  50% {
+    transform: translateX(10px) rotate(1deg);
+  }
+}
+
+@keyframes mascot-track-sort {
+  0%,
+  100% {
+    transform: translateX(-10px) rotate(-2deg);
+  }
+  50% {
+    transform: translateX(12px) rotate(2deg);
+  }
+}
+
+@keyframes mascot-crab-bounce {
+  0%,
+  100% {
+    transform: translateX(-4px) translateY(0) scale(1);
+  }
+  45% {
+    transform: translateX(8px) translateY(-3px) scale(1.1);
+  }
+}
+
+@keyframes mascot-crab-alert {
+  0%,
+  100% {
+    transform: translateX(-4px) rotate(0deg) scale(1);
+  }
+  25% {
+    transform: translateX(-8px) rotate(-4deg) scale(1.05);
+  }
+  75% {
+    transform: translateX(8px) rotate(4deg) scale(1.05);
+  }
+}
+
+@keyframes mascot-spark-pop {
+  0%,
+  100% {
+    opacity: 0;
+    transform: rotate(45deg) scale(0.45);
+  }
+  45% {
+    opacity: 0.82;
+    transform: rotate(45deg) scale(1);
+  }
+}
+
+@keyframes mascot-tool-tap {
+  0%,
+  100% {
+    transform: rotate(-32deg) translateY(2px);
+  }
+  50% {
+    transform: rotate(-22deg) translateY(0);
+  }
+}
+
+@keyframes mascot-dot-sort {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateX(0) scale(0.75);
+  }
+  45% {
+    opacity: 0.72;
+    transform: translateX(12px) scale(1);
+  }
+}
+
 @media (max-width: 720px) {
   .live-run-status {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: 74px minmax(0, 1fr);
+    min-height: 64px;
+    padding-block: 8px;
   }
 
   .live-run-status__meta {
@@ -2202,6 +2502,21 @@
     align-items: flex-start;
     flex-direction: row;
     flex-wrap: wrap;
+  }
+
+  .live-run-status__icon {
+    width: 74px;
+    height: 46px;
+  }
+
+  .employee-crab-mascot-wrap {
+    width: 70px;
+    height: 46px;
+  }
+
+  .live-run-status__icon .employee-crab-mascot {
+    width: 50px;
+    height: 38px;
   }
 
   .live-run-status__topline {
@@ -2215,9 +2530,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .live-run-status::before,
-  .live-run-status[data-phase="sending"] .live-run-status__icon svg,
-  .live-run-status[data-phase="waiting"] .live-run-status__icon svg,
-  .live-run-status[data-phase="compacting"] .live-run-status__icon svg {
+  .employee-crab-mascot,
+  .employee-crab-mascot * {
     animation: none;
   }
 }

@@ -28,7 +28,7 @@ Do not ask permission to read these workspace files. They are expected runtime c
 - Preserve agent identity and `sessionKey`. Do not merge sessions or move work to another room/user unless explicitly requested.
 - Knox DM/room messages must return to the originating conversation by default.
 - Cron, reminders, and delayed follow-ups must stay owned by the source agent/session.
-- Do not use `sessions_send` to push cron results back into a main session. Use cron origin delivery.
+- Do not use `sessions_send` to push cron results back into a main session. Let cron runtime preserve the source session/channel.
 - Jira, Confluence, Gerrit, and company-platform tasks should prefer Global/workspace skills before shell fallbacks.
 - Keep technical terms, commands, code identifiers, API names, and company system names in their original form.
 
@@ -72,7 +72,8 @@ For user-visible reminders:
 
 - Prefer `sessionTarget="isolated"` with `payload.kind="agentTurn"`.
 - Preserve the origin `sessionKey`.
-- Use `delivery.mode="origin"` or leave delivery unset when the runtime can infer origin delivery.
+- Leave delivery unset by default so PlatformClaw preserves the current Web or Knox session/channel automatically.
+- Set explicit delivery only when the user asks to send the result somewhere else.
 
 ## Keep This Workspace Useful
 

@@ -279,7 +279,7 @@ function buildPlatformClawSection(params: {
       ? [
           `For timers, reminders, delayed follow-ups, and recurring jobs, use the cron tool. Do not use ${params.execToolName} sleep loops, ${params.processToolName} polling, or \`openclaw cron add\` through shell execution.`,
           "Cron jobs created from a conversation must remain owned by the current agent/session. Prefer isolated agentTurn jobs for user-facing reminders so results can return to the origin session.",
-          'Do not call sessions_send to push cron results into agent:<id>:main or another session. If the cron is session-owned, leave delivery unset or use delivery.mode="origin"; use delivery.mode="none" only when the user explicitly wants no result posted.',
+          'Do not call sessions_send to push cron results into agent:<id>:main or another session. For normal Web or Knox reminders, leave delivery unset so PlatformClaw preserves the current session/channel automatically; use delivery.mode="none" only when the user explicitly wants no result posted.',
         ]
       : []),
     "Reply in the user's latest message language by default; keep technical terms, code identifiers, commands, API names, and company system names in their original form.",
@@ -564,7 +564,7 @@ export function buildAgentSystemPrompt(params: {
     }),
     "## Reply Language",
     "By default, respond in the primary natural language used in the user's latest message.",
-    "Do not switch into a different natural language unless the user asks for it or the task clearly requires it.",
+    "Do not switch into Chinese, Japanese, or another natural language unless the user asks for it or the task clearly requires it.",
     "Technical terms, code, file paths, commands, API names, and established proper nouns may remain in their original form.",
     "",
     ...buildOverridablePromptSection({

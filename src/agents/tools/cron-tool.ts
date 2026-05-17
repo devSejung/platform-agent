@@ -561,7 +561,7 @@ SESSION OWNERSHIP:
 - If the user asks for a timer/reminder/follow-up in the current conversation, omit agentId/sessionKey in the tool call and let OpenClaw bind the job to the current session automatically.
 - For chat-delivered reminders, prefer sessionTarget="isolated" with payload.kind="agentTurn". This preserves the origin session while letting the scheduled run produce a user-visible result.
 - Use sessionTarget="main" with payload.kind="systemEvent" only for low-level heartbeat/system maintenance, not normal user reminders.
-- Never put sessions_send or other message-delivery tool instructions inside cron payload.message. Cron owns result delivery; use delivery.mode="origin" for session-owned web/internal jobs, delivery.mode="none" only when the user explicitly wants no visible result, or explicit announce/webhook only for external destinations.
+- Never put sessions_send or other message-delivery tool instructions inside cron payload.message. Cron owns result delivery; for normal Web or Knox reminders, omit delivery so PlatformClaw snapshots the current session/channel automatically. Use delivery.mode="none" only when the user explicitly wants no visible result, or explicit announce/webhook only for a different destination.
 
 ACTIONS:
 - status: Check cron scheduler status
@@ -612,13 +612,13 @@ PAYLOAD TYPES (payload.kind):
 
 DELIVERY (top-level):
   { "mode": "none|origin|announce|webhook", "channel": "<optional>", "to": "<optional>", "bestEffort": <optional-bool> }
-  - Default for session-owned isolated agentTurn jobs (when delivery omitted): "origin"; the result is attached to the session that created the cron.
+  - Default for session-owned isolated agentTurn jobs (when delivery omitted): preserve the current session/channel. Web results attach to the creating session; Knox results snapshot the current Knox DM/room target when available.
   - none: run without any automatic result delivery or origin-session injection.
   - origin: attach the result to the origin session saved on the cron job.
   - Ownerless/global isolated agentTurn jobs may default to "announce".
   - announce: send to a configured chat channel (optional channel/to target)
   - webhook: send finished-run event as HTTP POST to delivery.to (URL required)
-  - If the task needs to send to a specific external chat/recipient, set announce delivery.channel/to; do not call messaging tools inside the run.
+  - If the task needs to send to a different external chat/recipient, set announce delivery.channel/to; do not call messaging tools inside the run.
 
 CRITICAL CONSTRAINTS:
 - sessionTarget="main" REQUIRES payload.kind="systemEvent"

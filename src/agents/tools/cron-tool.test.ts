@@ -33,8 +33,10 @@ describe("cron tool", () => {
   }
 
   function readCronPayloadText(index = 0): string {
-    const params = readGatewayCall(index).params as { payload?: { text?: string } } | undefined;
-    return params?.payload?.text ?? "";
+    const params = readGatewayCall(index).params as
+      | { payload?: { text?: string; message?: string } }
+      | undefined;
+    return params?.payload?.text ?? params?.payload?.message ?? "";
   }
 
   function expectSingleGatewayCallMethod(method: string) {
@@ -124,10 +126,19 @@ describe("cron tool", () => {
   it("documents deferred follow-up guidance in the tool description", () => {
     const tool = createTestCronTool();
     expect(tool.description).toContain(
-      'Use this for reminders, "check back later" requests, delayed follow-ups, and recurring tasks.',
+      'Use this for reminders, "check back later" requests, delayed follow-ups, timers, alarms, and recurring tasks.',
     );
     expect(tool.description).toContain(
-      "Do not emulate scheduling with exec sleep or process polling.",
+      "Do not emulate scheduling with exec sleep, shell loops, process polling, or `openclaw cron add` through exec.",
+    );
+    expect(tool.description).toContain(
+      "A cron job created from a chat/session must stay owned by that source session.",
+    );
+    expect(tool.description).toContain(
+      'prefer sessionTarget="isolated" with payload.kind="agentTurn"',
+    );
+    expect(tool.description).toContain(
+      "Never put sessions_send or other message-delivery tool instructions inside cron payload.message",
     );
   });
 
@@ -284,6 +295,52 @@ describe("cron tool", () => {
     expect(sessionKey).toBe(callerSessionKey);
   });
 
+  it("stamps cron.add with caller agentId when missing", async () => {
+    callGatewayMock.mockResolvedValueOnce({ ok: true });
+
+    const tool = createTestCronTool({ agentSessionKey: "agent:eon:main" });
+    await tool.execute("call-agent-id", {
+      action: "add",
+      job: {
+        name: "wake-up",
+        schedule: { at: new Date(123).toISOString() },
+        payload: { kind: "systemEvent", text: "hello" },
+      },
+    });
+
+    const params = expectSingleGatewayCallMethod("cron.add") as
+      | { agentId?: string; sessionKey?: string }
+      | undefined;
+    expect(params?.agentId).toBe("agent-123");
+    expect(params?.sessionKey).toBe("agent:eon:main");
+  });
+
+  it("converts non-default main systemEvent reminders to isolated origin jobs", async () => {
+    callGatewayMock.mockResolvedValueOnce({ ok: true });
+
+    const tool = createTestCronTool({ agentSessionKey: "agent:eon:main" });
+    await tool.execute("call-main-to-isolated", {
+      action: "add",
+      job: {
+        name: "wake-up",
+        schedule: { at: new Date(123).toISOString() },
+        sessionTarget: "main",
+        payload: { kind: "systemEvent", text: "tell me the time" },
+      },
+    });
+
+    const params = expectSingleGatewayCallMethod("cron.add") as
+      | {
+          sessionTarget?: string;
+          payload?: { kind?: string; message?: string };
+          delivery?: { mode?: string };
+        }
+      | undefined;
+    expect(params?.sessionTarget).toBe("isolated");
+    expect(params?.payload).toEqual({ kind: "agentTurn", message: "tell me the time" });
+    expect(params?.delivery).toEqual({ mode: "origin" });
+  });
+
   it("preserves explicit job.sessionKey on add", async () => {
     callGatewayMock.mockResolvedValueOnce({ ok: true });
 
@@ -395,11 +452,7 @@ describe("cron tool", () => {
         callId: "call-thread",
         agentSessionKey: "agent:main:slack:channel:general:thread:1699999999.0001",
       }),
-    ).toEqual({
-      mode: "announce",
-      channel: "slack",
-      to: "general",
-    });
+    ).toEqual({ mode: "origin" });
   });
 
   it("preserves telegram forum topics when inferring delivery", async () => {
@@ -408,11 +461,7 @@ describe("cron tool", () => {
         callId: "call-telegram-topic",
         agentSessionKey: "agent:main:telegram:group:-1001234567890:topic:99",
       }),
-    ).toEqual({
-      mode: "announce",
-      channel: "telegram",
-      to: "-1001234567890:topic:99",
-    });
+    ).toEqual({ mode: "origin" });
   });
 
   it("infers delivery when delivery is null", async () => {
@@ -530,6 +579,163 @@ describe("cron tool", () => {
       delivery: { mode: "none" },
     });
     expect(delivery).toEqual({ mode: "none" });
+  });
+
+  it("routes unsafe last-channel announce for main/web session-owned jobs to origin", async () => {
+    callGatewayMock.mockResolvedValueOnce({ ok: true });
+    const delivery = await executeAddAndReadDelivery({
+      callId: "call-main-last",
+      agentSessionKey: "agent:eon:main",
+      delivery: { mode: "announce", channel: "last" },
+    });
+    expect(delivery).toEqual({ mode: "origin" });
+  });
+
+  it("routes explicit last-channel announce for session-owned jobs to origin", async () => {
+    callGatewayMock.mockResolvedValueOnce({ ok: true });
+    const delivery = await executeAddAndReadDelivery({
+      callId: "call-channel-last",
+      agentSessionKey: "agent:eon:slack:channel:C123",
+      delivery: { mode: "announce", channel: "last" },
+    });
+    expect(delivery).toEqual({ mode: "origin" });
+  });
+
+  it("snapshots Knox delivery for shared main session cron jobs", async () => {
+    callGatewayMock.mockResolvedValueOnce({ ok: true });
+
+    const tool = createTestCronTool({
+      agentSessionKey: "agent:eon:main",
+      agentChannel: "knox",
+      currentChannelId: "dm_eon",
+      currentThreadTs: "thread-1",
+      agentAccountId: "knox-account",
+    });
+    await tool.execute("call-knox-main-origin", {
+      action: "add",
+      job: {
+        ...buildReminderAgentTurnJob(),
+        delivery: { mode: "origin" },
+      },
+    });
+
+    const params = expectSingleGatewayCallMethod("cron.add") as
+      | {
+          delivery?: {
+            mode?: string;
+            channel?: string;
+            to?: string;
+            threadId?: string | number;
+            accountId?: string;
+          };
+        }
+      | undefined;
+    expect(params?.delivery).toEqual({
+      mode: "announce",
+      channel: "knox",
+      to: "dm_eon",
+      threadId: "thread-1",
+      accountId: "knox-account",
+    });
+  });
+
+  it("snapshots any current external channel delivery for session cron jobs", async () => {
+    callGatewayMock.mockResolvedValueOnce({ ok: true });
+
+    const tool = createTestCronTool({
+      agentSessionKey: "agent:eon:main",
+      agentChannel: "slack",
+      currentChannelId: "C123",
+    });
+    await tool.execute("call-slack-main-origin", {
+      action: "add",
+      job: {
+        ...buildReminderAgentTurnJob(),
+      },
+    });
+
+    const params = expectSingleGatewayCallMethod("cron.add") as
+      | { delivery?: { mode?: string; channel?: string; to?: string } }
+      | undefined;
+    expect(params?.delivery).toEqual({
+      mode: "announce",
+      channel: "slack",
+      to: "C123",
+    });
+  });
+
+  it("keeps webchat cron delivery on origin injection", async () => {
+    callGatewayMock.mockResolvedValueOnce({ ok: true });
+
+    const tool = createTestCronTool({
+      agentSessionKey: "agent:eon:main",
+      agentChannel: "webchat",
+      currentChannelId: "webchat-main",
+    });
+    await tool.execute("call-webchat-main-origin", {
+      action: "add",
+      job: {
+        ...buildReminderAgentTurnJob(),
+      },
+    });
+
+    const params = expectSingleGatewayCallMethod("cron.add") as
+      | { delivery?: { mode?: string; channel?: string; to?: string } }
+      | undefined;
+    expect(params?.delivery).toEqual({ mode: "origin" });
+  });
+
+  it("does not override explicit no-delivery cron jobs even with a current channel", async () => {
+    callGatewayMock.mockResolvedValueOnce({ ok: true });
+
+    const tool = createTestCronTool({
+      agentSessionKey: "agent:eon:main",
+      agentChannel: "knox",
+      currentChannelId: "dm_eon",
+    });
+    await tool.execute("call-knox-none", {
+      action: "add",
+      job: {
+        ...buildReminderAgentTurnJob(),
+        delivery: { mode: "none" },
+      },
+    });
+
+    const params = expectSingleGatewayCallMethod("cron.add") as
+      | { delivery?: { mode?: string; channel?: string; to?: string } }
+      | undefined;
+    expect(params?.delivery).toEqual({ mode: "none" });
+  });
+
+  it("rewrites manual sessions_send cron delivery workarounds to origin delivery", async () => {
+    callGatewayMock.mockResolvedValueOnce({ ok: true });
+
+    const tool = createTestCronTool({ agentSessionKey: "agent:eon:main" });
+    await tool.execute("call-manual-send", {
+      action: "add",
+      job: {
+        name: "manual-send",
+        schedule: { at: new Date(123).toISOString() },
+        sessionTarget: "isolated",
+        payload: {
+          kind: "agentTurn",
+          message:
+            "Use sessions_send to send exactly this text to sessionKey agent:eon:main: 1분 지났어. No extra text.",
+        },
+        delivery: { mode: "none" },
+      },
+    });
+
+    const params = expectSingleGatewayCallMethod("cron.add") as
+      | {
+          payload?: { kind?: string; message?: string };
+          delivery?: { mode?: string };
+          sessionKey?: string;
+        }
+      | undefined;
+    expect(params?.sessionKey).toBe("agent:eon:main");
+    expect(params?.payload).toEqual({ kind: "agentTurn", message: "1분 지났어." });
+    expect(params?.delivery).toEqual({ mode: "origin" });
   });
 
   it("preserves explicit mode-less delivery objects for add", async () => {

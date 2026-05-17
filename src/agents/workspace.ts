@@ -37,6 +37,8 @@ const WORKSPACE_STATE_FILENAME = "workspace-state.json";
 const WORKSPACE_STATE_VERSION = 1;
 const AUTO_USER_BLOCK_START = "<!-- OPENCLAW_AUTO_USER_START -->";
 const AUTO_USER_BLOCK_END = "<!-- OPENCLAW_AUTO_USER_END -->";
+const MANUAL_USER_BLOCK_START = "<!-- OPENCLAW_USER_NOTES_START -->";
+const MANUAL_USER_BLOCK_END = "<!-- OPENCLAW_USER_NOTES_END -->";
 
 const workspaceTemplateCache = new Map<string, Promise<string>>();
 let gitAvailabilityPromise: Promise<boolean> | null = null;
@@ -154,7 +156,10 @@ export type WorkspaceUserProfileSeed = {
   employeeId: string;
   name?: string;
   department?: string;
+  part?: string;
   email?: string;
+  confluenceSpace?: string;
+  notes?: string;
 };
 
 export type ExtraBootstrapLoadDiagnosticCode =
@@ -223,6 +228,7 @@ function buildWorkspaceUserAutoBlock(profile: WorkspaceUserProfileSeed): string 
     "",
     `- Employee ID: ${profile.employeeId}`,
     `- Jira ID: ${profile.employeeId}`,
+    "- Description: Jira와 Confluence 관련 명령은 Global 스킬을 사용하세요.",
   ];
   if (profile.name?.trim()) {
     lines.push(`- Name: ${profile.name.trim()}`);
@@ -230,10 +236,27 @@ function buildWorkspaceUserAutoBlock(profile: WorkspaceUserProfileSeed): string 
   if (profile.department?.trim()) {
     lines.push(`- Department: ${profile.department.trim()}`);
   }
+  if (profile.part?.trim()) {
+    lines.push(`- 파트: ${profile.part.trim()}`);
+  }
   if (profile.email?.trim()) {
     lines.push(`- Email: ${profile.email.trim()}`);
   }
+  if (profile.confluenceSpace?.trim()) {
+    lines.push(`- Confluence Space: ${profile.confluenceSpace.trim()}`);
+  }
   lines.push(AUTO_USER_BLOCK_END);
+  return lines.join("\n");
+}
+
+function buildWorkspaceUserManualBlock(notes?: string): string {
+  const lines = [MANUAL_USER_BLOCK_START, "## User Notes", ""];
+  if (notes?.trim()) {
+    lines.push("- 자유롭게 추가할 사용자 정보:", notes.trim());
+  } else {
+    lines.push("- 자유롭게 추가할 사용자 정보:");
+  }
+  lines.push(MANUAL_USER_BLOCK_END);
   return lines.join("\n");
 }
 
@@ -257,6 +280,10 @@ export async function upsertWorkspaceUserProfile(params: {
     nextContent = `${existing.replace(/\s*$/, "")}\n\n${block}\n`;
   } else {
     nextContent = `${block}\n`;
+  }
+
+  if (!nextContent.includes(MANUAL_USER_BLOCK_START)) {
+    nextContent = `${nextContent.replace(/\s*$/, "")}\n\n${buildWorkspaceUserManualBlock(params.profile.notes)}\n`;
   }
 
   await writeFileAtomically(userPath, nextContent);

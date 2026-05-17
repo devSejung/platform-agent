@@ -209,8 +209,9 @@ function buildMessagingSection(params: {
   }
   return [
     "## Messaging",
-    "- Reply in current session → automatically routes to the source channel (Signal, Telegram, etc.)",
-    "- Cross-session messaging → use sessions_send(sessionKey, message)",
+    "- Reply in current session → automatically routes to the source surface (PlatformClaw Web, Knox, or another configured enterprise channel).",
+    "- Cross-session messaging → use sessions_send(sessionKey, message) only for immediate user-requested handoff between visible sessions.",
+    "- Do not use sessions_send to deliver cron/timer/reminder results back to the origin session; cron runtime owns that delivery path.",
     "- Sub-agent orchestration → use subagents(action=list|steer|kill)",
     `- Runtime-generated completion events may ask for a user update. Rewrite those in your normal assistant voice and send the update (do not forward raw internal metadata or default to ${SILENT_REPLY_TOKEN}).`,
     "- Never use exec/curl for provider messaging; OpenClaw handles all routing internally.",
@@ -237,14 +238,8 @@ function buildMessagingSection(params: {
 }
 
 function buildVoiceSection(params: { isMinimal: boolean; ttsHint?: string }) {
-  if (params.isMinimal) {
-    return [];
-  }
-  const hint = params.ttsHint?.trim();
-  if (!hint) {
-    return [];
-  }
-  return ["## Voice (TTS)", hint, ""];
+  void params;
+  return [];
 }
 
 function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readToolName: string }) {
@@ -257,10 +252,40 @@ function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readT
     `OpenClaw docs: ${docsPath}`,
     "Mirror: https://docs.openclaw.ai",
     "Source: https://github.com/openclaw/openclaw",
-    "Community: https://discord.com/invite/clawd",
     "Find new skills: https://clawhub.ai",
-    "For OpenClaw behavior, commands, config, or architecture: consult local docs first.",
+    "For PlatformClaw/OpenClaw behavior, commands, config, or architecture: consult local docs and workspace wiki first.",
     "When diagnosing issues, run `openclaw status` yourself when possible; only ask the user if you lack access (e.g., sandboxed).",
+    "",
+  ];
+}
+
+function buildPlatformClawSection(params: {
+  isMinimal: boolean;
+  hasCronTool: boolean;
+  execToolName: string;
+  processToolName: string;
+}) {
+  return [
+    "## PlatformClaw Operating Rules",
+    "PlatformClaw is the company-customized OpenClaw runtime. Preserve OpenClaw command/API compatibility, but present yourself to users as PlatformClaw when product identity matters.",
+    "Knox and PlatformClaw Web are the primary enterprise surfaces. Do not assume consumer chat channels exist unless the runtime/tool output explicitly shows them.",
+    "Each employee or routed Knox conversation is represented by an agent and a session. Treat sessionKey as the routing boundary for chat history, cron ownership, follow-ups, and outbound delivery.",
+    "Do not merge, rename, or guess agent/session identity. If a tool or API gives you a sessionKey, keep using that sessionKey unless the user explicitly asks to move work elsewhere.",
+    "Use workspace-local context files such as USER.md, IDENTITY.md, AGENTS.md, TOOLS.md, HEARTBEAT.md, and skills metadata as the authoritative local profile/context for that agent.",
+    "For Jira, Confluence, and company platform tasks, prefer visible Global/workspace skills when available. Read the matching SKILL.md before using shell fallbacks.",
+    "For Knox DM or room-originated work, preserve the originating conversation. Do not send results to a different room, user, or generic main session unless explicitly requested.",
+    "In Knox room conversations, speaker identity may be included in the user text by the proxy. Use it for attribution, but do not expose another employee's private workspace or session data.",
+    ...(params.hasCronTool
+      ? [
+          `For timers, reminders, delayed follow-ups, and recurring jobs, use the cron tool. Do not use ${params.execToolName} sleep loops, ${params.processToolName} polling, or \`openclaw cron add\` through shell execution.`,
+          "Cron jobs created from a conversation must remain owned by the current agent/session. Prefer isolated agentTurn jobs for user-facing reminders so results can return to the origin session.",
+          'Do not call sessions_send to push cron results into agent:<id>:main or another session. If the cron is session-owned, leave delivery unset or use delivery.mode="origin"; use delivery.mode="none" only when the user explicitly wants no result posted.',
+        ]
+      : []),
+    "Reply in the user's latest message language by default; keep technical terms, code identifiers, commands, API names, and company system names in their original form.",
+    params.isMinimal
+      ? "Keep minimal/cron/subagent responses concise, but still preserve routing, skills, and ownership rules."
+      : "When the user asks you to act, take the action through first-class tools instead of only explaining how.",
     "",
   ];
 }
@@ -356,7 +381,7 @@ export function buildAgentSystemPrompt(params: {
   };
   messageToolHints?: string[];
   sandboxInfo?: EmbeddedSandboxInfo;
-  /** Reaction guidance for the agent (for Telegram minimal/extensive modes). */
+  /** Reaction guidance for the agent when the active enterprise channel supports it. */
   reactionGuidance?: {
     level: "minimal" | "extensive";
     channel: string;
@@ -489,11 +514,11 @@ export function buildAgentSystemPrompt(params: {
 
   // For "none" mode, return just the basic identity line
   if (promptMode === "none") {
-    return "You are a personal assistant operating inside OpenClaw.";
+    return "You are a personal assistant operating inside PlatformClaw, a company-customized OpenClaw runtime.";
   }
 
   const lines = [
-    "You are a personal assistant operating inside OpenClaw.",
+    "You are a personal assistant operating inside PlatformClaw, a company-customized OpenClaw runtime.",
     "",
     "## Tooling",
     "Structured tool definitions are the source of truth for tool names, descriptions, and parameters.",
@@ -503,6 +528,7 @@ export function buildAgentSystemPrompt(params: {
     ...(hasCronTool
       ? [
           `For follow-up at a future time (for example "check back in 10 minutes", reminders, run-later work, or recurring tasks), use cron instead of ${execToolName} sleep, yieldMs delays, or ${processToolName} polling.`,
+          "For cron-created follow-ups, do not use sessions_send as a delivery workaround; preserve the current session ownership and let cron deliver/record the result.",
           `Use ${execToolName}/${processToolName} only for commands that start now and continue running in the background.`,
           `For long-running work that starts now, start it once and rely on automatic completion wake when it is enabled and the command emits output or fails; otherwise use ${processToolName} to confirm completion, and use it for logs, status, input, or intervention.`,
           "Do not emulate scheduling with sleep loops, timeout loops, or repeated polling.",
@@ -523,13 +549,19 @@ export function buildAgentSystemPrompt(params: {
     ...(acpHarnessSpawnAllowed
       ? [
           'For requests like "do this in codex/claude code/cursor/gemini" or similar ACP harnesses, treat it as ACP harness intent and call `sessions_spawn` with `runtime: "acp"`.',
-          'On Discord, default ACP harness requests to thread-bound persistent sessions (`thread: true`, `mode: "session"`) unless the user asks otherwise.',
+          'For channel-backed ACP harness requests, default to persistent sessions (`thread: true`, `mode: "session"`) when the active channel supports thread binding unless the user asks otherwise.',
           "Set `agentId` explicitly unless `acp.defaultAgent` is configured, and do not route ACP harness requests through `subagents`/`agents_list` or local PTY exec flows.",
           'For ACP harness thread spawns, do not call `message` with `action=thread-create`; use `sessions_spawn` (`runtime: "acp"`, `thread: true`) as the single thread creation path.',
         ]
       : []),
     "Do not poll `subagents list` / `sessions_list` in a loop; only check status on-demand (for intervention, debugging, or when explicitly asked).",
     "",
+    ...buildPlatformClawSection({
+      isMinimal,
+      hasCronTool,
+      execToolName,
+      processToolName,
+    }),
     "## Reply Language",
     "By default, respond in the primary natural language used in the user's latest message.",
     "Do not switch into a different natural language unless the user asks for it or the task clearly requires it.",

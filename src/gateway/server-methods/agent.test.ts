@@ -703,6 +703,34 @@ describe("gateway agent handler", () => {
     expect(callArgs?.senderIsOwner).toBe(senderIsOwner);
   });
 
+  it("allows employee callers to use cron without full owner-tool access", async () => {
+    primeMainAgentRun();
+
+    await invokeAgent(
+      {
+        message: "employee cron check",
+        sessionKey: "agent:main:main",
+        idempotencyKey: "test-employee-cron-tool-access",
+      },
+      {
+        client: {
+          connect: {
+            role: "employee",
+            client: { id: "employee-client", mode: "gateway" },
+          },
+          internal: { employee: { agentId: "main" } },
+        } as unknown as AgentHandlerArgs["client"],
+      },
+    );
+
+    await waitForAssertion(() => expect(mocks.agentCommand).toHaveBeenCalled());
+    const callArgs = mocks.agentCommand.mock.calls.at(-1)?.[0] as
+      | { senderIsOwner?: boolean; allowedOwnerOnlyToolNames?: readonly string[] }
+      | undefined;
+    expect(callArgs?.senderIsOwner).toBe(false);
+    expect(callArgs?.allowedOwnerOnlyToolNames).toEqual(["cron"]);
+  });
+
   it("respects explicit bestEffortDeliver=false for main session runs", async () => {
     mocks.agentCommand.mockClear();
     primeMainAgentRun();

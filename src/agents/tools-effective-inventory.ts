@@ -43,6 +43,7 @@ export type ResolveEffectiveToolInventoryParams = {
   agentDir?: string;
   messageProvider?: string;
   senderIsOwner?: boolean;
+  allowedOwnerOnlyToolNames?: readonly string[];
   senderId?: string | null;
   senderName?: string | null;
   senderUsername?: string | null;
@@ -169,6 +170,7 @@ export function resolveEffectiveToolInventory(
     modelCompat,
     messageProvider: params.messageProvider,
     senderIsOwner: params.senderIsOwner,
+    allowedOwnerOnlyToolNames: params.allowedOwnerOnlyToolNames,
     senderId: params.senderId,
     senderName: params.senderName ?? undefined,
     senderUsername: params.senderUsername ?? undefined,

@@ -1,0 +1,49 @@
+{
+  "name": "@openclaw/knox",
+  "version": "2026.4.6",
+  "private": true,
+  "description": "OpenClaw Knox channel bridge plugin",
+  "type": "module",
+  "devDependencies": {
+    "openclaw": "workspace:*"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.4.6"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "channel": {
+      "id": "knox",
+      "label": "Knox",
+      "selectionLabel": "Knox Messenger",
+      "detailLabel": "Knox Messenger",
+      "docsPath": "/channels/knox",
+      "docsLabel": "knox",
+      "blurb": "Enterprise Knox Messenger delivery through the PlatformClaw Knox adapter.",
+      "aliases": [
+        "knox-messenger"
+      ],
+      "systemImage": "message.badge",
+      "markdownCapable": true,
+      "order": 55,
+      "quickstartAllowFrom": false,
+      "exposure": {
+        "configured": true,
+        "setup": false,
+        "docs": true
+      }
+    },
+    "install": {
+      "npmSpec": "@openclaw/knox",
+      "defaultChoice": "npm",
+      "minHostVersion": ">=2026.4.6"
+    }
+  }
+}

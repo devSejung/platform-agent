@@ -1,3 +1,6 @@
+import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
+import { loadConfig } from "../../config/config.js";
+import { coerceUnsafeCronOriginDeliveryJob } from "../../cron/creation-safety.js";
 import { normalizeCronJobCreate, normalizeCronJobPatch } from "../../cron/normalize.js";
 import {
   readCronRunLogEntriesPage,
@@ -7,10 +10,15 @@ import {
 import type { CronJobCreate, CronJobPatch } from "../../cron/types.js";
 import { validateScheduleTimestamp } from "../../cron/validate-timestamp.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { normalizeAgentId } from "../../routing/session-key.js";
+import { GATEWAY_CLIENT_MODES, normalizeGatewayClientMode } from "../../utils/message-channel.js";
 import {
   enforceEmployeeAgent,
   enforceEmployeeCronJob,
+  enforceEmployeeSessionKey,
   filterEmployeeCronJobs,
+  getEmployeeAgentId,
+  resolveSessionAgentId,
 } from "../employee-access.js";
 import {
   ErrorCodes,
@@ -26,6 +34,28 @@ import {
   validateWakeParams,
 } from "../protocol/index.js";
 import type { GatewayRequestHandlers } from "./types.js";
+
+function validateCronDeliveryOwnership(jobCreate: CronJobCreate): string | null {
+  if (jobCreate.payload.kind !== "agentTurn" || jobCreate.sessionTarget === "main") {
+    return null;
+  }
+  const sessionKey =
+    typeof jobCreate.sessionKey === "string" && jobCreate.sessionKey.trim()
+      ? jobCreate.sessionKey.trim()
+      : "";
+  const delivery = jobCreate.delivery;
+  const deliveryMode = typeof delivery?.mode === "string" ? delivery.mode.trim().toLowerCase() : "";
+  const deliveryChannel =
+    typeof delivery?.channel === "string" ? delivery.channel.trim().toLowerCase() : "";
+
+  if (deliveryMode === "origin" && !sessionKey) {
+    return "sessionKey is required for origin cron delivery";
+  }
+  if (deliveryMode === "announce" && deliveryChannel === "last" && !sessionKey) {
+    return "sessionKey is required for delivery.channel=last";
+  }
+  return null;
+}
 
 export const cronHandlers: GatewayRequestHandlers = {
   wake: ({ params, respond, context }) => {
@@ -80,7 +110,7 @@ export const cronHandlers: GatewayRequestHandlers = {
     const jobs = filterEmployeeCronJobs(client, page.jobs ?? []);
     respond(true, { ...page, jobs, total: jobs.length }, undefined);
   },
-  "cron.status": async ({ params, respond, context }) => {
+  "cron.status": async ({ params, respond, context, client }) => {
     if (!validateCronStatusParams(params)) {
       respond(
         false,
@@ -93,6 +123,25 @@ export const cronHandlers: GatewayRequestHandlers = {
       return;
     }
     const status = await context.cron.status();
+    if (getEmployeeAgentId(client)) {
+      const employeeJobs = filterEmployeeCronJobs(
+        client,
+        await context.cron.list({ includeDisabled: true }),
+      );
+      if (employeeJobs.length !== status.jobs) {
+        const nextWakeAtMs = status.enabled
+          ? (employeeJobs
+              .filter((job) => job.enabled)
+              .map((job) => job.state.nextRunAtMs)
+              .filter(
+                (value): value is number => typeof value === "number" && Number.isFinite(value),
+              )
+              .toSorted((a, b) => a - b)[0] ?? null)
+          : null;
+        respond(true, { ...status, jobs: employeeJobs.length, nextWakeAtMs }, undefined);
+        return;
+      }
+    }
     respond(true, status, undefined);
   },
   "cron.add": async ({ params, respond, context, client }) => {
@@ -106,6 +155,9 @@ export const cronHandlers: GatewayRequestHandlers = {
         ? (params as { agentId: string }).agentId
         : null;
     if (!enforceEmployeeAgent(client, requestedAgentId, respond, "cron create")) {
+      return;
+    }
+    if (!enforceEmployeeSessionKey(client, sessionKey, respond, "cron create")) {
       return;
     }
     try {
@@ -136,6 +188,103 @@ export const cronHandlers: GatewayRequestHandlers = {
       return;
     }
     const jobCreate = normalized as unknown as CronJobCreate;
+    if (
+      !enforceEmployeeAgent(
+        client,
+        typeof jobCreate.agentId === "string" ? jobCreate.agentId : null,
+        respond,
+        "cron create",
+      )
+    ) {
+      return;
+    }
+    if (
+      !enforceEmployeeSessionKey(
+        client,
+        typeof jobCreate.sessionKey === "string" ? jobCreate.sessionKey : undefined,
+        respond,
+        "cron create",
+      )
+    ) {
+      return;
+    }
+    if (
+      typeof jobCreate.agentId === "string" &&
+      jobCreate.agentId.trim() &&
+      typeof jobCreate.sessionKey === "string" &&
+      jobCreate.sessionKey.trim() &&
+      normalizeAgentId(jobCreate.agentId) !== resolveSessionAgentId(jobCreate.sessionKey)
+    ) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "invalid cron.add params: agentId must match sessionKey agent",
+        ),
+      );
+      return;
+    }
+    const employeeAgentId = getEmployeeAgentId(client);
+    if (employeeAgentId && !(typeof jobCreate.agentId === "string" && jobCreate.agentId.trim())) {
+      jobCreate.agentId = employeeAgentId;
+    }
+    const hasCronOwner =
+      (typeof jobCreate.agentId === "string" && jobCreate.agentId.trim()) ||
+      (typeof jobCreate.sessionKey === "string" && jobCreate.sessionKey.trim());
+    const clientMode = normalizeGatewayClientMode(client?.connect?.client?.mode);
+    if (
+      !hasCronOwner &&
+      (employeeAgentId ||
+        clientMode === GATEWAY_CLIENT_MODES.CLI ||
+        clientMode === GATEWAY_CLIENT_MODES.BACKEND ||
+        clientMode === GATEWAY_CLIENT_MODES.WEBCHAT) &&
+      (params as { global?: unknown }).global !== true
+    ) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "invalid cron.add params: agentId or sessionKey is required for non-global cron creation",
+        ),
+      );
+      return;
+    }
+    const defaultAgentId = resolveDefaultAgentId(loadConfig());
+    const jobSessionKey =
+      typeof jobCreate.sessionKey === "string" && jobCreate.sessionKey.trim()
+        ? jobCreate.sessionKey.trim()
+        : "";
+    const jobOwnerAgentId =
+      (typeof jobCreate.agentId === "string" && jobCreate.agentId.trim()) ||
+      (jobSessionKey ? resolveSessionAgentId(jobSessionKey) : "");
+    if (
+      jobCreate.sessionTarget === "main" &&
+      jobSessionKey &&
+      jobOwnerAgentId &&
+      normalizeAgentId(jobOwnerAgentId) !== normalizeAgentId(defaultAgentId) &&
+      jobCreate.payload.kind === "systemEvent"
+    ) {
+      jobCreate.sessionTarget = "isolated";
+      jobCreate.payload = { kind: "agentTurn", message: jobCreate.payload.text };
+      if (!jobCreate.delivery) {
+        jobCreate.delivery = { mode: "origin" };
+      }
+    }
+    coerceUnsafeCronOriginDeliveryJob(jobCreate as unknown as Record<string, unknown>);
+    const deliveryOwnershipError = validateCronDeliveryOwnership(jobCreate);
+    if (deliveryOwnershipError) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid cron.add params: ${deliveryOwnershipError}`,
+        ),
+      );
+      return;
+    }
     const timestampValidation = validateScheduleTimestamp(jobCreate.schedule);
     if (!timestampValidation.ok) {
       respond(
@@ -332,7 +481,10 @@ export const cronHandlers: GatewayRequestHandlers = {
       return;
     }
     if (scope === "all") {
-      const jobs = filterEmployeeCronJobs(client, await context.cron.list({ includeDisabled: true }));
+      const jobs = filterEmployeeCronJobs(
+        client,
+        await context.cron.list({ includeDisabled: true }),
+      );
       const jobNameById = Object.fromEntries(
         jobs
           .filter((job) => typeof job.id === "string" && typeof job.name === "string")

@@ -43,6 +43,7 @@ import {
 import { resolveAssistantIdentity } from "../assistant-identity.js";
 import { MediaOffloadError, parseMessageWithAttachments } from "../chat-attachments.js";
 import { resolveAssistantAvatarUrl } from "../control-ui-shared.js";
+import { isEmployeeClient } from "../employee-access.js";
 import { enforceEmployeeAgent, enforceEmployeeSessionKey } from "../employee-access.js";
 import { ADMIN_SCOPE } from "../method-scopes.js";
 import { GATEWAY_CLIENT_CAPS, hasGatewayClientCap } from "../protocol/client-info.js";
@@ -81,6 +82,12 @@ const RESET_COMMAND_RE = /^\/(new|reset)(?:\s+([\s\S]*))?$/i;
 function resolveSenderIsOwnerFromClient(client: GatewayRequestHandlerOptions["client"]): boolean {
   const scopes = Array.isArray(client?.connect?.scopes) ? client.connect.scopes : [];
   return scopes.includes(ADMIN_SCOPE);
+}
+
+function resolveAllowedOwnerOnlyToolsFromClient(
+  client: GatewayRequestHandlerOptions["client"],
+): readonly string[] | undefined {
+  return isEmployeeClient(client) ? ["cron"] : undefined;
 }
 
 function resolveAllowModelOverrideFromClient(
@@ -318,6 +325,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       inputProvenance?: InputProvenance;
     };
     const senderIsOwner = resolveSenderIsOwnerFromClient(client);
+    const allowedOwnerOnlyToolNames = resolveAllowedOwnerOnlyToolsFromClient(client);
     const allowModelOverride = resolveAllowModelOverrideFromClient(client);
     const canResetSession = resolveCanResetSessionFromClient(client);
     const requestedModelOverride = Boolean(request.provider || request.model);
@@ -841,6 +849,7 @@ export const agentHandlers: GatewayRequestHandlers = {
           workspaceDir: sessionEntry?.spawnedWorkspaceDir,
         }),
         senderIsOwner,
+        allowedOwnerOnlyToolNames,
         allowModelOverride,
       },
       runId,

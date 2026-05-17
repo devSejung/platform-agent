@@ -454,6 +454,7 @@ export function runAgentAttempt(params: {
     replyToMode: params.runContext.replyToMode,
     hasRepliedRef: params.runContext.hasRepliedRef,
     senderIsOwner: params.opts.senderIsOwner,
+    allowedOwnerOnlyToolNames: params.opts.allowedOwnerOnlyToolNames,
     sessionFile: params.sessionFile,
     workspaceDir: params.workspaceDir,
     config: params.cfg,

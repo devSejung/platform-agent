@@ -442,7 +442,7 @@ describe("tool descriptions", () => {
       "Use write/send-keys/submit/paste/kill for input or intervention.",
     );
     expect(execWithCron.description).toContain(
-      "Do not use exec sleep or delay loops for reminders or deferred follow-ups; use cron instead.",
+      "Do not use exec sleep, delay loops, process polling, or `openclaw cron add` for reminders or deferred follow-ups; use the cron tool instead so jobs inherit the current agent/session.",
     );
     expect(processWithCron.description).toContain(
       "Do not use process polling to emulate timers or reminders; use cron for scheduled follow-ups.",

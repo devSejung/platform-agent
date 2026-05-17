@@ -37,11 +37,13 @@ export function resolveCronDeliveryPlan(job: CronJob): CronDeliveryPlan {
       ? "announce"
       : normalizedMode === "webhook"
         ? "webhook"
-        : normalizedMode === "none"
-          ? "none"
-          : normalizedMode === "deliver"
-            ? "announce"
-            : undefined;
+        : normalizedMode === "origin"
+          ? "origin"
+          : normalizedMode === "none"
+            ? "none"
+            : normalizedMode === "deliver"
+              ? "announce"
+              : undefined;
 
   const deliveryChannel = normalizeChannel(
     (delivery as { channel?: unknown } | undefined)?.channel,

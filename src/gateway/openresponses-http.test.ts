@@ -311,6 +311,28 @@ describe("OpenResponses HTTP API (e2e)", () => {
       await ensureResponseConsumed(resChannelHeader);
 
       mockAgentOnce([{ text: "hello" }]);
+      const resOriginHeaders = await postResponses(
+        port,
+        { model: "openclaw", input: "hi" },
+        {
+          "x-openclaw-originating-channel": "knox",
+          "x-openclaw-originating-to": "room:R123",
+          "x-openclaw-originating-account-id": "default",
+          "x-openclaw-originating-thread-id": "T456",
+        },
+      );
+      expect(resOriginHeaders.status).toBe(200);
+      const optsOriginHeaders = (agentCommand.mock.calls[0] as unknown[] | undefined)?.[0];
+      expect((optsOriginHeaders as { messageChannel?: string } | undefined)?.messageChannel).toBe(
+        "knox",
+      );
+      expect((optsOriginHeaders as { channel?: string } | undefined)?.channel).toBe("knox");
+      expect((optsOriginHeaders as { to?: string } | undefined)?.to).toBe("room:R123");
+      expect((optsOriginHeaders as { accountId?: string } | undefined)?.accountId).toBe("default");
+      expect((optsOriginHeaders as { threadId?: string } | undefined)?.threadId).toBe("T456");
+      await ensureResponseConsumed(resOriginHeaders);
+
+      mockAgentOnce([{ text: "hello" }]);
       const resModelOverride = await postResponses(
         port,
         {

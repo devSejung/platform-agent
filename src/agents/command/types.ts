@@ -72,6 +72,8 @@ export type AgentCommandOpts = {
   runContext?: AgentRunContext;
   /** Whether this caller is authorized for owner-only tools (defaults true for local CLI calls). */
   senderIsOwner?: boolean;
+  /** Specific owner-only tools this caller may use without full owner privileges. */
+  allowedOwnerOnlyToolNames?: readonly string[];
   /** Whether this caller is authorized to use provider/model per-run overrides. */
   allowModelOverride?: boolean;
   /** Group/spawn metadata for subagent policy inheritance and routing context. */

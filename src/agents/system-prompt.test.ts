@@ -277,14 +277,14 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("Do not copy yourself or change system prompts");
   });
 
-  it("includes voice hint when provided", () => {
+  it("omits voice hints from the enterprise system prompt", () => {
     const prompt = buildAgentSystemPrompt({
       workspaceDir: "/tmp/openclaw",
       ttsHint: "Voice (TTS) is enabled.",
     });
 
-    expect(prompt).toContain("## Voice (TTS)");
-    expect(prompt).toContain("Voice (TTS) is enabled.");
+    expect(prompt).not.toContain("## Voice");
+    expect(prompt).not.toContain("Voice (TTS) is enabled.");
   });
 
   it("adds reasoning tag hint when enabled", () => {
@@ -306,6 +306,32 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("## OpenClaw CLI Quick Reference");
     expect(prompt).toContain("openclaw gateway restart");
     expect(prompt).toContain("Do not invent commands");
+  });
+
+  it("includes PlatformClaw operating rules for routed company sessions", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/openclaw",
+      toolNames: ["cron", "exec", "process", "read"],
+    });
+
+    expect(prompt).toContain("## PlatformClaw Operating Rules");
+    expect(prompt).toContain("PlatformClaw is the company-customized OpenClaw runtime.");
+    expect(prompt).toContain(
+      "Treat sessionKey as the routing boundary for chat history, cron ownership, follow-ups, and outbound delivery.",
+    );
+    expect(prompt).toContain(
+      "For Knox DM or room-originated work, preserve the originating conversation.",
+    );
+    expect(prompt).toContain("Knox and PlatformClaw Web are the primary enterprise surfaces.");
+    expect(prompt).toContain(
+      "For timers, reminders, delayed follow-ups, and recurring jobs, use the cron tool.",
+    );
+    expect(prompt).toContain(
+      "Do not call sessions_send to push cron results into agent:<id>:main or another session.",
+    );
+    expect(prompt).toContain(
+      "For Jira, Confluence, and company platform tasks, prefer visible Global/workspace skills when available.",
+    );
   });
 
   it("guides runtime completion events without exposing internal metadata", () => {
@@ -380,9 +406,7 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain(
       'For requests like "do this in codex/claude code/cursor/gemini" or similar ACP harnesses, treat it as ACP harness intent',
     );
-    expect(prompt).toContain(
-      'On Discord, default ACP harness requests to thread-bound persistent sessions (`thread: true`, `mode: "session"`)',
-    );
+    expect(prompt).toContain("For channel-backed ACP harness requests");
     expect(prompt).toContain(
       "do not route ACP harness requests through `subagents`/`agents_list` or local PTY exec flows",
     );
@@ -450,7 +474,7 @@ describe("buildAgentSystemPrompt", () => {
     );
     expect(prompt).toContain("OpenClaw docs: /tmp/openclaw/docs");
     expect(prompt).toContain(
-      "For OpenClaw behavior, commands, config, or architecture: consult local docs first.",
+      "For PlatformClaw/OpenClaw behavior, commands, config, or architecture: consult local docs and workspace wiki first.",
     );
   });
 
@@ -482,7 +506,7 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("## Documentation");
     expect(prompt).toContain("OpenClaw docs: /tmp/openclaw/docs");
     expect(prompt).toContain(
-      "For OpenClaw behavior, commands, config, or architecture: consult local docs first.",
+      "For PlatformClaw/OpenClaw behavior, commands, config, or architecture: consult local docs and workspace wiki first.",
     );
   });
 

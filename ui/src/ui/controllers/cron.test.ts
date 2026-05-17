@@ -160,6 +160,44 @@ describe("cron controller", () => {
     });
   });
 
+  it("uses current UI sessionKey as cron origin when creating an isolated job", async () => {
+    const request = vi.fn(async (method: string, _payload?: unknown) => {
+      if (method === "cron.add") {
+        return { id: "job-origin" };
+      }
+      if (method === "cron.list") {
+        return { jobs: [] };
+      }
+      if (method === "cron.status") {
+        return { enabled: true, jobs: 0, nextWakeAtMs: null };
+      }
+      return {};
+    });
+
+    const state = createState({
+      client: { request } as unknown as CronState["client"],
+      sessionKey: "agent:ops:knox:room:room-123",
+      cronForm: {
+        ...DEFAULT_CRON_FORM,
+        name: "origin-routed",
+        scheduleKind: "cron",
+        cronExpr: "0 * * * *",
+        sessionTarget: "isolated",
+        payloadKind: "agentTurn",
+        payloadText: "run this",
+        sessionKey: "",
+      },
+    });
+
+    await addCronJob(state);
+
+    const addCall = request.mock.calls.find(([method]) => method === "cron.add");
+    expect(addCall).toBeDefined();
+    expect(addCall?.[1]).toMatchObject({
+      sessionKey: "agent:ops:knox:room:room-123",
+    });
+  });
+
   it("forwards lightContext in cron payload", async () => {
     const request = vi.fn(async (method: string, _payload?: unknown) => {
       if (method === "cron.add") {

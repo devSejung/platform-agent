@@ -1,3 +1,4 @@
+import { isEmployeeClient } from "../employee-access.js";
 import { ADMIN_SCOPE } from "../method-scopes.js";
 import {
   ErrorCodes,
@@ -151,6 +152,7 @@ export const toolsEffectiveHandlers: GatewayRequestHandlers = {
         modelProvider: trustedContext.modelProvider,
         modelId: trustedContext.modelId,
         senderIsOwner: trustedContext.senderIsOwner,
+        allowedOwnerOnlyToolNames: isEmployeeClient(client) ? ["cron"] : undefined,
         currentChannelId: trustedContext.currentChannelId,
         currentThreadTs: trustedContext.currentThreadTs,
         accountId: trustedContext.accountId,

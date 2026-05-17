@@ -1,10 +1,10 @@
-import type { IncomingMessage } from "node:http";
 import fs from "node:fs/promises";
+import type { IncomingMessage } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { makeMockHttpResponse } from "./test-http-response.js";
 import { handleEmployeeLoginRequest } from "./employee-web-auth.js";
+import { makeMockHttpResponse } from "./test-http-response.js";
 
 describe("handleEmployeeLoginRequest", () => {
   const fetchMock = vi.fn();
@@ -35,7 +35,7 @@ describe("handleEmployeeLoginRequest", () => {
       res,
       config: {},
       readJsonBody: async () => ({
-        ok: true,
+        ok: true as const,
         value: { identifier: "eon@samsung.com", password: "456123" },
       }),
       context: {
@@ -65,18 +65,24 @@ describe("handleEmployeeLoginRequest", () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "employee-auth-test-"));
     const workspaceRoot = path.join(tempDir, "workspaces");
     const activationPath = path.join(tempDir, "employee-activation.json");
-    vi.stubGlobal("fetch", fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        authenticated: true,
-        employeeId: "eon",
-        email: "eon@samsung.com",
-        name: "Eon",
-        department: "Samsung",
-        agentId: "eon",
-        sessionKey: "agent:eon:main",
+    vi.stubGlobal(
+      "fetch",
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          authenticated: true,
+          employeeId: "eon",
+          email: "eon@samsung.com",
+          name: "Eon",
+          department: "Samsung",
+          part: "AI Platform Part",
+          confluenceSpace: "PLATFORM",
+          notes: "사내 Jira와 Confluence를 주로 사용합니다.",
+          agentId: "eon",
+          sessionKey: "agent:eon:main",
+        }),
       }),
-    }));
+    );
     process.env.OPENCLAW_EMPLOYEE_AUTH_LOGIN_URL = "http://auth.local/login";
     process.env.OPENCLAW_EMPLOYEE_AUTH_SECRET = "employee-test-secret";
     process.env.OPENCLAW_EMPLOYEE_ACTIVATION_PATH = activationPath;
@@ -100,7 +106,7 @@ describe("handleEmployeeLoginRequest", () => {
         },
       },
       readJsonBody: async () => ({
-        ok: true,
+        ok: true as const,
         value: { identifier: "eon@samsung.com", password: "456123" },
       }),
       context: {
@@ -126,8 +132,7 @@ describe("handleEmployeeLoginRequest", () => {
       authenticated: true,
       notice: {
         title: "Workspace ready",
-        body:
-          "전용 workspace를 생성했습니다. USER.md에 사용자 기본 정보를 반영했습니다. Knox 연동을 위한 employee activation을 등록했습니다.",
+        body: "전용 workspace를 생성했습니다. USER.md에 사용자 기본 정보를 반영했습니다. Knox 연동을 위한 employee activation을 등록했습니다.",
       },
     });
 
@@ -135,12 +140,22 @@ describe("handleEmployeeLoginRequest", () => {
     expect(userProfile).toContain("<!-- OPENCLAW_AUTO_USER_START -->");
     expect(userProfile).toContain("- Employee ID: eon");
     expect(userProfile).toContain("- Jira ID: eon");
+    expect(userProfile).toContain(
+      "- Description: Jira와 Confluence 관련 명령은 Global 스킬을 사용하세요.",
+    );
     expect(userProfile).toContain("- Name: Eon");
     expect(userProfile).toContain("- Department: Samsung");
+    expect(userProfile).toContain("- 파트: AI Platform Part");
     expect(userProfile).toContain("- Email: eon@samsung.com");
+    expect(userProfile).toContain("- Confluence Space: PLATFORM");
+    expect(userProfile).toContain("<!-- OPENCLAW_USER_NOTES_START -->");
+    expect(userProfile).toContain("사내 Jira와 Confluence를 주로 사용합니다.");
 
     const activation = JSON.parse(await fs.readFile(activationPath, "utf8")) as {
-      employees?: Record<string, { agentId?: string; name?: string; department?: string; email?: string }>;
+      employees?: Record<
+        string,
+        { agentId?: string; name?: string; department?: string; email?: string }
+      >;
     };
     expect(activation.employees?.eon).toEqual(
       expect.objectContaining({
@@ -156,18 +171,24 @@ describe("handleEmployeeLoginRequest", () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "employee-auth-repeat-test-"));
     const workspaceRoot = path.join(tempDir, "workspaces");
     const activationPath = path.join(tempDir, "employee-activation.json");
-    vi.stubGlobal("fetch", fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        authenticated: true,
-        employeeId: "eon",
-        email: " eon@samsung.com ",
-        name: " Eon ",
-        department: " Samsung ",
-        agentId: " eon ",
-        sessionKey: " agent:eon:main ",
+    vi.stubGlobal(
+      "fetch",
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          authenticated: true,
+          employeeId: "eon",
+          email: " eon@samsung.com ",
+          name: " Eon ",
+          department: " Samsung ",
+          part: " ",
+          confluenceSpace: " ",
+          note: " ",
+          agentId: " eon ",
+          sessionKey: " agent:eon:main ",
+        }),
       }),
-    }));
+    );
     process.env.OPENCLAW_EMPLOYEE_AUTH_LOGIN_URL = "http://auth.local/login";
     process.env.OPENCLAW_EMPLOYEE_AUTH_SECRET = "employee-test-secret";
     process.env.OPENCLAW_EMPLOYEE_ACTIVATION_PATH = activationPath;
@@ -188,7 +209,7 @@ describe("handleEmployeeLoginRequest", () => {
           },
         },
         readJsonBody: async () => ({
-          ok: true,
+          ok: true as const,
           value: { identifier: "eon@samsung.com", password: "456123" },
         }),
         context: {
@@ -206,7 +227,9 @@ describe("handleEmployeeLoginRequest", () => {
       }) as const;
 
     const firstRes = makeMockHttpResponse();
-    (firstRes.res as unknown as { getHeader: (name: string) => unknown }).getHeader = vi.fn(() => undefined);
+    (firstRes.res as unknown as { getHeader: (name: string) => unknown }).getHeader = vi.fn(
+      () => undefined,
+    );
     await handleEmployeeLoginRequest({
       ...makeContext(),
       res: firstRes.res,
@@ -215,13 +238,14 @@ describe("handleEmployeeLoginRequest", () => {
       authenticated: true,
       notice: {
         title: "Workspace ready",
-        body:
-          "전용 workspace를 생성했습니다. USER.md에 사용자 기본 정보를 반영했습니다. Knox 연동을 위한 employee activation을 등록했습니다.",
+        body: "전용 workspace를 생성했습니다. USER.md에 사용자 기본 정보를 반영했습니다. Knox 연동을 위한 employee activation을 등록했습니다.",
       },
     });
 
     const secondRes = makeMockHttpResponse();
-    (secondRes.res as unknown as { getHeader: (name: string) => unknown }).getHeader = vi.fn(() => undefined);
+    (secondRes.res as unknown as { getHeader: (name: string) => unknown }).getHeader = vi.fn(
+      () => undefined,
+    );
     await handleEmployeeLoginRequest({
       ...makeContext(),
       res: secondRes.res,
@@ -235,5 +259,7 @@ describe("handleEmployeeLoginRequest", () => {
     expect(userProfile).toContain("- Jira ID: eon");
     expect(userProfile).toContain("- Department: Samsung");
     expect(userProfile).toContain("- Email: eon@samsung.com");
+    expect(userProfile).not.toContain("- 파트:");
+    expect(userProfile).not.toContain("- Confluence Space:");
   });
 });

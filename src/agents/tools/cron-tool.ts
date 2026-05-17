@@ -1,5 +1,6 @@
 import { Type, type TSchema } from "@sinclair/typebox";
 import { loadConfig } from "../../config/config.js";
+import { coerceUnsafeCronOriginDeliveryJob } from "../../cron/creation-safety.js";
 import { normalizeCronJobCreate, normalizeCronJobPatch } from "../../cron/normalize.js";
 import type { CronDelivery, CronMessageChannel } from "../../cron/types.js";
 import { normalizeHttpWebhookUrl } from "../../cron/webhook-url.js";
@@ -10,7 +11,8 @@ import {
   normalizeOptionalLowercaseString,
 } from "../../shared/string-coerce.js";
 import { isRecord, truncateUtf16Safe } from "../../utils.js";
-import { resolveSessionAgentId } from "../agent-scope.js";
+import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
+import { resolveDefaultAgentId, resolveSessionAgentId } from "../agent-scope.js";
 import { optionalStringEnum, stringEnum } from "../schema/typebox.js";
 import { CRON_TOOL_DISPLAY_SUMMARY } from "../tool-description-presets.js";
 import { type AnyAgentTool, jsonResult, readStringParam } from "./common.js";
@@ -25,7 +27,7 @@ const CRON_ACTIONS = ["status", "list", "add", "update", "remove", "run", "runs"
 const CRON_SCHEDULE_KINDS = ["at", "every", "cron"] as const;
 const CRON_WAKE_MODES = ["now", "next-heartbeat"] as const;
 const CRON_PAYLOAD_KINDS = ["systemEvent", "agentTurn"] as const;
-const CRON_DELIVERY_MODES = ["none", "announce", "webhook"] as const;
+const CRON_DELIVERY_MODES = ["none", "origin", "announce", "webhook"] as const;
 const CRON_RUN_MODES = ["due", "force"] as const;
 const CRON_FLAT_PAYLOAD_KEYS = [
   "message",
@@ -267,6 +269,10 @@ export const CronToolSchema = Type.Object(
 
 type CronToolOptions = {
   agentSessionKey?: string;
+  agentChannel?: string;
+  agentAccountId?: string;
+  currentChannelId?: string;
+  currentThreadTs?: string | number;
 };
 
 type GatewayToolCaller = typeof callGatewayTool;
@@ -423,6 +429,121 @@ function inferDeliveryFromSessionKey(agentSessionKey?: string): CronDelivery | n
   return delivery;
 }
 
+function isMainLikeSessionKey(sessionKey?: string): boolean {
+  const parsed = parseAgentSessionKey(sessionKey);
+  return parsed?.rest?.trim() === "main";
+}
+
+function coerceUnsafeLastChannelAnnounce(params: {
+  job: Record<string, unknown>;
+  agentSessionKey?: string;
+}) {
+  if (!isMainLikeSessionKey(params.agentSessionKey)) {
+    return;
+  }
+  const payload = isRecord(params.job.payload) ? params.job.payload : null;
+  if (payload?.kind !== "agentTurn") {
+    return;
+  }
+  const delivery = isRecord(params.job.delivery) ? params.job.delivery : null;
+  if (!delivery) {
+    return;
+  }
+  const mode = normalizeLowercaseStringOrEmpty(
+    typeof delivery.mode === "string" ? delivery.mode : "",
+  );
+  const channel = normalizeLowercaseStringOrEmpty(
+    typeof delivery.channel === "string" ? delivery.channel : "",
+  );
+  const to = typeof delivery.to === "string" ? delivery.to.trim() : "";
+  if ((mode === "" || mode === "announce") && channel === "last" && !to) {
+    params.job.delivery = { mode: "origin" };
+  }
+}
+
+function coerceNonDefaultMainCronToOriginIsolated(params: {
+  job: Record<string, unknown>;
+  defaultAgentId: string;
+  resolvedSessionKey?: string;
+}) {
+  if (!params.resolvedSessionKey) {
+    return;
+  }
+  const agentId =
+    typeof params.job.agentId === "string" && params.job.agentId.trim()
+      ? params.job.agentId.trim()
+      : "";
+  if (!agentId || agentId === params.defaultAgentId) {
+    return;
+  }
+  if (params.job.sessionTarget !== "main") {
+    return;
+  }
+  const payload = isRecord(params.job.payload) ? params.job.payload : null;
+  if (payload?.kind !== "systemEvent" || typeof payload.text !== "string" || !payload.text.trim()) {
+    return;
+  }
+  params.job.sessionTarget = "isolated";
+  params.job.payload = { kind: "agentTurn", message: payload.text.trim() };
+  if (!("delivery" in params.job)) {
+    params.job.delivery = { mode: "origin" };
+  }
+}
+
+function resolveCurrentChannelDeliverySnapshot(opts?: CronToolOptions): CronDelivery | null {
+  const channel = normalizeMessageChannel(opts?.agentChannel);
+  const to = typeof opts?.currentChannelId === "string" ? opts.currentChannelId.trim() : "";
+  if (!channel || !to) {
+    return null;
+  }
+
+  // Shared sessions can be used by multiple surfaces (for example Web UI and
+  // Knox both using agent:<id>:main). In that mode, delivery.mode="origin" is
+  // mutable because the latest session delivery context can be overwritten
+  // before a cron fires. If a real external channel target is available now,
+  // snapshot it at creation time. Keep webchat on origin injection because it is
+  // the internal transcript surface, not an outbound channel.
+  if (channel === INTERNAL_MESSAGE_CHANNEL || channel === "last") {
+    return null;
+  }
+
+  const delivery: CronDelivery = {
+    mode: "announce",
+    channel: channel as CronMessageChannel,
+    to,
+  };
+  if (
+    (typeof opts?.currentThreadTs === "string" && opts.currentThreadTs.trim()) ||
+    (typeof opts?.currentThreadTs === "number" && Number.isFinite(opts.currentThreadTs))
+  ) {
+    delivery.threadId =
+      typeof opts.currentThreadTs === "string" ? opts.currentThreadTs.trim() : opts.currentThreadTs;
+  }
+  if (typeof opts?.agentAccountId === "string" && opts.agentAccountId.trim()) {
+    delivery.accountId = opts.agentAccountId.trim();
+  }
+  return delivery;
+}
+
+function shouldSnapshotCurrentChannelDelivery(params: {
+  deliveryValue: unknown;
+  delivery?: Record<string, unknown>;
+}) {
+  const mode = normalizeLowercaseStringOrEmpty(
+    typeof params.delivery?.mode === "string" ? params.delivery.mode : "",
+  );
+  const hasTarget =
+    (typeof params.delivery?.channel === "string" && params.delivery.channel.trim()) ||
+    (typeof params.delivery?.to === "string" && params.delivery.to.trim());
+  if (hasTarget) {
+    return false;
+  }
+  if (params.deliveryValue == null) {
+    return true;
+  }
+  return Boolean(params.delivery && (mode === "" || mode === "origin" || mode === "announce"));
+}
+
 export function createCronTool(opts?: CronToolOptions, deps?: CronToolDeps): AnyAgentTool {
   const callGateway = deps?.callGatewayTool ?? callGatewayTool;
   return {
@@ -430,9 +551,17 @@ export function createCronTool(opts?: CronToolOptions, deps?: CronToolDeps): Any
     name: "cron",
     ownerOnly: true,
     displaySummary: CRON_TOOL_DISPLAY_SUMMARY,
-    description: `Manage Gateway cron jobs (status/list/add/update/remove/run/runs) and send wake events. Use this for reminders, "check back later" requests, delayed follow-ups, and recurring tasks. Do not emulate scheduling with exec sleep or process polling.
+    description: `Manage Gateway cron jobs (status/list/add/update/remove/run/runs) and send wake events. Use this for reminders, "check back later" requests, delayed follow-ups, timers, alarms, and recurring tasks. Do not emulate scheduling with exec sleep, shell loops, process polling, or \`openclaw cron add\` through exec.
 
 Main-session cron jobs enqueue system events for heartbeat handling. Isolated cron jobs create background task runs that appear in \`openclaw tasks\`.
+
+SESSION OWNERSHIP:
+- Always create cron jobs through this cron tool, not by running the CLI in exec.
+- A cron job created from a chat/session must stay owned by that source session. Do not invent, omit, or clear agentId/sessionKey.
+- If the user asks for a timer/reminder/follow-up in the current conversation, omit agentId/sessionKey in the tool call and let OpenClaw bind the job to the current session automatically.
+- For chat-delivered reminders, prefer sessionTarget="isolated" with payload.kind="agentTurn". This preserves the origin session while letting the scheduled run produce a user-visible result.
+- Use sessionTarget="main" with payload.kind="systemEvent" only for low-level heartbeat/system maintenance, not normal user reminders.
+- Never put sessions_send or other message-delivery tool instructions inside cron payload.message. Cron owns result delivery; use delivery.mode="origin" for session-owned web/internal jobs, delivery.mode="none" only when the user explicitly wants no visible result, or explicit announce/webhook only for external destinations.
 
 ACTIONS:
 - status: Check cron scheduler status
@@ -482,17 +611,20 @@ PAYLOAD TYPES (payload.kind):
   { "kind": "agentTurn", "message": "<prompt>", "model": "<optional>", "thinking": "<optional>", "timeoutSeconds": <optional, 0 means no timeout> }
 
 DELIVERY (top-level):
-  { "mode": "none|announce|webhook", "channel": "<optional>", "to": "<optional>", "bestEffort": <optional-bool> }
-  - Default for isolated agentTurn jobs (when delivery omitted): "announce"
-  - announce: send to chat channel (optional channel/to target)
+  { "mode": "none|origin|announce|webhook", "channel": "<optional>", "to": "<optional>", "bestEffort": <optional-bool> }
+  - Default for session-owned isolated agentTurn jobs (when delivery omitted): "origin"; the result is attached to the session that created the cron.
+  - none: run without any automatic result delivery or origin-session injection.
+  - origin: attach the result to the origin session saved on the cron job.
+  - Ownerless/global isolated agentTurn jobs may default to "announce".
+  - announce: send to a configured chat channel (optional channel/to target)
   - webhook: send finished-run event as HTTP POST to delivery.to (URL required)
-  - If the task needs to send to a specific chat/recipient, set announce delivery.channel/to; do not call messaging tools inside the run.
+  - If the task needs to send to a specific external chat/recipient, set announce delivery.channel/to; do not call messaging tools inside the run.
 
 CRITICAL CONSTRAINTS:
 - sessionTarget="main" REQUIRES payload.kind="systemEvent"
 - sessionTarget="isolated" | "current" | "session:xxx" REQUIRES payload.kind="agentTurn"
 - For webhook callbacks, use delivery.mode="webhook" with delivery.to set to a URL.
-Default: prefer isolated agentTurn jobs unless the user explicitly wants current-session binding.
+Default: prefer isolated agentTurn jobs for user-facing reminders. Use current/main only when explicitly required.
 
 WAKE MODES (for wake action):
 - "next-heartbeat" (default): Wake on next heartbeat
@@ -557,6 +689,8 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
           if (!params.job || typeof params.job !== "object") {
             throw new Error("job required");
           }
+          const rawJobRecord = isRecord(params.job) ? params.job : undefined;
+          const hadExplicitDelivery = rawJobRecord ? "delivery" in rawJobRecord : false;
           const job =
             normalizeCronJobCreate(params.job, {
               sessionContext: { sessionKey: opts?.agentSessionKey },
@@ -567,7 +701,10 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
             const resolvedSessionKey = opts?.agentSessionKey
               ? resolveInternalSessionKey({ key: opts.agentSessionKey, alias, mainKey })
               : undefined;
-            if (!("agentId" in job)) {
+            const rawAgentId = (job as { agentId?: unknown }).agentId;
+            const hasExplicitAgentId =
+              rawAgentId === null || (typeof rawAgentId === "string" && rawAgentId.trim());
+            if (!hasExplicitAgentId) {
               const agentId = opts?.agentSessionKey
                 ? resolveSessionAgentId({ sessionKey: opts.agentSessionKey, config: cfg })
                 : undefined;
@@ -575,9 +712,31 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
                 (job as { agentId?: string }).agentId = agentId;
               }
             }
-            if (!("sessionKey" in job) && resolvedSessionKey) {
+            const rawSessionKey = (job as { sessionKey?: unknown }).sessionKey;
+            const hasExplicitSessionKey =
+              rawSessionKey === null || (typeof rawSessionKey === "string" && rawSessionKey.trim());
+            if (!hasExplicitSessionKey && resolvedSessionKey) {
               (job as { sessionKey?: string }).sessionKey = resolvedSessionKey;
+              const payload = (job as { payload?: { kind?: string } }).payload;
+              const delivery = isRecord((job as { delivery?: unknown }).delivery)
+                ? (job as { delivery: Record<string, unknown> }).delivery
+                : undefined;
+              const mode = normalizeLowercaseStringOrEmpty(
+                typeof delivery?.mode === "string" ? delivery.mode : "",
+              );
+              const hasTarget =
+                (typeof delivery?.channel === "string" && delivery.channel.trim()) ||
+                (typeof delivery?.to === "string" && delivery.to.trim());
+              if (
+                !hadExplicitDelivery &&
+                payload?.kind === "agentTurn" &&
+                mode === "announce" &&
+                !hasTarget
+              ) {
+                (job as { delivery?: CronDelivery }).delivery = { mode: "origin" };
+              }
             }
+            coerceUnsafeCronOriginDeliveryJob(job as Record<string, unknown>);
           }
 
           if (
@@ -606,7 +765,21 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
             const hasTarget =
               (typeof delivery?.channel === "string" && delivery.channel.trim()) ||
               (typeof delivery?.to === "string" && delivery.to.trim());
+            const currentChannelSnapshot = shouldSnapshotCurrentChannelDelivery({
+              deliveryValue,
+              delivery,
+            })
+              ? resolveCurrentChannelDeliverySnapshot(opts)
+              : null;
+            if (currentChannelSnapshot) {
+              (job as { delivery?: unknown }).delivery = {
+                ...delivery,
+                ...currentChannelSnapshot,
+              } satisfies CronDelivery;
+              coerceUnsafeCronOriginDeliveryJob(job as Record<string, unknown>);
+            }
             const shouldInfer =
+              !currentChannelSnapshot &&
               (deliveryValue == null || delivery) &&
               (mode === "" || mode === "announce") &&
               !hasTarget;
@@ -619,6 +792,11 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
                 } satisfies CronDelivery;
               }
             }
+            coerceUnsafeLastChannelAnnounce({
+              job: job as Record<string, unknown>,
+              agentSessionKey: opts.agentSessionKey,
+            });
+            coerceUnsafeCronOriginDeliveryJob(job as Record<string, unknown>);
           }
 
           const contextMessages =
@@ -644,6 +822,19 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
                 payload.text = `${baseText}${REMINDER_CONTEXT_MARKER}${contextLines.join("\n")}`;
               }
             }
+          }
+          if (job && typeof job === "object") {
+            const cfg = loadConfig();
+            const { mainKey, alias } = resolveMainSessionAlias(cfg);
+            const resolvedSessionKey = opts?.agentSessionKey
+              ? resolveInternalSessionKey({ key: opts.agentSessionKey, alias, mainKey })
+              : undefined;
+            coerceNonDefaultMainCronToOriginIsolated({
+              job: job as Record<string, unknown>,
+              defaultAgentId: resolveDefaultAgentId(cfg),
+              resolvedSessionKey,
+            });
+            coerceUnsafeCronOriginDeliveryJob(job as Record<string, unknown>);
           }
           return jsonResult(await callGateway("cron.add", gatewayOpts, job));
         }

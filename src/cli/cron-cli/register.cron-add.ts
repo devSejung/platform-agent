@@ -1,11 +1,12 @@
 import type { Command } from "commander";
 import type { CronJob } from "../../cron/types.js";
-import { sanitizeAgentId } from "../../routing/session-key.js";
+import { resolveAgentIdFromSessionKey, sanitizeAgentId } from "../../routing/session-key.js";
 import { defaultRuntime } from "../../runtime.js";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
 } from "../../shared/string-coerce.js";
+import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
 import type { GatewayRpcOpts } from "../gateway-rpc.js";
 import { addGatewayClientOptions, callGatewayFromCli } from "../gateway-rpc.js";
 import { parsePositiveIntOrUndefined } from "../program/helpers.js";
@@ -17,6 +18,33 @@ import {
   printCronList,
   warnIfCronSchedulerDisabled,
 } from "./shared.js";
+
+function readEnvOptionalString(...keys: string[]) {
+  for (const key of keys) {
+    const value = normalizeOptionalString(process.env[key]);
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function resolveEnvDeliverySnapshot() {
+  const channel = normalizeMessageChannel(
+    readEnvOptionalString("OPENCLAW_AGENT_CHANNEL", "OPENCLAW_CHANNEL"),
+  );
+  const to = readEnvOptionalString("OPENCLAW_AGENT_TO", "OPENCLAW_CURRENT_CHANNEL_ID");
+  if (!channel || !to || channel === INTERNAL_MESSAGE_CHANNEL || channel === "last") {
+    return null;
+  }
+  return {
+    mode: "announce" as const,
+    channel,
+    to,
+    threadId: readEnvOptionalString("OPENCLAW_AGENT_THREAD_ID", "OPENCLAW_CURRENT_THREAD_TS"),
+    accountId: readEnvOptionalString("OPENCLAW_AGENT_ACCOUNT_ID"),
+  };
+}
 
 export function registerCronStatusCommand(cron: Command) {
   addGatewayClientOptions(
@@ -71,9 +99,17 @@ export function registerCronAddCommand(cron: Command) {
       .option("--disabled", "Create job disabled", false)
       .option("--delete-after-run", "Delete one-shot job after it succeeds", false)
       .option("--keep-after-run", "Keep one-shot job after it succeeds", false)
+      .option(
+        "--global",
+        "Create an ownerless global cron job. Agent sessions should not use this.",
+        false,
+      )
       .option("--agent <id>", "Agent id for this job")
-      .option("--session <target>", "Session target (main|isolated)")
-      .option("--session-key <key>", "Session key for job routing (e.g. agent:my-agent:my-session)")
+      .option("--session <target>", "Session target (main|isolated|current|session:<id>)")
+      .option(
+        "--session-key <key>",
+        "Origin session key for job ownership/routing. Agent exec sessions usually set this automatically.",
+      )
       .option("--wake <mode>", "Wake mode (now|next-heartbeat)", "now")
       .option(
         "--at <when>",
@@ -94,9 +130,16 @@ export function registerCronAddCommand(cron: Command) {
       .option("--timeout-seconds <n>", "Timeout seconds for agent jobs")
       .option("--light-context", "Use lightweight bootstrap context for agent jobs", false)
       .option("--tools <csv>", "Comma-separated tool allow-list (e.g. exec,read,write)")
-      .option("--announce", "Announce summary to a chat (subagent-style)", false)
-      .option("--deliver", "Deprecated (use --announce). Announces a summary to a chat.")
-      .option("--no-deliver", "Disable announce delivery and skip main-session summary")
+      .option(
+        "--announce",
+        "Send final result to an external configured chat channel. Not needed for web/session-owned jobs.",
+        false,
+      )
+      .option("--deliver", "Deprecated alias for --announce.")
+      .option(
+        "--no-deliver",
+        "Do not send to an external channel. Session-owned jobs remain attached to their origin session.",
+      )
       .option("--channel <channel>", `Delivery channel (${getCronChannelOptions()})`, "last")
       .option(
         "--to <dest>",
@@ -105,6 +148,21 @@ export function registerCronAddCommand(cron: Command) {
       .option("--account <id>", "Channel account id for delivery (multi-account setups)")
       .option("--best-effort-deliver", "Do not fail the job if delivery fails", false)
       .option("--json", "Output JSON", false)
+      .addHelpText(
+        "after",
+        `
+Ownership:
+  Normal cron jobs must be owned by an agent/session. When run from an agent tool
+  session, OPENCLAW_AGENT_SESSION_KEY / OPENCLAW_SESSION_KEY is used automatically.
+  Use --agent or --session-key for manual CLI creation. Use --global only for an
+  intentional ownerless admin job.
+
+Delivery:
+  Session-owned isolated agent jobs default to --no-deliver behavior, so results
+  stay attached to the origin session. Use --announce with --channel/--to only
+  when you explicitly want external channel delivery.
+`,
+      )
       .action(async (opts: GatewayRpcOpts & Record<string, unknown>, cmd?: Command) => {
         try {
           const schedule = resolveCronCreateSchedule({
@@ -122,10 +180,20 @@ export function registerCronAddCommand(cron: Command) {
             throw new Error("--wake must be now or next-heartbeat");
           }
 
-          const agentId =
+          const envSessionKey =
+            normalizeOptionalString(process.env.OPENCLAW_AGENT_SESSION_KEY) ??
+            normalizeOptionalString(process.env.OPENCLAW_SESSION_KEY);
+          const cliAgentId =
             typeof opts.agent === "string" && opts.agent.trim()
               ? sanitizeAgentId(opts.agent.trim())
               : undefined;
+          const agentId =
+            cliAgentId ??
+            (envSessionKey
+              ? sanitizeAgentId(resolveAgentIdFromSessionKey(envSessionKey))
+              : normalizeOptionalString(process.env.OPENCLAW_AGENT_ID)
+                ? sanitizeAgentId(String(process.env.OPENCLAW_AGENT_ID))
+                : undefined);
 
           const hasAnnounce = Boolean(opts.announce) || opts.deliver === true;
           const hasNoDeliver = opts.deliver === false;
@@ -207,14 +275,28 @@ export function registerCronAddCommand(cron: Command) {
             throw new Error("--account requires a non-main agentTurn job with delivery.");
           }
 
+          const sessionKey =
+            typeof opts.sessionKey === "string" && opts.sessionKey.trim()
+              ? opts.sessionKey.trim()
+              : envSessionKey;
+
           const deliveryMode =
             isIsolatedLikeSessionTarget && payload.kind === "agentTurn"
               ? hasAnnounce
                 ? "announce"
                 : hasNoDeliver
                   ? "none"
-                  : "announce"
+                  : sessionKey
+                    ? "origin"
+                    : "announce"
               : undefined;
+          const envDeliverySnapshot =
+            !hasAnnounce &&
+            !hasNoDeliver &&
+            isIsolatedLikeSessionTarget &&
+            payload.kind === "agentTurn"
+              ? resolveEnvDeliverySnapshot()
+              : null;
 
           const nameRaw = typeof opts.name === "string" ? opts.name : "";
           const name = nameRaw.trim();
@@ -227,10 +309,11 @@ export function registerCronAddCommand(cron: Command) {
               ? opts.description.trim()
               : undefined;
 
-          const sessionKey =
-            typeof opts.sessionKey === "string" && opts.sessionKey.trim()
-              ? opts.sessionKey.trim()
-              : undefined;
+          if (!agentId && !sessionKey && opts.global !== true) {
+            throw new Error(
+              "cron add requires an owner. Pass --agent/--session-key, run from an agent session, or use --global for an explicit ownerless job.",
+            );
+          }
 
           const params = {
             name,
@@ -239,22 +322,29 @@ export function registerCronAddCommand(cron: Command) {
             deleteAfterRun: opts.deleteAfterRun ? true : opts.keepAfterRun ? false : undefined,
             agentId,
             sessionKey,
+            global: opts.global === true ? true : undefined,
             schedule,
             sessionTarget,
             wakeMode,
             payload,
-            delivery: deliveryMode
-              ? {
-                  mode: deliveryMode,
-                  channel:
-                    typeof opts.channel === "string" && opts.channel.trim()
-                      ? opts.channel.trim()
-                      : undefined,
-                  to: normalizeOptionalString(opts.to),
-                  accountId,
-                  bestEffort: opts.bestEffortDeliver ? true : undefined,
-                }
-              : undefined,
+            delivery: envDeliverySnapshot
+              ? envDeliverySnapshot
+              : deliveryMode
+                ? deliveryMode === "none"
+                  ? { mode: deliveryMode }
+                  : deliveryMode === "origin"
+                    ? { mode: deliveryMode }
+                    : {
+                        mode: deliveryMode,
+                        channel:
+                          typeof opts.channel === "string" && opts.channel.trim()
+                            ? opts.channel.trim()
+                            : undefined,
+                        to: normalizeOptionalString(opts.to),
+                        accountId,
+                        bestEffort: opts.bestEffortDeliver ? true : undefined,
+                      }
+                : undefined,
           };
 
           const res = await callGatewayFromCli("cron.add", opts, params);

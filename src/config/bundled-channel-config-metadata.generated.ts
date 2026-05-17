@@ -6238,6 +6238,100 @@ export const GENERATED_BUNDLED_CHANNEL_CONFIG_METADATA = [
     },
   },
   {
+    pluginId: "knox",
+    channelId: "knox",
+    label: "Knox",
+    description: "Enterprise Knox Messenger delivery through the PlatformClaw Knox adapter.",
+    schema: {
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+        },
+        enabled: {
+          type: "boolean",
+        },
+        adapterOutboundUrl: {
+          type: "string",
+          format: "uri",
+        },
+        adapterAuthToken: {
+          type: "string",
+        },
+        sendTimeoutMs: {
+          type: "integer",
+          minimum: 100,
+          maximum: 120000,
+        },
+        allowFrom: {
+          type: "array",
+          items: {
+            anyOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "number",
+              },
+            ],
+          },
+        },
+        defaultTo: {
+          type: "string",
+        },
+        accounts: {
+          type: "object",
+          properties: {},
+          additionalProperties: {
+            type: "object",
+            properties: {
+              name: {
+                type: "string",
+              },
+              enabled: {
+                type: "boolean",
+              },
+              adapterOutboundUrl: {
+                type: "string",
+                format: "uri",
+              },
+              adapterAuthToken: {
+                type: "string",
+              },
+              sendTimeoutMs: {
+                type: "integer",
+                minimum: 100,
+                maximum: 120000,
+              },
+              allowFrom: {
+                type: "array",
+                items: {
+                  anyOf: [
+                    {
+                      type: "string",
+                    },
+                    {
+                      type: "number",
+                    },
+                  ],
+                },
+              },
+              defaultTo: {
+                type: "string",
+              },
+            },
+            additionalProperties: false,
+          },
+        },
+        defaultAccount: {
+          type: "string",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     pluginId: "line",
     channelId: "line",
     label: "LINE",

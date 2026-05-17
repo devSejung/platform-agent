@@ -1,6 +1,10 @@
-import { loadConfig } from "../config/config.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { normalizeAgentId, parseAgentSessionKey, resolveAgentIdFromSessionKey } from "../routing/session-key.js";
+import { loadConfig } from "../config/config.js";
+import {
+  normalizeAgentId,
+  parseAgentSessionKey,
+  resolveAgentIdFromSessionKey,
+} from "../routing/session-key.js";
 import { ErrorCodes, errorShape } from "./protocol/index.js";
 import type { GatewayClient, RespondFn } from "./server-methods/types.js";
 
@@ -78,16 +82,19 @@ export function filterEmployeeSessionRows<T extends { key?: string | null }>(
   });
 }
 
-export function filterEmployeeCronJobs<T extends { agentId?: string | null }>(
-  client: GatewayClient | null | undefined,
-  jobs: readonly T[],
-): T[] {
+export function filterEmployeeCronJobs<
+  T extends { agentId?: string | null; sessionKey?: string | null },
+>(client: GatewayClient | null | undefined, jobs: readonly T[]): T[] {
   const employeeAgentId = getEmployeeAgentId(client);
   if (!employeeAgentId) {
     return [...jobs];
   }
   const defaultAgentId = resolveDefaultAgentId(loadConfig());
   return jobs.filter((job) => {
+    const session = typeof job.sessionKey === "string" ? job.sessionKey.trim() : "";
+    if (session) {
+      return resolveSessionAgentId(session) === employeeAgentId;
+    }
     const jobAgentId =
       typeof job.agentId === "string" && job.agentId.trim()
         ? normalizeAgentId(job.agentId)
@@ -98,12 +105,16 @@ export function filterEmployeeCronJobs<T extends { agentId?: string | null }>(
 
 export function enforceEmployeeCronJob(
   client: GatewayClient | null | undefined,
-  job: { agentId?: string | null } | null | undefined,
+  job: { agentId?: string | null; sessionKey?: string | null } | null | undefined,
   respond: RespondFn,
 ): boolean {
   if (!job) {
     respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "cron job not found"));
     return false;
+  }
+  const session = typeof job.sessionKey === "string" ? job.sessionKey.trim() : "";
+  if (session) {
+    return enforceEmployeeSessionKey(client, session, respond, "cron job");
   }
   const defaultAgentId = resolveDefaultAgentId(loadConfig());
   return enforceEmployeeAgent(

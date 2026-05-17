@@ -215,4 +215,52 @@ describe("buildGatewayCronService", () => {
       state.cron.stop();
     }
   });
+
+  it("preserves dynamic cron agent ids that are not listed in config", async () => {
+    const tmpDir = path.join(os.tmpdir(), `server-cron-dynamic-agent-${Date.now()}`);
+    const cfg = {
+      session: {
+        mainKey: "main",
+      },
+      agents: {
+        defaults: {
+          workspace: path.join(tmpDir, "workspace-main"),
+        },
+        list: [{ id: "minji" }],
+      },
+      cron: {
+        store: path.join(tmpDir, "cron.json"),
+      },
+    } as OpenClawConfig;
+    loadConfigMock.mockReturnValue(cfg);
+
+    const state = buildGatewayCronService({
+      cfg,
+      deps: {} as CliDeps,
+      broadcast: () => {},
+    });
+    try {
+      const job = await state.cron.add({
+        name: "dynamic-agent",
+        enabled: true,
+        agentId: "eon",
+        sessionKey: "agent:eon:main",
+        schedule: { kind: "at", at: new Date(1).toISOString() },
+        sessionTarget: "isolated",
+        wakeMode: "next-heartbeat",
+        payload: { kind: "agentTurn", message: "hello" },
+      });
+
+      await state.cron.run(job.id, "force");
+
+      expect(runCronIsolatedAgentTurnMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: "eon",
+          sessionKey: expect.stringMatching(/^cron:/),
+        }),
+      );
+    } finally {
+      state.cron.stop();
+    }
+  });
 });

@@ -8,6 +8,7 @@ import type { CronJob, CronRunOutcome, CronRunTelemetry } from "../types.js";
 import {
   dispatchCronDelivery,
   matchesMessagingToolDeliveryTarget,
+  queueCronOriginResultSystemEvent,
   resolveCronDeliveryBestEffort,
 } from "./delivery-dispatch.js";
 import { resolveDeliveryTarget } from "./delivery-target.js";
@@ -640,6 +641,13 @@ async function finalizeCronRun(params: {
       deliveryAttempted:
         deliveryResult.result.deliveryAttempted ?? deliveryResult.deliveryAttempted,
     };
+    await queueCronOriginResultSystemEvent({
+      job: prepared.input.job,
+      runSessionId: prepared.runSessionId,
+      outputText: resultWithDeliveryMeta.outputText ?? deliveryResult.outputText ?? outputText,
+      synthesizedText: deliveryResult.synthesizedText ?? synthesizedText,
+      summary: resultWithDeliveryMeta.summary ?? deliveryResult.summary ?? summary,
+    });
     if (!hasFatalErrorPayload || deliveryResult.result.status !== "ok") {
       return resultWithDeliveryMeta;
     }
@@ -650,6 +658,13 @@ async function finalizeCronRun(params: {
   }
   summary = deliveryResult.summary;
   outputText = deliveryResult.outputText;
+  await queueCronOriginResultSystemEvent({
+    job: prepared.input.job,
+    runSessionId: prepared.runSessionId,
+    outputText,
+    synthesizedText: deliveryResult.synthesizedText ?? synthesizedText,
+    summary,
+  });
   return resolveRunOutcome({
     delivered: deliveryResult.delivered,
     deliveryAttempted: deliveryResult.deliveryAttempted,

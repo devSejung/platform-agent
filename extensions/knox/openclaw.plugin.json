@@ -1,0 +1,9 @@
+{
+  "id": "knox",
+  "channels": ["knox"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

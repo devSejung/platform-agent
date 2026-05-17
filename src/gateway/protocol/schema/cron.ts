@@ -193,6 +193,15 @@ const CronDeliveryNoopSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const CronDeliveryOriginSchema = Type.Object(
+  {
+    mode: Type.Literal("origin"),
+    ...CronDeliverySharedProperties,
+    to: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
 const CronDeliveryAnnounceSchema = Type.Object(
   {
     mode: Type.Literal("announce"),
@@ -213,6 +222,7 @@ const CronDeliveryWebhookSchema = Type.Object(
 
 export const CronDeliverySchema = Type.Union([
   CronDeliveryNoopSchema,
+  CronDeliveryOriginSchema,
   CronDeliveryAnnounceSchema,
   CronDeliveryWebhookSchema,
 ]);
@@ -220,7 +230,12 @@ export const CronDeliverySchema = Type.Union([
 export const CronDeliveryPatchSchema = Type.Object(
   {
     mode: Type.Optional(
-      Type.Union([Type.Literal("none"), Type.Literal("announce"), Type.Literal("webhook")]),
+      Type.Union([
+        Type.Literal("none"),
+        Type.Literal("origin"),
+        Type.Literal("announce"),
+        Type.Literal("webhook"),
+      ]),
     ),
     ...CronDeliverySharedProperties,
     to: Type.Optional(Type.String()),
@@ -288,6 +303,7 @@ export const CronAddParamsSchema = Type.Object(
   {
     name: NonEmptyString,
     ...CronCommonOptionalFields,
+    global: Type.Optional(Type.Boolean()),
     schedule: CronScheduleSchema,
     sessionTarget: CronSessionTargetSchema,
     wakeMode: CronWakeModeSchema,

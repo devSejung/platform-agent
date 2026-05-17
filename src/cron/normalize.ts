@@ -590,7 +590,9 @@ export function normalizeCronJobInput(
       (sessionTarget === "" && payloadKind === "agentTurn");
     const hasDelivery = "delivery" in next && next.delivery !== undefined;
     if (!hasDelivery && isIsolatedAgentTurn && payloadKind === "agentTurn") {
-      next.delivery = { mode: "announce" };
+      const hasOriginSession =
+        typeof next.sessionKey === "string" && next.sessionKey.trim().length > 0;
+      next.delivery = { mode: hasOriginSession ? "origin" : "announce" };
     }
   }
 

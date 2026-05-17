@@ -37,6 +37,18 @@ describe("owner-only tool gating", () => {
     expect(toolNames).toContain("nodes");
   });
 
+  it("can allow only cron for employee-like non-owner senders", () => {
+    const tools = createOpenClawCodingTools({
+      senderIsOwner: false,
+      allowedOwnerOnlyToolNames: ["cron"],
+    });
+    const toolNames = tools.map((tool) => tool.name);
+    expect(toolNames).toContain("cron");
+    expect(toolNames).not.toContain("whatsapp_login");
+    expect(toolNames).not.toContain("gateway");
+    expect(toolNames).not.toContain("nodes");
+  });
+
   it("keeps canvas available to unauthorized senders by current trust model", () => {
     const tools = createOpenClawCodingTools({ senderIsOwner: false });
     const toolNames = tools.map((tool) => tool.name);

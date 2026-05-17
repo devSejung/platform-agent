@@ -52,9 +52,19 @@ function isOwnerOnlyTool(tool: AnyAgentTool) {
   return tool.ownerOnly === true || isOwnerOnlyToolName(tool.name);
 }
 
-export function applyOwnerOnlyToolPolicy(tools: AnyAgentTool[], senderIsOwner: boolean) {
+export function applyOwnerOnlyToolPolicy(
+  tools: AnyAgentTool[],
+  senderIsOwner: boolean,
+  opts?: { allowedOwnerOnlyToolNames?: readonly string[] },
+) {
+  const allowedOwnerOnlyToolNames = new Set(
+    (opts?.allowedOwnerOnlyToolNames ?? []).map((name) => normalizeToolName(name)),
+  );
   const withGuard = tools.map((tool) => {
     if (!isOwnerOnlyTool(tool)) {
+      return tool;
+    }
+    if (allowedOwnerOnlyToolNames.has(normalizeToolName(tool.name))) {
       return tool;
     }
     return wrapOwnerOnlyToolExecution(tool, senderIsOwner);
@@ -62,7 +72,9 @@ export function applyOwnerOnlyToolPolicy(tools: AnyAgentTool[], senderIsOwner: b
   if (senderIsOwner) {
     return withGuard;
   }
-  return withGuard.filter((tool) => !isOwnerOnlyTool(tool));
+  return withGuard.filter(
+    (tool) => !isOwnerOnlyTool(tool) || allowedOwnerOnlyToolNames.has(normalizeToolName(tool.name)),
+  );
 }
 
 export type ToolPolicyLike = {

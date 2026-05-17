@@ -258,7 +258,10 @@ describe("upsertWorkspaceUserProfile", () => {
         employeeId: "eon",
         name: "Eon",
         department: "Platform",
+        part: "AI Platform Part",
         email: "eon@company.example",
+        confluenceSpace: "PLATFORM",
+        notes: "초기 사용자 노트입니다.",
       },
     });
 
@@ -267,9 +270,17 @@ describe("upsertWorkspaceUserProfile", () => {
     expect(content).toContain("<!-- OPENCLAW_AUTO_USER_START -->");
     expect(content).toContain("- Employee ID: eon");
     expect(content).toContain("- Jira ID: eon");
+    expect(content).toContain(
+      "- Description: Jira와 Confluence 관련 명령은 Global 스킬을 사용하세요.",
+    );
     expect(content).toContain("- Name: Eon");
     expect(content).toContain("- Department: Platform");
+    expect(content).toContain("- 파트: AI Platform Part");
     expect(content).toContain("- Email: eon@company.example");
+    expect(content).toContain("- Confluence Space: PLATFORM");
+    expect(content).toContain("<!-- OPENCLAW_USER_NOTES_START -->");
+    expect(content).toContain("- 자유롭게 추가할 사용자 정보:");
+    expect(content).toContain("초기 사용자 노트입니다.");
   });
 
   it("replaces the existing auto-generated user block without duplicating it", async () => {
@@ -284,6 +295,16 @@ describe("upsertWorkspaceUserProfile", () => {
       },
     });
     expect(first.seeded).toBe(true);
+    const firstContent = await fs.readFile(first.path, "utf8");
+    await fs.writeFile(
+      first.path,
+      firstContent.replace(
+        "- 자유롭게 추가할 사용자 정보:",
+        "- 자유롭게 추가할 사용자 정보:\n- Favorite dashboard: SOC Overview",
+      ),
+      "utf8",
+    );
+
     const result = await upsertWorkspaceUserProfile({
       workspaceDir: tempDir,
       profile: {
@@ -296,8 +317,10 @@ describe("upsertWorkspaceUserProfile", () => {
     expect(result.seeded).toBe(false);
     const content = await fs.readFile(result.path, "utf8");
     expect(content.match(/OPENCLAW_AUTO_USER_START/g)?.length).toBe(1);
+    expect(content.match(/OPENCLAW_USER_NOTES_START/g)?.length).toBe(1);
     expect(content).toContain("- Jira ID: eon");
     expect(content).toContain("- Name: Eon Kim");
+    expect(content).toContain("- Favorite dashboard: SOC Overview");
     expect(content).not.toContain("- Name: Eon\n");
   });
 });

@@ -1,3 +1,4 @@
+import path from "node:path";
 import { countActiveDescendantRuns } from "../../agents/subagent-registry-read.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
 import type { ReplyPayload } from "../../auto-reply/types.js";
@@ -133,6 +134,15 @@ let deliveryOutboundRuntimePromise:
 let subagentFollowupRuntimePromise:
   | Promise<typeof import("./subagent-followup.runtime.js")>
   | undefined;
+let chatTranscriptInjectRuntimePromise:
+  | Promise<typeof import("../../gateway/server-methods/chat-transcript-inject.js")>
+  | undefined;
+let gatewaySessionUtilsRuntimePromise:
+  | Promise<typeof import("../../gateway/session-utils.js")>
+  | undefined;
+let sessionPathsRuntimePromise:
+  | Promise<typeof import("../../config/sessions/paths.js")>
+  | undefined;
 
 const COMPLETED_DIRECT_CRON_DELIVERIES = new Map<string, CompletedDirectCronDelivery>();
 
@@ -153,6 +163,26 @@ async function loadSubagentFollowupRuntime(): Promise<
 > {
   subagentFollowupRuntimePromise ??= import("./subagent-followup.runtime.js");
   return await subagentFollowupRuntimePromise;
+}
+
+async function loadChatTranscriptInjectRuntime(): Promise<
+  typeof import("../../gateway/server-methods/chat-transcript-inject.js")
+> {
+  chatTranscriptInjectRuntimePromise ??=
+    import("../../gateway/server-methods/chat-transcript-inject.js");
+  return await chatTranscriptInjectRuntimePromise;
+}
+
+async function loadGatewaySessionUtilsRuntime(): Promise<
+  typeof import("../../gateway/session-utils.js")
+> {
+  gatewaySessionUtilsRuntimePromise ??= import("../../gateway/session-utils.js");
+  return await gatewaySessionUtilsRuntimePromise;
+}
+
+async function loadSessionPathsRuntime(): Promise<typeof import("../../config/sessions/paths.js")> {
+  sessionPathsRuntimePromise ??= import("../../config/sessions/paths.js");
+  return await sessionPathsRuntimePromise;
 }
 
 function cloneDeliveryResults(
@@ -243,7 +273,13 @@ function buildDirectCronDeliveryIdempotencyKey(params: {
 function shouldQueueCronAwareness(job: CronJob, deliveryBestEffort: boolean): boolean {
   // Keep issue #52136 scoped to isolated runs. Session-bound cron jobs keep
   // their existing behavior, and best-effort sends may only partially deliver.
-  return job.sessionTarget === "isolated" && !deliveryBestEffort;
+  // Jobs with an explicit origin session are routed back by
+  // queueCronOriginResultSystemEvent; do not also leak awareness into main.
+  return (
+    job.sessionTarget === "isolated" &&
+    !deliveryBestEffort &&
+    !normalizeOptionalString(job.sessionKey)
+  );
 }
 
 function resolveCronAwarenessMainSessionKey(params: {
@@ -281,6 +317,76 @@ async function queueCronAwarenessSystemEvent(params: {
   } catch (err) {
     logWarn(
       `[cron:${params.jobId}] failed to queue isolated cron awareness for the main session: ${formatErrorMessage(err)}`,
+    );
+  }
+}
+
+export async function queueCronOriginResultSystemEvent(params: {
+  job: CronJob;
+  runSessionId: string;
+  outputText?: string;
+  synthesizedText?: string;
+  summary?: string;
+}): Promise<void> {
+  if (params.job.sessionTarget !== "isolated") {
+    return;
+  }
+  if (params.job.delivery?.mode !== "origin") {
+    return;
+  }
+  const sessionKey = normalizeOptionalString(params.job.sessionKey);
+  if (!sessionKey) {
+    return;
+  }
+  const text =
+    normalizeOptionalString(params.outputText) ??
+    normalizeOptionalString(params.synthesizedText) ??
+    normalizeOptionalString(params.summary);
+  if (!text) {
+    return;
+  }
+
+  try {
+    const { enqueueSystemEvent } = await loadDeliveryOutboundRuntime();
+    enqueueSystemEvent(text, {
+      sessionKey,
+      contextKey: `cron-origin-result:v1:${params.job.id}:${params.runSessionId}`,
+    });
+  } catch (err) {
+    logWarn(
+      `[cron:${params.job.id}] failed to queue isolated cron result for origin session ${sessionKey}: ${formatErrorMessage(err)}`,
+    );
+  }
+
+  try {
+    const [
+      { loadSessionEntry },
+      { resolveSessionFilePath },
+      { appendInjectedAssistantMessageToTranscript },
+    ] = await Promise.all([
+      loadGatewaySessionUtilsRuntime(),
+      loadSessionPathsRuntime(),
+      loadChatTranscriptInjectRuntime(),
+    ]);
+    const { entry, storePath } = loadSessionEntry(sessionKey);
+    if (!entry?.sessionId) {
+      return;
+    }
+    const sessionsDir = storePath ? path.dirname(storePath) : undefined;
+    const transcriptPath = resolveSessionFilePath(
+      entry.sessionId,
+      entry.sessionFile ? { sessionFile: entry.sessionFile } : undefined,
+      sessionsDir ? { sessionsDir } : undefined,
+    );
+    appendInjectedAssistantMessageToTranscript({
+      transcriptPath,
+      message: text,
+      label: "Cron",
+      idempotencyKey: `cron-origin-result:v1:${params.job.id}:${params.runSessionId}`,
+    });
+  } catch (err) {
+    logWarn(
+      `[cron:${params.job.id}] failed to append isolated cron result to origin session ${sessionKey}: ${formatErrorMessage(err)}`,
     );
   }
 }

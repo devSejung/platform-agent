@@ -1254,7 +1254,7 @@ export function describeExecTool(params?: { agentId?: string; hasCronTool?: bool
     "Use yieldMs/background to continue later via process tool.",
     "For long-running work started now, rely on automatic completion wake when it is enabled and the command emits output or fails; otherwise use process to confirm completion. Use process whenever you need logs, status, input, or intervention.",
     params?.hasCronTool
-      ? "Do not use exec sleep or delay loops for reminders or deferred follow-ups; use cron instead."
+      ? "Do not use exec sleep, delay loops, process polling, or `openclaw cron add` for reminders or deferred follow-ups; use the cron tool instead so jobs inherit the current agent/session."
       : undefined,
     "Use pty=true for TTY-required commands (terminal UIs, coding agents).",
   ]
@@ -1571,6 +1571,34 @@ export function createExecTool(
               containerWorkdir: containerWorkdir ?? sandbox.containerWorkdir,
             })
           : (hostEnvResult?.env ?? inheritedBaseEnv);
+
+      const sessionKeyForChild = normalizeOptionalString(defaults?.sessionKey);
+      if (sessionKeyForChild) {
+        env.OPENCLAW_AGENT_SESSION_KEY ??= sessionKeyForChild;
+        env.OPENCLAW_SESSION_KEY ??= sessionKeyForChild;
+      }
+      if (agentId) {
+        env.OPENCLAW_AGENT_ID ??= agentId;
+      }
+      const sourceChannel = normalizeOptionalString(defaults?.messageProvider);
+      if (sourceChannel) {
+        env.OPENCLAW_AGENT_CHANNEL ??= sourceChannel;
+        env.OPENCLAW_CHANNEL ??= sourceChannel;
+      }
+      const sourceTo = normalizeOptionalString(defaults?.currentChannelId);
+      if (sourceTo) {
+        env.OPENCLAW_AGENT_TO ??= sourceTo;
+        env.OPENCLAW_CURRENT_CHANNEL_ID ??= sourceTo;
+      }
+      const sourceThread = normalizeOptionalString(defaults?.currentThreadTs);
+      if (sourceThread) {
+        env.OPENCLAW_AGENT_THREAD_ID ??= sourceThread;
+        env.OPENCLAW_CURRENT_THREAD_TS ??= sourceThread;
+      }
+      const sourceAccountId = normalizeOptionalString(defaults?.accountId);
+      if (sourceAccountId) {
+        env.OPENCLAW_AGENT_ACCOUNT_ID ??= sourceAccountId;
+      }
 
       if (!sandbox && host === "gateway" && !params.env?.PATH) {
         const shellPath = getShellPathFromLoginShell({

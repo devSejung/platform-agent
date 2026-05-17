@@ -45,6 +45,7 @@ export type CronJobsLastStatusFilter = "all" | "ok" | "error" | "skipped";
 export type CronState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
+  sessionKey?: string;
   cronLoading: boolean;
   cronJobsLoadingMore: boolean;
   cronJobs: CronJob[];
@@ -678,7 +679,15 @@ export async function addCronJob(state: CronState) {
     const failureAlert = buildFailureAlert(form);
     const agentId = form.clearAgent ? null : form.agentId.trim();
     const sessionKeyRaw = form.sessionKey.trim();
-    const sessionKey = sessionKeyRaw || (editingJob?.sessionKey ? null : undefined);
+    const currentSessionKey =
+      form.sessionTarget === "isolated" ? state.sessionKey?.trim() || "" : "";
+    const sessionKey =
+      sessionKeyRaw ||
+      (state.cronEditingJobId
+        ? editingJob?.sessionKey
+          ? null
+          : undefined
+        : currentSessionKey || undefined);
     const job = {
       name: form.name.trim(),
       description: form.description.trim(),

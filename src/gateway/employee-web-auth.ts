@@ -2,12 +2,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { ensureAgentWorkspace, upsertWorkspaceUserProfile } from "../agents/workspace.js";
 import type { OpenClawConfig } from "../config/config.js";
+import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-key.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
+import { upsertEmployeeActivationRecord } from "./employee-activation.js";
 import {
-  EMPLOYEE_AUTH_ENV_SECRET,
   signEmployeeSessionToken,
   signEmployeeBootstrapToken,
-  verifyEmployeeBootstrapToken,
   verifyEmployeeSessionToken,
   type EmployeeSessionPayload,
 } from "./employee-auth.js";
@@ -21,8 +21,6 @@ import {
   type EmployeeUiBootstrapAuthenticatedResponse,
   type EmployeeUiBootstrapUnauthenticatedResponse,
 } from "./employee-ui-contract.js";
-import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-key.js";
-import { upsertEmployeeActivationRecord } from "./employee-activation.js";
 import { resolveEmployeeUiSurfaceConfig } from "./employee-ui-surface-config.js";
 
 const EMPLOYEE_SESSION_COOKIE = "openclaw_employee_session";
@@ -46,6 +44,9 @@ type EmployeeExternalAuthSuccess = {
   email?: string;
   name?: string;
   department?: string;
+  part?: string;
+  confluenceSpace?: string;
+  notes?: string;
   agentId?: string;
   sessionKey?: string;
 };
@@ -119,6 +120,20 @@ function parseEmployeeExternalAuthResponse(
       typeof (parsed as { department?: unknown }).department === "string"
         ? (parsed as { department: string }).department.trim() || undefined
         : undefined,
+    part:
+      typeof (parsed as { part?: unknown }).part === "string"
+        ? (parsed as { part: string }).part.trim() || undefined
+        : undefined,
+    confluenceSpace:
+      typeof (parsed as { confluenceSpace?: unknown }).confluenceSpace === "string"
+        ? (parsed as { confluenceSpace: string }).confluenceSpace.trim() || undefined
+        : undefined,
+    notes:
+      typeof (parsed as { notes?: unknown }).notes === "string"
+        ? (parsed as { notes: string }).notes.trim() || undefined
+        : typeof (parsed as { note?: unknown }).note === "string"
+          ? (parsed as { note: string }).note.trim() || undefined
+          : undefined,
     agentId:
       typeof (parsed as { agentId?: unknown }).agentId === "string"
         ? (parsed as { agentId: string }).agentId.trim() || undefined
@@ -203,7 +218,7 @@ function setEmployeeSessionCookie(req: IncomingMessage, res: ServerResponse, tok
 
 function parseCookies(req: IncomingMessage): Record<string, string> {
   const raw = req.headers.cookie;
-  const header = Array.isArray(raw) ? raw.join("; ") : raw ?? "";
+  const header = Array.isArray(raw) ? raw.join("; ") : (raw ?? "");
   if (!header.trim()) {
     return {};
   }
@@ -246,7 +261,9 @@ function normalizeEmployeeAuthRecord(
     employeeId: raw.employeeId.trim(),
     name: typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : undefined,
     department:
-      typeof raw.department === "string" && raw.department.trim() ? raw.department.trim() : undefined,
+      typeof raw.department === "string" && raw.department.trim()
+        ? raw.department.trim()
+        : undefined,
     agentId,
     sessionKey,
     gatewayUrl: gatewayUrl?.trim() || undefined,
@@ -263,7 +280,9 @@ async function initializeEmployeeWorkspaceAndActivation(params: {
   userProfileSeeded: boolean;
   activationCreated: boolean;
 }> {
-  const agentId = normalizeAgentId(params.authResult.agentId || resolveDefaultAgentId(params.config));
+  const agentId = normalizeAgentId(
+    params.authResult.agentId || resolveDefaultAgentId(params.config),
+  );
   const workspaceDir = resolveAgentWorkspaceDir(params.config, agentId);
   const workspace = await ensureAgentWorkspace({ dir: workspaceDir, ensureBootstrapFiles: true });
   const userProfile = await upsertWorkspaceUserProfile({
@@ -272,7 +291,10 @@ async function initializeEmployeeWorkspaceAndActivation(params: {
       employeeId: params.authResult.employeeId,
       name: params.authResult.name,
       department: params.authResult.department,
+      part: params.authResult.part,
       email: params.authResult.email,
+      confluenceSpace: params.authResult.confluenceSpace,
+      notes: params.authResult.notes,
     },
   });
   const activation = await upsertEmployeeActivationRecord({
@@ -375,7 +397,10 @@ async function authenticateViaExternalService(params: {
   }
   if (!response.ok) {
     const message =
-      parsed && typeof parsed === "object" && "message" in parsed && typeof parsed.message === "string"
+      parsed &&
+      typeof parsed === "object" &&
+      "message" in parsed &&
+      typeof parsed.message === "string"
         ? parsed.message
         : `employee auth failed (${response.status})`;
     return { authenticated: false, message };
@@ -422,7 +447,10 @@ async function authenticateViaExternalAdSso(params: {
   }
   if (!response.ok) {
     const message =
-      parsed && typeof parsed === "object" && "message" in parsed && typeof parsed.message === "string"
+      parsed &&
+      typeof parsed === "object" &&
+      "message" in parsed &&
+      typeof parsed.message === "string"
         ? parsed.message
         : `employee AD SSO failed (${response.status})`;
     return { authenticated: false, message };

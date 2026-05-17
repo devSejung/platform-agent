@@ -74,9 +74,16 @@ type CronUpdatePatch = {
 type CronAddParams = {
   schedule?: { kind?: string; staggerMs?: number };
   payload?: { model?: string; thinking?: string; lightContext?: boolean };
-  delivery?: { mode?: string; accountId?: string };
+  delivery?: {
+    mode?: string;
+    channel?: string;
+    to?: string;
+    threadId?: string;
+    accountId?: string;
+  };
   deleteAfterRun?: boolean;
   agentId?: string;
+  sessionKey?: string;
   sessionTarget?: string;
 };
 
@@ -98,6 +105,20 @@ function resetGatewayMock() {
 }
 
 async function runCronCommand(args: string[]): Promise<void> {
+  resetGatewayMock();
+  const program = buildProgram();
+  const parsedArgs =
+    args[0] === "cron" &&
+    (args[1] === "add" || args[1] === "create") &&
+    !args.includes("--agent") &&
+    !args.includes("--session-key") &&
+    !args.includes("--global")
+      ? [...args, "--global"]
+      : args;
+  await program.parseAsync(parsedArgs, { from: "user" });
+}
+
+async function runCronCommandRaw(args: string[]): Promise<void> {
   resetGatewayMock();
   const program = buildProgram();
   await program.parseAsync(args, { from: "user" });
@@ -284,6 +305,94 @@ describe("cron cli", () => {
     expect(params?.delivery?.mode).toBe("announce");
   });
 
+  it("defaults env session-owned isolated cron add to no external delivery", async () => {
+    const previousSessionKey = process.env.OPENCLAW_AGENT_SESSION_KEY;
+    process.env.OPENCLAW_AGENT_SESSION_KEY = "agent:eon:main";
+    try {
+      await runCronCommandRaw([
+        "cron",
+        "add",
+        "--name",
+        "Daily",
+        "--cron",
+        "* * * * *",
+        "--session",
+        "isolated",
+        "--message",
+        "hello",
+      ]);
+    } finally {
+      if (previousSessionKey === undefined) {
+        delete process.env.OPENCLAW_AGENT_SESSION_KEY;
+      } else {
+        process.env.OPENCLAW_AGENT_SESSION_KEY = previousSessionKey;
+      }
+    }
+
+    const addCall = callGatewayFromCli.mock.calls.find((call) => call[0] === "cron.add");
+    const params = addCall?.[2] as CronAddParams;
+
+    expect(params?.sessionKey).toBe("agent:eon:main");
+    expect(params?.agentId).toBe("eon");
+    expect(params?.delivery).toEqual({ mode: "origin" });
+  });
+
+  it("snapshots env external delivery target for CLI cron add fallback", async () => {
+    const previous = {
+      sessionKey: process.env.OPENCLAW_AGENT_SESSION_KEY,
+      channel: process.env.OPENCLAW_AGENT_CHANNEL,
+      to: process.env.OPENCLAW_AGENT_TO,
+      threadId: process.env.OPENCLAW_AGENT_THREAD_ID,
+      accountId: process.env.OPENCLAW_AGENT_ACCOUNT_ID,
+    };
+    process.env.OPENCLAW_AGENT_SESSION_KEY = "agent:eon:main";
+    process.env.OPENCLAW_AGENT_CHANNEL = "knox";
+    process.env.OPENCLAW_AGENT_TO = "dm_eon";
+    process.env.OPENCLAW_AGENT_THREAD_ID = "thread-1";
+    process.env.OPENCLAW_AGENT_ACCOUNT_ID = "knox-account";
+    try {
+      await runCronCommandRaw([
+        "cron",
+        "add",
+        "--name",
+        "Daily",
+        "--cron",
+        "* * * * *",
+        "--session",
+        "isolated",
+        "--message",
+        "hello",
+      ]);
+    } finally {
+      for (const [key, value] of Object.entries({
+        OPENCLAW_AGENT_SESSION_KEY: previous.sessionKey,
+        OPENCLAW_AGENT_CHANNEL: previous.channel,
+        OPENCLAW_AGENT_TO: previous.to,
+        OPENCLAW_AGENT_THREAD_ID: previous.threadId,
+        OPENCLAW_AGENT_ACCOUNT_ID: previous.accountId,
+      })) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+
+    const addCall = callGatewayFromCli.mock.calls.find((call) => call[0] === "cron.add");
+    const params = addCall?.[2] as CronAddParams;
+
+    expect(params?.sessionKey).toBe("agent:eon:main");
+    expect(params?.agentId).toBe("eon");
+    expect(params?.delivery).toEqual({
+      mode: "announce",
+      channel: "knox",
+      to: "dm_eon",
+      threadId: "thread-1",
+      accountId: "knox-account",
+    });
+  });
+
   it("infers sessionTarget from payload when --session is omitted", async () => {
     await runCronCommand([
       "cron",
@@ -399,6 +508,73 @@ describe("cron cli", () => {
     const addCall = callGatewayFromCli.mock.calls.find((call) => call[0] === "cron.add");
     const params = addCall?.[2] as { agentId?: string };
     expect(params?.agentId).toBe("ops");
+  });
+
+  it("defaults cron add owner from agent session environment", async () => {
+    const previousAgentSessionKey = process.env.OPENCLAW_AGENT_SESSION_KEY;
+    const previousSessionKey = process.env.OPENCLAW_SESSION_KEY;
+    const previousAgentId = process.env.OPENCLAW_AGENT_ID;
+    process.env.OPENCLAW_AGENT_SESSION_KEY = "agent:eon:main";
+    delete process.env.OPENCLAW_SESSION_KEY;
+    delete process.env.OPENCLAW_AGENT_ID;
+    try {
+      await runCronCommand([
+        "cron",
+        "add",
+        "--name",
+        "Env pinned",
+        "--cron",
+        "* * * * *",
+        "--session",
+        "isolated",
+        "--message",
+        "hi",
+      ]);
+    } finally {
+      if (previousAgentSessionKey === undefined) {
+        delete process.env.OPENCLAW_AGENT_SESSION_KEY;
+      } else {
+        process.env.OPENCLAW_AGENT_SESSION_KEY = previousAgentSessionKey;
+      }
+      if (previousSessionKey === undefined) {
+        delete process.env.OPENCLAW_SESSION_KEY;
+      } else {
+        process.env.OPENCLAW_SESSION_KEY = previousSessionKey;
+      }
+      if (previousAgentId === undefined) {
+        delete process.env.OPENCLAW_AGENT_ID;
+      } else {
+        process.env.OPENCLAW_AGENT_ID = previousAgentId;
+      }
+    }
+
+    const addCall = callGatewayFromCli.mock.calls.find((call) => call[0] === "cron.add");
+    const params = addCall?.[2] as { agentId?: string; sessionKey?: string };
+    expect(params?.agentId).toBe("eon");
+    expect(params?.sessionKey).toBe("agent:eon:main");
+  });
+
+  it("rejects ownerless cron add unless --global is explicit", async () => {
+    await expect(
+      runCronCommandRaw([
+        "cron",
+        "add",
+        "--name",
+        "Ownerless",
+        "--cron",
+        "* * * * *",
+        "--session",
+        "isolated",
+        "--message",
+        "hi",
+      ]),
+    ).rejects.toThrow("__exit__:1");
+    expect(callGatewayFromCli).not.toHaveBeenCalledWith(
+      "cron.add",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
   });
 
   it("sets lightContext on cron add when --light-context is passed", async () => {

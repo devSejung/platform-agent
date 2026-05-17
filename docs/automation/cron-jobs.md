@@ -14,11 +14,13 @@ Cron is the Gateway's built-in scheduler. It persists jobs, wakes the agent at t
 ## Quick start
 
 ```bash
-# Add a one-shot reminder
+# Add a one-shot reminder from a manual terminal.
+# Manual CLI jobs need an explicit owner.
 openclaw cron add \
   --name "Reminder" \
   --at "2026-02-01T16:00:00Z" \
   --session main \
+  --agent main \
   --system-event "Reminder: check the cron docs draft" \
   --wake now \
   --delete-after-run
@@ -34,6 +36,9 @@ openclaw cron runs --id <job-id>
 
 - Cron runs **inside the Gateway** process (not inside the model).
 - Jobs persist at `~/.openclaw/cron/jobs.json` so restarts do not lose schedules.
+- Normal jobs are owned by `agentId` and/or `sessionKey`. Agent tool sessions
+  pass this automatically; manual CLI creation should pass `--agent` or
+  `--session-key`. Use `--global` only for intentional ownerless admin jobs.
 - All cron executions create [background task](/automation/tasks) records.
 - One-shot jobs (`--at`) auto-delete after success by default.
 - Isolated cron runs best-effort close tracked browser tabs/processes for their `cron:<jobId>` session when the run completes, so detached browser automation does not leave orphaned processes behind.
@@ -109,18 +114,42 @@ retries, cron aborts instead of looping forever.
 
 ## Delivery and output
 
-| Mode       | What happens                                             |
-| ---------- | -------------------------------------------------------- |
-| `announce` | Deliver summary to target channel (default for isolated) |
-| `webhook`  | POST finished event payload to a URL                     |
-| `none`     | Internal only, no delivery                               |
+| Mode       | What happens                                                 |
+| ---------- | ------------------------------------------------------------ |
+| `announce` | Deliver summary to an explicitly configured external channel |
+| `webhook`  | POST finished event payload to a URL                         |
+| `origin`   | Attach the result to the session that created the job        |
+| `none`     | No automatic delivery or origin-session injection            |
 
 Use `--announce --channel telegram --to "-1001234567890"` for channel delivery. For Telegram forum topics, use `-1001234567890:topic:123`. Slack/Discord/Mattermost targets should use explicit prefixes (`channel:<id>`, `user:<id>`).
 
+Session-owned isolated jobs default to `origin` delivery when no delivery is
+specified. That avoids failing web-only or internal sessions with "Channel is
+required" while still returning the result to the session that created the job.
+Ownerless or explicitly global isolated jobs may still default to `announce`
+because they have no origin session to attach results to.
+
+For PlatformClaw Knox deployments, inbound Knox turns should carry
+`originatingChannel=knox` and `originatingTo=dm:<user>` or `room:<chatroom>` into
+the Gateway. The Knox adapter does this for both websocket `chat.send` and
+`/v1/responses`. Once that route is stored on the session, session-owned cron
+jobs can return through `origin`, and explicit Knox delivery can use:
+
+```bash
+openclaw cron add \
+  --name "Room reminder" \
+  --at "20m" \
+  --session isolated \
+  --message "Remind the room to update the deployment checklist." \
+  --announce \
+  --channel knox \
+  --to "room:<knox-chatroom-id>"
+```
+
 For cron-owned isolated jobs, the runner owns the final delivery path. The
 agent is prompted to return a plain-text summary, and that summary is then sent
-through `announce`, `webhook`, or kept internal for `none`. `--no-deliver`
-does not hand delivery back to the agent; it keeps the run internal.
+through `origin`, `announce`, `webhook`, or kept internal for `none`.
+`--no-deliver` does not hand delivery back to the agent; it keeps the run internal.
 
 If the original task explicitly says to message some external recipient, the
 agent should note who/where that message should go in its output instead of
@@ -142,6 +171,7 @@ openclaw cron add \
   --name "Calendar check" \
   --at "20m" \
   --session main \
+  --agent main \
   --system-event "Next heartbeat: check calendar." \
   --wake now
 ```
@@ -386,7 +416,8 @@ openclaw doctor
 
 ### Cron fired but no delivery
 
-- Delivery mode is `none` means no external message is expected.
+- Delivery mode is `origin` means the result should appear on the saved origin session.
+- Delivery mode is `none` means no automatic message is expected.
 - Delivery target missing/invalid (`channel`/`to`) means outbound was skipped.
 - Channel auth errors (`unauthorized`, `Forbidden`) mean delivery was blocked by credentials.
 - If the isolated run returns only the silent token (`NO_REPLY` / `no_reply`),

@@ -17,7 +17,7 @@ describe("createOpenClawCodingTools deferred follow-up guidance", () => {
     const process = findToolDescription("process", true);
 
     expect(exec.toolNames).toContain("cron");
-    expect(exec.description).toContain("use cron instead");
+    expect(exec.description).toContain("use the cron tool instead");
     expect(process.description).toContain("use cron for scheduled follow-ups");
   });
 

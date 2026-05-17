@@ -44,6 +44,23 @@ vi.mock("../../gateway/call.runtime.js", () => ({
   callGateway: vi.fn().mockResolvedValue({ status: "ok" }),
 }));
 
+vi.mock("../../gateway/session-utils.js", () => ({
+  loadSessionEntry: vi.fn().mockReturnValue({
+    entry: { sessionId: "origin-session", sessionFile: "/tmp/origin.jsonl" },
+    storePath: "/tmp/sessions.json",
+  }),
+}));
+
+vi.mock("../../config/sessions/paths.js", () => ({
+  resolveSessionFilePath: vi.fn().mockReturnValue("/tmp/origin.jsonl"),
+}));
+
+vi.mock("../../gateway/server-methods/chat-transcript-inject.js", () => ({
+  appendInjectedAssistantMessageToTranscript: vi
+    .fn()
+    .mockReturnValue({ ok: true, messageId: "m1" }),
+}));
+
 vi.mock("../../logger.js", () => ({
   logWarn: vi.fn(),
   logError: vi.fn(),
@@ -66,6 +83,7 @@ vi.mock("./subagent-followup.runtime.js", () => ({
 // Import after mocks
 import { countActiveDescendantRuns } from "../../agents/subagent-registry-read.js";
 import { callGateway } from "../../gateway/call.runtime.js";
+import { appendInjectedAssistantMessageToTranscript } from "../../gateway/server-methods/chat-transcript-inject.js";
 import { deliverOutboundPayloads } from "../../infra/outbound/deliver.js";
 import { buildOutboundSessionContext } from "../../infra/outbound/session-context.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
@@ -73,6 +91,7 @@ import { shouldEnqueueCronMainSummary } from "../heartbeat-policy.js";
 import {
   dispatchCronDelivery,
   getCompletedDirectCronDeliveriesCountForTests,
+  queueCronOriginResultSystemEvent,
   resetCompletedDirectCronDeliveriesForTests,
 } from "./delivery-dispatch.js";
 import type { DeliveryTargetResolution } from "./delivery-target.js";
@@ -317,6 +336,79 @@ describe("dispatchCronDelivery — double-announce guard", () => {
       sessionKey: "agent:main:main",
       contextKey: "cron-direct-delivery:v1:run-123:telegram::123456:",
     });
+  });
+
+  it("does not queue main-session awareness when an origin sessionKey is saved", async () => {
+    vi.mocked(countActiveDescendantRuns).mockReturnValue(0);
+    vi.mocked(isLikelyInterimCronMessage).mockReturnValue(false);
+
+    const params = makeBaseParams({ synthesizedText: "Room briefing complete." });
+    params.job = {
+      id: "test-job",
+      name: "Test Job",
+      sessionTarget: "isolated",
+      deleteAfterRun: false,
+      payload: { kind: "agentTurn", message: "hello" },
+      sessionKey: "agent:main:knox:room:room-123",
+    } as never;
+
+    const state = await dispatchCronDelivery(params);
+
+    expect(state.result).toBeUndefined();
+    expect(state.delivered).toBe(true);
+    expect(state.deliveryAttempted).toBe(true);
+    expect(enqueueSystemEvent).not.toHaveBeenCalled();
+  });
+
+  it("queues isolated cron origin result to the saved sessionKey", async () => {
+    const params = makeBaseParams({ synthesizedText: "Room briefing complete." });
+
+    await queueCronOriginResultSystemEvent({
+      job: {
+        id: "test-job",
+        name: "Test Job",
+        sessionTarget: "isolated",
+        deleteAfterRun: false,
+        payload: { kind: "agentTurn", message: "hello" },
+        delivery: { mode: "origin" },
+        sessionKey: "agent:main:knox:room:room-123",
+      } as never,
+      runSessionId: params.runSessionId,
+      outputText: "Room briefing complete.",
+    });
+
+    expect(enqueueSystemEvent).toHaveBeenCalledWith("Room briefing complete.", {
+      sessionKey: "agent:main:knox:room:room-123",
+      contextKey: "cron-origin-result:v1:test-job:run-123",
+    });
+    expect(appendInjectedAssistantMessageToTranscript).toHaveBeenCalledWith({
+      transcriptPath: "/tmp/origin.jsonl",
+      message: "Room briefing complete.",
+      label: "Cron",
+      idempotencyKey: "cron-origin-result:v1:test-job:run-123",
+    });
+  });
+
+  it("does not queue origin result for session-bound cron jobs", async () => {
+    const params = makeBaseParams({
+      synthesizedText: "Session-bound complete.",
+      sessionTarget: "session:agent:main:main",
+    });
+
+    await queueCronOriginResultSystemEvent({
+      job: {
+        id: "test-job",
+        name: "Test Job",
+        sessionTarget: "session:agent:main:main",
+        deleteAfterRun: false,
+        payload: { kind: "agentTurn", message: "hello" },
+        sessionKey: "agent:main:main",
+      } as never,
+      runSessionId: params.runSessionId,
+      outputText: "Session-bound complete.",
+    });
+
+    expect(enqueueSystemEvent).not.toHaveBeenCalled();
   });
 
   it("keeps the cron run successful when awareness queueing throws after delivery", async () => {

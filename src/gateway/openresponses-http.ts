@@ -405,6 +405,9 @@ async function runResponsesAgentCommand(params: {
   sessionKey: string;
   runId: string;
   messageChannel: string;
+  originatingTo?: string;
+  originatingAccountId?: string;
+  originatingThreadId?: string;
   senderIsOwner: boolean;
   deps: ReturnType<typeof createDefaultDeps>;
   abortSignal?: AbortSignal;
@@ -420,6 +423,18 @@ async function runResponsesAgentCommand(params: {
       sessionKey: params.sessionKey,
       runId: params.runId,
       deliver: false,
+      to: params.originatingTo,
+      channel: params.originatingTo ? params.messageChannel : undefined,
+      accountId: params.originatingAccountId,
+      threadId: params.originatingThreadId,
+      runContext: params.originatingTo
+        ? {
+            messageChannel: params.messageChannel,
+            accountId: params.originatingAccountId,
+            currentChannelId: params.originatingTo,
+            currentThreadTs: params.originatingThreadId,
+          }
+        : undefined,
       messageChannel: params.messageChannel,
       bestEffortDeliver: false,
       senderIsOwner: params.senderIsOwner,
@@ -645,6 +660,24 @@ export async function handleOpenResponsesHttpRequest(
   );
   const sessionKey = previousSessionKey ?? resolved.sessionKey;
   const messageChannel = resolved.messageChannel;
+  const originatingChannel = getHeader(req, "x-openclaw-originating-channel")?.trim();
+  const originatingTo = getHeader(req, "x-openclaw-originating-to")?.trim();
+  const originatingAccountId = getHeader(req, "x-openclaw-originating-account-id")?.trim();
+  const originatingThreadId = getHeader(req, "x-openclaw-originating-thread-id")?.trim();
+  const hasOriginHeaders = Boolean(
+    originatingChannel || originatingTo || originatingAccountId || originatingThreadId,
+  );
+  if (hasOriginHeaders && (!originatingChannel || !originatingTo)) {
+    sendJson(res, 400, {
+      error: {
+        message:
+          "x-openclaw-originating-channel and x-openclaw-originating-to are required together.",
+        type: "invalid_request_error",
+      },
+    });
+    return true;
+  }
+  const effectiveMessageChannel = originatingChannel || messageChannel;
 
   // Build prompt from input
   const prompt = buildAgentPrompt(payload.input);
@@ -695,7 +728,10 @@ export async function handleOpenResponsesHttpRequest(
         streamParams,
         sessionKey,
         runId: responseId,
-        messageChannel,
+        messageChannel: effectiveMessageChannel,
+        originatingTo,
+        originatingAccountId,
+        originatingThreadId,
         senderIsOwner,
         deps,
         abortSignal: abortController.signal,
@@ -972,7 +1008,10 @@ export async function handleOpenResponsesHttpRequest(
         streamParams,
         sessionKey,
         runId: responseId,
-        messageChannel,
+        messageChannel: effectiveMessageChannel,
+        originatingTo,
+        originatingAccountId,
+        originatingThreadId,
         senderIsOwner,
         deps,
         abortSignal: abortController.signal,

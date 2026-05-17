@@ -16,12 +16,21 @@ Related:
 
 Tip: run `openclaw cron --help` for the full command surface.
 
-Note: isolated `cron add` jobs default to `--announce` delivery. Use `--no-deliver` to keep
-output internal. `--deliver` remains as a deprecated alias for `--announce`.
+Note: normal `cron add` jobs must be owned by an agent or session. When the CLI
+runs inside an agent tool session, `OPENCLAW_AGENT_SESSION_KEY` /
+`OPENCLAW_SESSION_KEY` is used automatically. For manual terminal creation,
+pass `--agent` or `--session-key`; use `--global` only for intentional
+ownerless admin jobs.
+
+Note: session-owned isolated `cron add` jobs default to `delivery.mode="origin"`,
+so the result stays attached to the origin session. Use `--announce` with
+`--channel` / `--to` only when you explicitly want external chat delivery.
+`--deliver` remains as a deprecated alias for `--announce`.
 
 Note: cron-owned isolated runs expect a plain-text summary and the runner owns
-the final send path. `--no-deliver` keeps the run internal; it does not hand
-delivery back to the agent's message tool.
+the final output path. For session-owned jobs, `--no-deliver` means no automatic
+result delivery or origin-session injection; for ownerless/global jobs it keeps
+the run internal.
 
 Note: one-shot (`--at`) jobs delete after success by default. Use `--keep-after-run` to keep them.
 

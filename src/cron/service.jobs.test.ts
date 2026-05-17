@@ -657,6 +657,20 @@ describe("createJob delivery defaults", () => {
     expect(job.delivery).toEqual({ mode: "announce" });
   });
 
+  it('defaults delivery to { mode: "origin" } for session-owned isolated agentTurn jobs', () => {
+    const state = createMockState(now);
+    const job = createJob(state, {
+      name: "isolated-session-owned",
+      enabled: true,
+      schedule: { kind: "every", everyMs: 60_000 },
+      sessionTarget: "isolated",
+      wakeMode: "now",
+      sessionKey: "agent:eon:main",
+      payload: { kind: "agentTurn", message: "hello" },
+    });
+    expect(job.delivery).toEqual({ mode: "origin" });
+  });
+
   it("preserves explicit delivery for isolated agentTurn jobs", () => {
     const state = createMockState(now);
     const job = createJob(state, {

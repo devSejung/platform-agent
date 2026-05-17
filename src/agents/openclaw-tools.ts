@@ -225,6 +225,10 @@ export function createOpenClawTools(
     }),
     createCronTool({
       agentSessionKey: options?.agentSessionKey,
+      agentChannel: options?.agentChannel,
+      agentAccountId: options?.agentAccountId,
+      currentChannelId: options?.currentChannelId,
+      currentThreadTs: options?.currentThreadTs,
     }),
     ...(messageTool ? [messageTool] : []),
     createTtsTool({

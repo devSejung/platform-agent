@@ -26,6 +26,7 @@ RUN set -eux; \
     git \
     jq \
     less \
+    locales \
     libssl-dev \
     make \
     pkg-config \
@@ -33,11 +34,20 @@ RUN set -eux; \
     python3-pip \
     python3-venv \
     ripgrep \
+    tzdata \
     unzip \
     vim \
     xz-utils \
     zip && \
+  locale-gen ko_KR.UTF-8 && \
+  ln -snf /usr/share/zoneinfo/Asia/Seoul /etc/localtime && \
+  echo Asia/Seoul >/etc/timezone && \
   rm -rf /var/lib/apt/lists/*
+
+ENV LANG=ko_KR.UTF-8 \
+  LANGUAGE=ko_KR:ko:en_US:en \
+  LC_ALL=ko_KR.UTF-8 \
+  TZ=Asia/Seoul
 
 RUN set -eux; \
   arch="$(dpkg --print-architecture)"; \

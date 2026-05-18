@@ -4,6 +4,7 @@ import {
 } from "openclaw/plugin-sdk/channel-core";
 import { getChatChannelMeta } from "openclaw/plugin-sdk/channel-plugin-common";
 import { createRawChannelSendResultAdapter } from "openclaw/plugin-sdk/channel-send-result";
+import { resolvePayloadMediaUrls } from "openclaw/plugin-sdk/reply-payload";
 import {
   DEFAULT_ACCOUNT_ID,
   listKnoxAccountIds,
@@ -11,6 +12,7 @@ import {
   resolveKnoxAccount,
 } from "./accounts.js";
 import { knoxPluginConfigSchema } from "./config-schema.js";
+import { buildKnoxFileLinksText } from "./file-links.js";
 import { sendKnoxText } from "./outbound.js";
 import { normalizeKnoxTarget, parseKnoxTarget } from "./target.js";
 import type { CoreConfig, ResolvedKnoxAccount } from "./types.js";
@@ -29,6 +31,15 @@ const knoxRawSendResultAdapter = createRawChannelSendResultAdapter({
       threadId,
     }),
 });
+
+function toKnoxDeliveryResult(result: Awaited<ReturnType<typeof sendKnoxText>>) {
+  return {
+    channel: CHANNEL_ID,
+    messageId: result.messageId ?? "",
+    chatId: result.chatId ?? undefined,
+    ...(result.meta ? { meta: result.meta } : {}),
+  };
+}
 
 export const knoxChannelPlugin = createChatChannelPlugin<ResolvedKnoxAccount>({
   base: {
@@ -110,6 +121,38 @@ export const knoxChannelPlugin = createChatChannelPlugin<ResolvedKnoxAccount>({
     attachedResults: {
       channel: CHANNEL_ID,
       sendText: async (ctx) => await knoxRawSendResultAdapter.sendText!(ctx),
+      sendPayload: async (ctx) => {
+        const mediaUrls = resolvePayloadMediaUrls(ctx.payload);
+        const account = resolveKnoxAccount({
+          cfg: ctx.cfg as CoreConfig,
+          accountId: ctx.accountId,
+        });
+        const text =
+          mediaUrls.length > 0
+            ? await buildKnoxFileLinksText({
+                cfg: ctx.cfg as CoreConfig,
+                mediaUrls,
+                text: ctx.payload.text ?? "",
+                baseUrl: account.config.fileLinksBaseUrl,
+                mediaAccess:
+                  ctx.mediaLocalRoots || ctx.mediaReadFile
+                    ? {
+                        ...(ctx.mediaLocalRoots?.length ? { localRoots: ctx.mediaLocalRoots } : {}),
+                        ...(ctx.mediaReadFile ? { readFile: ctx.mediaReadFile } : {}),
+                      }
+                    : undefined,
+              })
+            : ctx.payload.text ?? "";
+        return toKnoxDeliveryResult(
+          await sendKnoxText({
+            cfg: ctx.cfg as CoreConfig,
+            accountId: ctx.accountId,
+            to: ctx.to,
+            text,
+            threadId: ctx.threadId,
+          }),
+        );
+      },
     },
   },
 });

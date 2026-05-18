@@ -473,6 +473,9 @@ type ChatChannelAttachedOutboundOptions = {
   base: Omit<ChannelOutboundAdapter, "sendText" | "sendMedia" | "sendPoll">;
   attachedResults: {
     channel: string;
+    sendPayload?: (
+      ctx: Parameters<NonNullable<ChannelOutboundAdapter["sendPayload"]>>[0],
+    ) => MaybePromise<Omit<OutboundDeliveryResult, "channel">>;
     sendText?: (
       ctx: Parameters<NonNullable<ChannelOutboundAdapter["sendText"]>>[0],
     ) => MaybePromise<Omit<OutboundDeliveryResult, "channel">>;
@@ -491,6 +494,12 @@ function createInlineAttachedChannelResultAdapter(
   params: ChatChannelAttachedOutboundOptions["attachedResults"],
 ) {
   return {
+    sendPayload: params.sendPayload
+      ? async (ctx: Parameters<NonNullable<ChannelOutboundAdapter["sendPayload"]>>[0]) => ({
+          channel: params.channel,
+          ...(await params.sendPayload!(ctx)),
+        })
+      : undefined,
     sendText: params.sendText
       ? async (ctx: Parameters<NonNullable<ChannelOutboundAdapter["sendText"]>>[0]) => ({
           channel: params.channel,
@@ -509,7 +518,7 @@ function createInlineAttachedChannelResultAdapter(
           ...(await params.sendPoll!(ctx)),
         })
       : undefined,
-  } satisfies Pick<ChannelOutboundAdapter, "sendText" | "sendMedia" | "sendPoll">;
+  } satisfies Pick<ChannelOutboundAdapter, "sendPayload" | "sendText" | "sendMedia" | "sendPoll">;
 }
 
 function resolveChatChannelSecurity<TResolvedAccount extends { accountId?: string | null }>(

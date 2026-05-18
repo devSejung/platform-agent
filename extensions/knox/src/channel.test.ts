@@ -60,4 +60,8 @@ describe("knox channel", () => {
     expect(route.threadId).toBe("THREAD1");
     expect(route.chatType).toBe("group");
   });
+
+  it("exposes outbound sendPayload for file-link text conversion", () => {
+    expect(knoxChannelPlugin.outbound?.sendPayload).toBeTypeOf("function");
+  });
 });

@@ -10,6 +10,7 @@ const KnoxAccountConfigSchema = z.object({
   enabled: z.boolean().optional(),
   adapterOutboundUrl: z.string().url().optional(),
   adapterAuthToken: z.string().optional(),
+  fileLinksBaseUrl: z.string().url().optional(),
   sendTimeoutMs: z.number().int().min(100).max(120_000).optional(),
   allowFrom: AllowFromListSchema,
   defaultTo: z.string().optional(),
@@ -27,6 +28,10 @@ export const knoxPluginConfigSchema = buildChannelConfigSchema(KnoxConfigSchema,
       label: "Adapter auth token",
       help: "Optional bearer token required by the Knox adapter core outbound endpoint.",
       sensitive: true,
+    },
+    fileLinksBaseUrl: {
+      label: "File links base URL",
+      help: "Public base URL used to build Knox download links, for example https://openclaw.company.example.",
     },
     defaultTo: {
       label: "Default target",

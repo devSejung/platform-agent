@@ -74,6 +74,7 @@ import {
   handleEmployeeLoginRequest,
   handleEmployeeLogoutRequest,
 } from "./employee-web-auth.js";
+import { handleKnoxFileLinksHttpRequest } from "../../extensions/knox/src/file-links.js";
 import { DEDUPE_MAX, DEDUPE_TTL_MS } from "./server-constants.js";
 import { authorizeCanvasRequest, isCanvasPath } from "./server/http-auth.js";
 import { resolvePluginRouteRuntimeOperatorScopes } from "./server/plugin-route-runtime-scopes.js";
@@ -842,6 +843,10 @@ export function createGatewayHttpServer(opts: {
         ? resolvePluginRoutePathContext(requestPath)
         : null;
       const requestStages: GatewayHttpRequestStage[] = [
+        {
+          name: "knox-file-links",
+          run: () => handleKnoxFileLinksHttpRequest(req, res),
+        },
         {
           name: "hooks",
           run: () => handleHooksRequest(req, res),

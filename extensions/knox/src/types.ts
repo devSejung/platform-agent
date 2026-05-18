@@ -3,6 +3,7 @@ export type KnoxAccountConfig = {
   enabled?: boolean;
   adapterOutboundUrl?: string;
   adapterAuthToken?: string;
+  fileLinksBaseUrl?: string;
   sendTimeoutMs?: number;
   allowFrom?: Array<string | number>;
   defaultTo?: string;

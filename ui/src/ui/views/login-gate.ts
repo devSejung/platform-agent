@@ -37,7 +37,7 @@ export function renderLoginGate(state: AppViewState) {
               <img class="login-gate__logo" src=${faviconSrc} alt="Soc PlatformClaw" />
               <div class="login-gate__title">Soc PlatformClaw</div>
               <div class="login-gate__sub">
-                ${state.employeeBootstrapReady ? `${employeeLabel}`.trim() : "Workspace access"}
+                ${state.employeeBootstrapReady ? employeeLabel.trim() : "Workspace access"}
               </div>
               ${employeeMeta.length > 0
                 ? html`<div class="login-gate__meta">
@@ -70,7 +70,7 @@ export function renderLoginGate(state: AppViewState) {
                         @input=${(e: Event) => {
                           state.employeeLoginIdentifier = (e.target as HTMLInputElement).value;
                         }}
-                        placeholder="Email or employee ID"
+                        placeholder="AD ID (Windows ID/PW)"
                         autocomplete="username"
                         inputmode="email"
                         ?disabled=${state.employeeLoginSubmitting}
@@ -102,7 +102,9 @@ export function renderLoginGate(state: AppViewState) {
                         <button
                           type="button"
                           class="btn btn--icon ${state.loginShowGatewayPassword ? "active" : ""}"
-                          title=${state.loginShowGatewayPassword ? "Hide password" : "Show password"}
+                          title=${state.loginShowGatewayPassword
+                            ? "Hide password"
+                            : "Show password"}
                           aria-label="Toggle password visibility"
                           aria-pressed=${state.loginShowGatewayPassword}
                           ?disabled=${state.employeeLoginSubmitting}
@@ -153,12 +155,20 @@ export function renderLoginGate(state: AppViewState) {
                     >
                       ${icons.x}
                     </button>
-                    ${employeeAnnouncement.title ? html`<strong>${employeeAnnouncement.title}</strong>` : nothing}
-                    ${employeeAnnouncement.body ? html`<div>${employeeAnnouncement.body}</div>` : nothing}
+                    ${employeeAnnouncement.title
+                      ? html`<strong>${employeeAnnouncement.title}</strong>`
+                      : nothing}
+                    ${employeeAnnouncement.body
+                      ? html`<div>${employeeAnnouncement.body}</div>`
+                      : nothing}
                     ${employeeAnnouncement.linkUrl
                       ? html`
                           <div>
-                            <a href=${employeeAnnouncement.linkUrl} target="_blank" rel="noopener noreferrer">
+                            <a
+                              href=${employeeAnnouncement.linkUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
                               ${employeeAnnouncement.linkLabel || "Open notice"}
                             </a>
                           </div>

@@ -64,4 +64,13 @@ describe("knox channel", () => {
   it("exposes outbound sendPayload for file-link text conversion", () => {
     expect(knoxChannelPlugin.outbound?.sendPayload).toBeTypeOf("function");
   });
+
+  it("provides Knox-specific agent prompt hints for link-based file delivery", () => {
+    const hints = knoxChannelPlugin.agentPrompt?.messageToolHints?.({
+      cfg: {} as CoreConfig,
+      accountId: undefined,
+    });
+    expect(hints?.join("\n")).toContain("Knox does not use native file upload");
+    expect(hints?.join("\n")).toContain("convert them into Knox file-link messages");
+  });
 });

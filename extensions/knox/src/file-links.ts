@@ -5,6 +5,7 @@ import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolveStateDir } from "../../../src/config/paths.js";
 import type { OpenClawConfig } from "../../../src/config/types.js";
+import { createSubsystemLogger } from "../../../src/logging/subsystem.js";
 import { loadOutboundMediaFromUrl } from "../../../src/plugin-sdk/outbound-media.js";
 import { normalizeOptionalString } from "../../../src/shared/string-coerce.js";
 
@@ -46,6 +47,7 @@ const BLOCKED_MIME_TYPES = new Set([
   "application/x-pkcs12",
 ]);
 const ARTIFACT_ID_RE = /^[0-9a-f-]{36}$/i;
+const log = createSubsystemLogger("knox/file-links");
 
 type KnoxFileLinkMeta = {
   id: string;
@@ -213,7 +215,11 @@ function describeKnoxFileLinkFailure(error: unknown) {
   if (/not found|file not found/iu.test(message)) {
     return "파일을 찾을 수 없음";
   }
-  return "처리 실패";
+  const compact = message.replace(/\s+/gu, " ").trim();
+  if (!compact) {
+    return "처리 실패";
+  }
+  return `처리 실패 (${compact.slice(0, 120)})`;
 }
 
 async function ensureKnoxFileLinksRoot() {
@@ -425,9 +431,17 @@ export async function buildKnoxFileLinksText(params: {
       seenChecksums.add(entry.checksumSha256);
       entries.push(entry);
     } catch (error) {
+      const reason = describeKnoxFileLinkFailure(error);
+      log.warn("failed to convert Knox media into file link", {
+        mediaUrl: normalizedSource,
+        fileName,
+        reason,
+        error: error instanceof Error ? error.message : String(error),
+        localRoots: params.mediaAccess?.localRoots ?? [],
+      });
       notices.push({
         fileName,
-        reason: describeKnoxFileLinkFailure(error),
+        reason,
       });
     }
   }

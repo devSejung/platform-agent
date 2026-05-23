@@ -210,6 +210,38 @@ export async function installSkill(
   }
 }
 
+export async function deleteWorkspaceSkill(
+  state: SkillsState,
+  skillKey: string,
+  slug?: string,
+) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  state.skillsBusyKey = skillKey;
+  state.skillsError = null;
+  try {
+    const result = await state.client.request<{ message?: string }>("skills.delete", {
+      skillKey,
+      ...(slug?.trim() ? { slug: slug.trim() } : {}),
+    });
+    await loadSkills(state);
+    setSkillMessage(state, skillKey, {
+      kind: "success",
+      message: result?.message ?? "Deleted from workspace",
+    });
+  } catch (err) {
+    const message = getErrorMessage(err);
+    state.skillsError = message;
+    setSkillMessage(state, skillKey, {
+      kind: "error",
+      message,
+    });
+  } finally {
+    state.skillsBusyKey = null;
+  }
+}
+
 export async function searchClawHub(state: SkillsState, query: string) {
   if (!state.client || !state.connected) {
     return;

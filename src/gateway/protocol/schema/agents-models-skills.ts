@@ -333,6 +333,214 @@ export const SkillsDetailResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const SkillHubListParamsSchema = Type.Object(
+  {
+    query: Type.Optional(Type.String()),
+    scope: Type.Optional(
+      Type.Union([
+        Type.Literal("discover"),
+        Type.Literal("installed"),
+        Type.Literal("uploads"),
+        Type.Literal("updates"),
+      ]),
+    ),
+    sort: Type.Optional(
+      Type.Union([
+        Type.Literal("recent"),
+        Type.Literal("installs"),
+        Type.Literal("likes"),
+        Type.Literal("az"),
+      ]),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+const SkillHubExamplePromptsSchema = Type.Array(Type.String({ maxLength: 200 }), {
+  maxItems: 3,
+});
+
+const SkillHubWarningFlagsSchema = Type.Object(
+  {
+    hasHiddenFiles: Type.Boolean(),
+    hasExecutableFiles: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubListResultSchema = Type.Object(
+  {
+    entries: Type.Array(
+      Type.Object(
+        {
+          slug: NonEmptyString,
+          displayName: NonEmptyString,
+          summary: Type.String(),
+          uploaderName: NonEmptyString,
+          uploaderEmployeeId: NonEmptyString,
+          latestVersion: NonEmptyString,
+          publishedAt: NonEmptyString,
+          updatedAt: NonEmptyString,
+          installCount: Type.Integer({ minimum: 0 }),
+          installerCount: Type.Integer({ minimum: 0 }),
+          likeCount: Type.Integer({ minimum: 0 }),
+          hidden: Type.Boolean(),
+          uploadedByYou: Type.Boolean(),
+          likedByYou: Type.Boolean(),
+          installed: Type.Boolean(),
+          installedVersion: Type.Optional(NonEmptyString),
+          updateAvailable: Type.Boolean(),
+          flags: SkillHubWarningFlagsSchema,
+        },
+        { additionalProperties: false },
+      ),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubDetailParamsSchema = Type.Object(
+  {
+    slug: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubDetailResultSchema = Type.Object(
+  {
+    detail: Type.Union([
+      Type.Object(
+        {
+          slug: NonEmptyString,
+          displayName: NonEmptyString,
+          summary: Type.String(),
+          uploaderName: NonEmptyString,
+          uploaderEmployeeId: NonEmptyString,
+          latestVersion: NonEmptyString,
+          publishedAt: NonEmptyString,
+          updatedAt: NonEmptyString,
+          installCount: Type.Integer({ minimum: 0 }),
+          installerCount: Type.Integer({ minimum: 0 }),
+          likeCount: Type.Integer({ minimum: 0 }),
+          hidden: Type.Boolean(),
+          uploadedByYou: Type.Boolean(),
+          likedByYou: Type.Boolean(),
+          installed: Type.Boolean(),
+          installedVersion: Type.Optional(NonEmptyString),
+          updateAvailable: Type.Boolean(),
+          flags: SkillHubWarningFlagsSchema,
+          examplePrompts: SkillHubExamplePromptsSchema,
+          versions: Type.Array(
+            Type.Object(
+              {
+                version: NonEmptyString,
+                uploadedBy: Type.Object(
+                  {
+                    employeeId: NonEmptyString,
+                    name: Type.Optional(NonEmptyString),
+                  },
+                  { additionalProperties: false },
+                ),
+                uploadedAt: NonEmptyString,
+                path: NonEmptyString,
+              },
+              { additionalProperties: false },
+            ),
+          ),
+        },
+        { additionalProperties: false },
+      ),
+      Type.Null(),
+    ]),
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubPublishParamsSchema = Type.Object(
+  {
+    skillName: NonEmptyString,
+    examplePrompts: Type.Optional(SkillHubExamplePromptsSchema),
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubUploadParamsSchema = Type.Object(
+  {
+    filename: NonEmptyString,
+    contentBase64: NonEmptyString,
+    examplePrompts: Type.Optional(SkillHubExamplePromptsSchema),
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubHideParamsSchema = Type.Object(
+  {
+    slug: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubInstallParamsSchema = Type.Object(
+  {
+    slug: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubDeleteParamsSchema = Type.Object(
+  {
+    slug: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubMutationResultSchema = Type.Object(
+  {
+    ok: Type.Boolean(),
+    slug: NonEmptyString,
+    version: Type.Optional(NonEmptyString),
+    liked: Type.Optional(Type.Boolean()),
+    likeCount: Type.Optional(Type.Integer({ minimum: 0 })),
+    examplePrompts: Type.Optional(SkillHubExamplePromptsSchema),
+    message: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubLikeParamsSchema = Type.Object(
+  {
+    slug: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubExamplePromptsUpdateParamsSchema = Type.Object(
+  {
+    slug: NonEmptyString,
+    examplePrompts: SkillHubExamplePromptsSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const SkillsDeleteParamsSchema = Type.Object(
+  {
+    skillKey: NonEmptyString,
+    slug: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+export const SkillsDeleteResultSchema = Type.Object(
+  {
+    ok: Type.Boolean(),
+    kind: Type.Union([Type.Literal("hub"), Type.Literal("workspace")]),
+    skillKey: Type.Optional(NonEmptyString),
+    slug: Type.Optional(NonEmptyString),
+    message: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
 export const ToolsCatalogParamsSchema = Type.Object(
   {
     agentId: Type.Optional(NonEmptyString),

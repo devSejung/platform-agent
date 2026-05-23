@@ -33,6 +33,9 @@ const knoxRawSendResultAdapter = createRawChannelSendResultAdapter({
 });
 
 function toKnoxDeliveryResult(result: Awaited<ReturnType<typeof sendKnoxText>>) {
+  if (!result.ok) {
+    throw new Error(result.error || "Knox adapter outbound failed.");
+  }
   return {
     channel: CHANNEL_ID,
     messageId: result.messageId ?? "",
@@ -56,6 +59,13 @@ export const knoxChannelPlugin = createChatChannelPlugin<ResolvedKnoxAccount>({
     },
     reload: { configPrefixes: ["channels.knox"] },
     configSchema: knoxPluginConfigSchema,
+    agentPrompt: {
+      messageToolHints: () => [
+        "- Knox does not use native file upload in this runtime.",
+        "- When you create or return files, include them as normal result attachments/media so the runtime can convert them into Knox file-link messages automatically.",
+        "- Do not say file sharing is unsupported on Knox unless the runtime explicitly reports a delivery failure.",
+      ],
+    },
     setup: {
       applyAccountConfig: ({ cfg }) => cfg,
     },

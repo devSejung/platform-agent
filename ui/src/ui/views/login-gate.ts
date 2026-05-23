@@ -56,10 +56,10 @@ export function renderLoginGate(state: AppViewState) {
                       type="button"
                       @click=${() => state.connect()}
                     >
-                      워크스페이스 입장
+                      Enter workspace
                     </button>
                     <button class="btn" type="button" @click=${() => state.handleEmployeeLogout()}>
-                      로그아웃
+                      Logout
                     </button>
                   `
                 : html`
@@ -122,7 +122,9 @@ export function renderLoginGate(state: AppViewState) {
                       ?disabled=${state.employeeLoginSubmitting}
                       @click=${() => state.handleEmployeeLogin()}
                     >
-                      ${state.employeeLoginSubmitting ? "워크스페이스 준비 중..." : "Sign in"}
+                      ${state.employeeLoginSubmitting
+                        ? "Preparing workspace..."
+                        : "Sign in"}
                     </button>
                     <button
                       class="btn btn--sso login-gate__connect"

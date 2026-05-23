@@ -70,9 +70,9 @@ export async function sendKnoxText(params: SendKnoxTextParams): Promise<KnoxSend
     };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      return { ok: false, error: "Knox adapter outbound timed out." };
+      throw new Error("Knox adapter outbound timed out.");
     }
-    return { ok: false, error: asErrorMessage(error) };
+    throw new Error(asErrorMessage(error));
   } finally {
     clearTimeout(timeout);
   }

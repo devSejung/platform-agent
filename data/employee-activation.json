@@ -3,8 +3,14 @@
   "employees": {
     "eon": {
       "agentId": "eon",
-      "activatedAt": "2026-05-18T14:35:06.007Z",
+      "activatedAt": "2026-05-20T15:50:39.385Z",
       "name": "Eon",
+      "department": "Samsung"
+    },
+    "minji": {
+      "agentId": "minji",
+      "activatedAt": "2026-05-19T16:56:47.180Z",
+      "name": "Minji",
       "department": "Samsung"
     }
   }

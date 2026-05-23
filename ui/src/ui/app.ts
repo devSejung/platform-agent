@@ -74,6 +74,7 @@ import type {
   ClawHubSkillDetail,
   SkillMessage,
 } from "./controllers/skills.ts";
+import type { SkillHubDetail, SkillHubEntry, SkillHubScope } from "./controllers/skill-hub.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import { resolveAgentIdFromSessionKey } from "./session-key.ts";
@@ -486,6 +487,30 @@ export class OpenClawApp extends LitElement {
   @state() clawhubDetailError: string | null = null;
   @state() clawhubInstallSlug: string | null = null;
   @state() clawhubInstallMessage: { kind: "success" | "error"; text: string } | null = null;
+  @state() skillHubLoading = false;
+  @state() skillHubEntries: SkillHubEntry[] = [];
+  @state() skillHubError: string | null = null;
+  @state() skillHubScope: SkillHubScope = "discover";
+  @state() skillHubSort: import("./controllers/skill-hub.ts").SkillHubSort = "recent";
+  @state() skillHubQuery = "";
+  @state() skillHubDetail: SkillHubDetail | null = null;
+  @state() skillHubDetailSlug: string | null = null;
+  @state() skillHubDetailLoading = false;
+  @state() skillHubDetailError: string | null = null;
+  @state() skillHubBusySlug: string | null = null;
+  @state() skillHubMessage: { kind: "success" | "error"; text: string } | null = null;
+  @state() skillHubWorkspacePublishing = false;
+  @state() skillHubUploading = false;
+  @state() skillHubWorkspacePanelOpen = false;
+  @state() skillHubEditorOpen = false;
+  @state() skillHubEditorMode: "publish" | "upload" | "edit-prompts" | null = null;
+  @state() skillHubEditorSlug: string | null = null;
+  @state() skillHubEditorTitle: string | null = null;
+  @state() skillHubEditorSkillName: string | null = null;
+  @state() skillHubEditorFile: File | null = null;
+  @state() skillHubEditorPrompts = ["", "", ""];
+  @state() skillHubEditorError: string | null = null;
+  @state() skillHubEditorLoading = false;
 
   @state() healthLoading = false;
   @state() healthResult: HealthSummary | null = null;

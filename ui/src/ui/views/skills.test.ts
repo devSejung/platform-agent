@@ -1,7 +1,8 @@
 /* @vitest-environment jsdom */
 
 import { render } from "lit";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { i18n } from "../../i18n/index.ts";
 import type { SkillStatusEntry, SkillStatusReport } from "../types.ts";
 import { renderSkills, type SkillsProps } from "./skills.ts";
 
@@ -80,6 +81,8 @@ function createProps(overrides: Partial<SkillsProps> = {}): SkillsProps {
     onEdit: () => undefined,
     onSaveKey: () => undefined,
     onInstall: () => undefined,
+    onDelete: () => undefined,
+    onUpdateHubSkill: () => undefined,
     onDetailOpen: () => undefined,
     onDetailClose: () => undefined,
     onClawHubQueryChange: () => undefined,
@@ -91,6 +94,10 @@ function createProps(overrides: Partial<SkillsProps> = {}): SkillsProps {
 }
 
 describe("renderSkills", () => {
+  beforeEach(async () => {
+    await i18n.setLocale("en");
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
     while (dialogRestores.length > 0) {
@@ -181,26 +188,12 @@ describe("renderSkills", () => {
     expect(onDetailClose).toHaveBeenCalledTimes(1);
   });
 
-  it("renders ClawHub search results and routes detail/install actions", async () => {
+  it("renders the Skill Hub callout and external browse action", async () => {
     const container = document.createElement("div");
-    const onClawHubDetailOpen = vi.fn();
-    const onClawHubInstall = vi.fn();
 
     render(
       renderSkills(
         createProps({
-          clawhubQuery: "git",
-          clawhubResults: [
-            {
-              score: 0.95,
-              slug: "github",
-              displayName: "GitHub",
-              summary: "GitHub integration for OpenClaw",
-              version: "1.2.3",
-            },
-          ],
-          onClawHubDetailOpen,
-          onClawHubInstall,
         }),
       ),
       container,
@@ -208,19 +201,11 @@ describe("renderSkills", () => {
     await Promise.resolve();
 
     const text = normalizeText(container);
-    expect(text).toContain("GitHub");
-    expect(text).toContain("GitHub integration for OpenClaw");
-    expect(text).toContain("v1.2.3");
-
-    container.querySelector<HTMLElement>(".list-item")?.click();
-    container
-      .querySelector<HTMLButtonElement>(".list-item .btn.btn--sm")
-      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-
-    expect(onClawHubDetailOpen).toHaveBeenCalledTimes(1);
-    expect(onClawHubDetailOpen).toHaveBeenCalledWith("github");
-    expect(onClawHubInstall).toHaveBeenCalledTimes(1);
-    expect(onClawHubInstall).toHaveBeenCalledWith("github");
+    expect(text).toContain("Browse Skills Store");
+    expect(text).toContain("Skill Hub");
+    expect(text).toContain("Skill discovery, publishing, package upload, and shared installs");
+    const browseLink = container.querySelector<HTMLAnchorElement>('a[href="https://clawhub.com"]');
+    expect(browseLink).not.toBeNull();
   });
 
   it("renders skill diagnostics with configured global source and attention shortcuts", async () => {
@@ -303,7 +288,6 @@ describe("renderSkills", () => {
     render(
       renderSkills(
         createProps({
-          clawhubSearchError: "rate limited",
           clawhubInstallMessage: { kind: "success", text: "Installed github" },
           clawhubDetailSlug: "github",
           clawhubDetail: {
@@ -336,7 +320,6 @@ describe("renderSkills", () => {
 
     expect(showModal).toHaveBeenCalledTimes(1);
     const text = normalizeText(container);
-    expect(text).toContain("rate limited");
     expect(text).toContain("Installed github");
     expect(text).toContain("By OpenClaw (@openclaw)");
     expect(text).toContain("Latest: v1.2.3");

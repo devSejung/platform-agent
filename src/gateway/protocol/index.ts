@@ -239,6 +239,20 @@ import {
   SkillsDetailParamsSchema,
   type SkillsDetailResult,
   SkillsDetailResultSchema,
+  SkillHubDeleteParamsSchema,
+  SkillHubDetailParamsSchema,
+  SkillHubDetailResultSchema,
+  SkillHubExamplePromptsUpdateParamsSchema,
+  SkillHubHideParamsSchema,
+  SkillHubInstallParamsSchema,
+  SkillHubLikeParamsSchema,
+  SkillHubListParamsSchema,
+  SkillHubListResultSchema,
+  SkillHubMutationResultSchema,
+  SkillHubPublishParamsSchema,
+  SkillHubUploadParamsSchema,
+  SkillsDeleteParamsSchema,
+  SkillsDeleteResultSchema,
   type SkillsInstallParams,
   SkillsInstallParamsSchema,
   type SkillsSearchParams,
@@ -436,6 +450,18 @@ export const validateSkillsInstallParams =
 export const validateSkillsUpdateParams = ajv.compile<SkillsUpdateParams>(SkillsUpdateParamsSchema);
 export const validateSkillsSearchParams = ajv.compile<SkillsSearchParams>(SkillsSearchParamsSchema);
 export const validateSkillsDetailParams = ajv.compile<SkillsDetailParams>(SkillsDetailParamsSchema);
+export const validateSkillHubListParams = ajv.compile(SkillHubListParamsSchema);
+export const validateSkillHubDetailParams = ajv.compile(SkillHubDetailParamsSchema);
+export const validateSkillHubPublishParams = ajv.compile(SkillHubPublishParamsSchema);
+export const validateSkillHubUploadParams = ajv.compile(SkillHubUploadParamsSchema);
+export const validateSkillHubHideParams = ajv.compile(SkillHubHideParamsSchema);
+export const validateSkillHubInstallParams = ajv.compile(SkillHubInstallParamsSchema);
+export const validateSkillHubDeleteParams = ajv.compile(SkillHubDeleteParamsSchema);
+export const validateSkillHubLikeParams = ajv.compile(SkillHubLikeParamsSchema);
+export const validateSkillHubExamplePromptsUpdateParams = ajv.compile(
+  SkillHubExamplePromptsUpdateParamsSchema,
+);
+export const validateSkillsDeleteParams = ajv.compile(SkillsDeleteParamsSchema);
 export const validateCronListParams = ajv.compile<CronListParams>(CronListParamsSchema);
 export const validateCronStatusParams = ajv.compile<CronStatusParams>(CronStatusParamsSchema);
 export const validateCronAddParams = ajv.compile<CronAddParams>(CronAddParamsSchema);
@@ -633,7 +659,21 @@ export {
   SkillsSearchResultSchema,
   SkillsDetailParamsSchema,
   SkillsDetailResultSchema,
+  SkillHubListParamsSchema,
+  SkillHubListResultSchema,
+  SkillHubDetailParamsSchema,
+  SkillHubDetailResultSchema,
+  SkillHubExamplePromptsUpdateParamsSchema,
+  SkillHubPublishParamsSchema,
+  SkillHubUploadParamsSchema,
+  SkillHubHideParamsSchema,
+  SkillHubInstallParamsSchema,
+  SkillHubDeleteParamsSchema,
+  SkillHubLikeParamsSchema,
+  SkillHubMutationResultSchema,
   SkillsUpdateParamsSchema,
+  SkillsDeleteParamsSchema,
+  SkillsDeleteResultSchema,
   CronJobSchema,
   CronListParamsSchema,
   CronStatusParamsSchema,

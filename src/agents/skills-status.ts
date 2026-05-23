@@ -1,4 +1,8 @@
 import path from "node:path";
+import {
+  resolveInstalledHubVersionForSkill,
+  readSkillHubMetadataSync,
+} from "./skill-hub.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { evaluateEntryRequirementsForCurrentPlatform } from "../shared/entry-status.js";
 import type { RequirementConfigCheck, Requirements } from "../shared/requirements.js";
@@ -47,6 +51,13 @@ export type SkillStatusEntry = {
   missing: Requirements;
   configChecks: SkillStatusConfigCheck[];
   install: SkillInstallOption[];
+  hubSlug?: string;
+  installedVersion?: string;
+  latestVersion?: string;
+  updateAvailable?: boolean;
+  hiddenByUploader?: boolean;
+  uploadedByYou?: boolean;
+  canDelete?: boolean;
 };
 
 export type SkillStatusReport = {
@@ -169,6 +180,7 @@ function normalizeInstallOptions(
 
 function buildSkillStatus(
   entry: SkillEntry,
+  workspaceDir: string,
   config?: OpenClawConfig,
   prefs?: SkillsInstallPreferences,
   eligibility?: SkillEligibilityContext,
@@ -202,6 +214,16 @@ function buildSkillStatus(
       isConfigSatisfied,
     });
   const eligible = !disabled && !blockedByAllowlist && requirementsSatisfied;
+  const installedHubState = resolveInstalledHubVersionForSkill({
+    workspaceDir,
+    skillName: entry.skill.name,
+    baseDir: entry.skill.baseDir,
+  });
+  const latestVersion = installedHubState
+    ? readSkillHubMetadataSync(installedHubState.slug)?.latestVersion ?? null
+    : null;
+  const canDelete =
+    skillSource === "openclaw-workspace" || Boolean(installedHubState?.installedPath);
 
   return {
     name: entry.skill.name,
@@ -222,7 +244,34 @@ function buildSkillStatus(
     missing,
     configChecks,
     install: normalizeInstallOptions(entry, prefs ?? resolveSkillsInstallPreferences(config)),
+    ...(installedHubState
+      ? {
+          hubSlug: installedHubState.slug,
+          installedVersion: installedHubState.installedVersion,
+          ...(latestVersion ? { latestVersion } : {}),
+          updateAvailable:
+            Boolean(latestVersion) &&
+            compareVersions(latestVersion!, installedHubState.installedVersion) > 0,
+        }
+      : {}),
+    canDelete,
   };
+}
+
+function compareVersions(left: string, right: string): number {
+  const parse = (value: string) => value.trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
+  const a = parse(left);
+  const b = parse(right);
+  if (!a || !b) {
+    return left.localeCompare(right);
+  }
+  for (let i = 1; i <= 3; i += 1) {
+    const diff = Number(a[i]) - Number(b[i]);
+    if (diff !== 0) {
+      return diff;
+    }
+  }
+  return 0;
 }
 
 export function buildWorkspaceSkillStatus(
@@ -248,7 +297,14 @@ export function buildWorkspaceSkillStatus(
     workspaceDir,
     managedSkillsDir,
     skills: skillEntries.map((entry) =>
-      buildSkillStatus(entry, opts?.config, prefs, opts?.eligibility, bundledContext.names),
+      buildSkillStatus(
+        entry,
+        workspaceDir,
+        opts?.config,
+        prefs,
+        opts?.eligibility,
+        bundledContext.names,
+      ),
     ),
   };
 }

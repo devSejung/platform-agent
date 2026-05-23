@@ -1,5 +1,5 @@
 import { html, nothing } from "lit";
-import { t } from "../i18n/index.ts";
+import { i18n, t, type Locale } from "../i18n/index.ts";
 import { getSafeLocalStorage } from "../local-storage.ts";
 import { refreshChatAvatar } from "./app-chat.ts";
 import { renderUsageTab } from "./app-render-usage-tab.ts";
@@ -90,6 +90,7 @@ import {
   toggleSessionCompactionCheckpoints,
 } from "./controllers/sessions.ts";
 import {
+  deleteWorkspaceSkill,
   closeClawHubDetail,
   installFromClawHub,
   installSkill,
@@ -101,6 +102,21 @@ import {
   updateSkillEdit,
   updateSkillEnabled,
 } from "./controllers/skills.ts";
+import {
+  closeSkillHubDetail,
+  deleteSkillHubSkill,
+  hideSkillHubSkill,
+  installSkillHubSkill,
+  loadSkillHub,
+  loadSkillHubDetail,
+  publishWorkspaceSkillWithPrompts,
+  resolveExistingSkillHubPromptsForSkillName,
+  toEditorPrompts,
+  toggleLikeSkillHubSkill,
+  updateSkillHubSkill,
+  updateSkillHubExamplePromptsAction,
+  uploadSkillHubPackageWithPrompts,
+} from "./controllers/skill-hub.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import "./components/dashboard-header.ts";
 import { icons } from "./icons.ts";
@@ -167,6 +183,7 @@ const lazyLogs = createLazy(() => import("./views/logs.ts"));
 const lazyNodes = createLazy(() => import("./views/nodes.ts"));
 const lazySessions = createLazy(() => import("./views/sessions.ts"));
 const lazySkills = createLazy(() => import("./views/skills.ts"));
+const lazySkillHub = createLazy(() => import("./views/skill-hub.ts"));
 const lazyDreamingView = createLazy(() => import("./views/dreaming.ts"));
 
 function formatDreamNextCycle(nextRunAtMs: number | undefined): string | null {
@@ -236,6 +253,42 @@ function uniquePreserveOrder(values: string[]): string[] {
     output.push(normalized);
   }
   return output;
+}
+
+function renderEmployeeLocaleToggle(state: AppViewState, navCollapsed: boolean) {
+  const currentLocale: Locale = state.settings.locale === "en" ? "en" : "ko";
+  const options: Array<{ locale: Locale; shortLabel: string; labelKey: string }> = [
+    { locale: "ko", shortLabel: "KO", labelKey: "languages.ko" },
+    { locale: "en", shortLabel: "EN", labelKey: "languages.en" },
+  ];
+  return html`
+    <div class="sidebar-language-toggle">
+      ${!navCollapsed
+        ? html`<div class="sidebar-language-toggle__label">${t("common.language")}</div>`
+        : nothing}
+      <div class="sidebar-language-toggle__actions">
+        ${options.map(
+          (option) => html`
+            <button
+              type="button"
+              class="btn btn--sm ${currentLocale === option.locale ? "active" : ""}"
+              title=${t(option.labelKey)}
+              aria-pressed=${currentLocale === option.locale}
+              @click=${() => {
+                if (currentLocale === option.locale) {
+                  return;
+                }
+                void i18n.setLocale(option.locale);
+                state.applySettings({ ...state.settings, locale: option.locale });
+              }}
+            >
+              ${navCollapsed ? option.shortLabel : t(option.labelKey)}
+            </button>
+          `,
+        )}
+      </div>
+    </div>
+  `;
 }
 
 type DismissedUpdateBanner = {
@@ -482,40 +535,47 @@ function renderEmployeeHeartbeat(state: AppViewState) {
       : status === "failed"
         ? "error"
         : "warn";
-  const preview = heartbeat?.preview?.trim() || "최근 heartbeat 미리보기가 없습니다.";
+  const preview = heartbeat?.preview?.trim() || t("employeeHeartbeat.previewFallback");
   const statusHeadline =
-    status === "ok-empty" || status === "ok-token" ? "Heartbeat stable" : "Heartbeat monitor";
-  const statusSummary = heartbeat?.reason?.trim() || "최근 전달 상태를 기준으로 자동 갱신됩니다.";
+    status === "ok-empty" || status === "ok-token"
+      ? t("employeeHeartbeat.statusStable")
+      : t("employeeHeartbeat.statusMonitor");
+  const statusSummary =
+    heartbeat?.reason?.trim() || t("employeeHeartbeat.statusSummaryFallback");
   const mascotUrl = employeeLogoUrl(state.basePath);
   return html`
     <section class="employee-workspace__panel employee-workspace__panel--heartbeat">
       <div class="employee-panel__header">
         <div>
           <div class="employee-panel__eyebrow">Heartbeat</div>
-          <h2 class="employee-panel__title">에이전트 상태</h2>
-          <p class="employee-panel__sub">현재 담당 에이전트의 최근 전달 상태와 기상 신호를 확인합니다.</p>
+          <h2 class="employee-panel__title">${t("employeeHeartbeat.title")}</h2>
+          <p class="employee-panel__sub">${t("employeeHeartbeat.subtitle")}</p>
         </div>
       </div>
       <div class="employee-heartbeat-grid">
         <article class="employee-heartbeat-card">
-          <div class="employee-heartbeat-card__label">최근 상태</div>
+          <div class="employee-heartbeat-card__label">${t("employeeHeartbeat.recentStatus")}</div>
           <div class="employee-heartbeat-card__value employee-heartbeat-card__value--${statusTone}">
             ${status}
           </div>
           <div class="employee-heartbeat-card__meta">${formatEmployeeRelative(heartbeat?.ts)}</div>
         </article>
         <article class="employee-heartbeat-card">
-          <div class="employee-heartbeat-card__label">설정 상태</div>
+          <div class="employee-heartbeat-card__label">${t("employeeHeartbeat.configStatus")}</div>
           <div class="employee-heartbeat-card__value">
-            ${heartbeatConfig?.enabled ? "enabled" : "disabled"}
+            ${heartbeatConfig?.enabled ? t("common.enabled") : t("common.disabled")}
           </div>
-          <div class="employee-heartbeat-card__meta">${heartbeatConfig?.every?.trim() || "주기 없음"}</div>
+          <div class="employee-heartbeat-card__meta">
+            ${heartbeatConfig?.every?.trim() || t("employeeHeartbeat.noCadence")}
+          </div>
         </article>
         <article class="employee-heartbeat-card">
-          <div class="employee-heartbeat-card__label">전달 대상</div>
-          <div class="employee-heartbeat-card__value">${heartbeatConfig?.target?.trim() || "none"}</div>
+          <div class="employee-heartbeat-card__label">${t("employeeHeartbeat.deliveryTarget")}</div>
+          <div class="employee-heartbeat-card__value">
+            ${heartbeatConfig?.target?.trim() || t("employeeHeartbeat.none")}
+          </div>
           <div class="employee-heartbeat-card__meta">
-            ${heartbeat?.channel?.trim() || "채널 기록 없음"}
+            ${heartbeat?.channel?.trim() || t("employeeHeartbeat.noChannelHistory")}
           </div>
         </article>
       </div>
@@ -534,22 +594,28 @@ function renderEmployeeHeartbeat(state: AppViewState) {
           </div>
           <div class="employee-heartbeat-details__summary-chips">
             <span class="employee-heartbeat-details__chip">
-              ${heartbeatConfig?.enabled ? "heartbeat on" : "heartbeat off"}
+              ${heartbeatConfig?.enabled
+                ? t("employeeHeartbeat.heartbeatOn")
+                : t("employeeHeartbeat.heartbeatOff")}
             </span>
-            <span class="employee-heartbeat-details__chip">${heartbeatConfig?.every?.trim() || "no cadence"}</span>
-            <span class="employee-heartbeat-details__chip">${heartbeatConfig?.target?.trim() || "none"}</span>
+            <span class="employee-heartbeat-details__chip">
+              ${heartbeatConfig?.every?.trim() || t("employeeHeartbeat.noCadence")}
+            </span>
+            <span class="employee-heartbeat-details__chip">
+              ${heartbeatConfig?.target?.trim() || t("employeeHeartbeat.none")}
+            </span>
           </div>
           <div class="employee-heartbeat-details__value">${statusSummary}</div>
         </div>
         <div class="employee-heartbeat-details__section">
-          <div class="employee-heartbeat-details__label">최근 수신 시각</div>
+          <div class="employee-heartbeat-details__label">${t("employeeHeartbeat.lastReceivedAt")}</div>
           <div class="employee-heartbeat-details__value">${formatEmployeeDateTime(heartbeat?.ts)}</div>
         </div>
         <div class="employee-heartbeat-details__section">
-          <div class="employee-heartbeat-details__label">최근 전달 정보</div>
+          <div class="employee-heartbeat-details__label">${t("employeeHeartbeat.lastDeliveryInfo")}</div>
           <div class="employee-heartbeat-details__preview">
             ${typeof heartbeat?.durationMs === "number" ? `${heartbeat.durationMs}ms` : "-"} ·
-            ${heartbeat?.to?.trim() || "대상 없음"}<br />${preview}
+            ${heartbeat?.to?.trim() || t("employeeHeartbeat.noTarget")}<br />${preview}
           </div>
         </div>
       </div>
@@ -1014,13 +1080,6 @@ export function renderApp(state: AppViewState) {
             </button>
             <div class="topbar-status">
               ${isChat ? renderChatMobileToggle(state) : nothing}
-              ${state.employeeMode
-                ? html`
-                    <button class="btn btn--sm" type="button" @click=${() => state.handleEmployeeLogout()}>
-                      Logout
-                    </button>
-                  `
-                : nothing}
               ${renderTopbarThemeModeToggle(state)}
             </div>
           </div>
@@ -1110,14 +1169,17 @@ export function renderApp(state: AppViewState) {
               <div class="sidebar-utility-group">
                 ${state.employeeMode
                   ? html`
+                      ${renderEmployeeLocaleToggle(state, navCollapsed)}
                       <button
                         class="nav-item sidebar-utility-link"
                         type="button"
                         @click=${() => state.handleEmployeeLogout()}
-                        title="Logout"
+                        title=${t("common.logout")}
                       >
                         <span class="nav-item__icon" aria-hidden="true">${icons.logOut}</span>
-                        ${!navCollapsed ? html`<span class="nav-item__text">Logout</span>` : nothing}
+                        ${!navCollapsed
+                          ? html`<span class="nav-item__text">${t("common.logout")}</span>`
+                          : nothing}
                       </button>
                     `
                   : nothing}
@@ -1875,6 +1937,7 @@ export function renderApp(state: AppViewState) {
           ? lazyRender(lazySkills, (m) =>
               m.renderSkills({
                 readOnly: state.employeeMode,
+                allowWorkspaceActions: true,
                 connected: state.connected,
                 loading: state.employeeMode ? state.agentSkillsLoading : state.skillsLoading,
                 report: state.employeeMode ? state.agentSkillsReport : state.skillsReport,
@@ -1915,6 +1978,39 @@ export function renderApp(state: AppViewState) {
                   state.employeeMode
                     ? Promise.resolve()
                     : installSkill(state, skillKey, name, installId),
+                onDelete: (skillKey, slug) =>
+                  (() => {
+                    const confirmed =
+                      typeof window === "undefined"
+                        ? true
+                        : window.confirm(
+                            slug
+                              ? "이 스킬을 workspace에서 제거합니다. 다시 사용하려면 Skill Hub에서 다시 설치해야 합니다."
+                              : "이 스킬을 workspace에서 완전히 삭제합니다. 되돌릴 수 없습니다.",
+                          );
+                    if (!confirmed) {
+                      return Promise.resolve();
+                    }
+                    return deleteWorkspaceSkill(state, skillKey, slug).then(async () => {
+                      if (state.employeeMode) {
+                        const agentId =
+                          state.employeeProfile.agentId?.trim() ||
+                          resolveAgentIdFromSessionKey(state.sessionKey) ||
+                          "main";
+                        await loadAgentSkills(state, agentId);
+                      }
+                    });
+                  })(),
+                onUpdateHubSkill: (slug) =>
+                  updateSkillHubSkill(state, slug).then(async () => {
+                    if (state.employeeMode) {
+                      const agentId =
+                        state.employeeProfile.agentId?.trim() ||
+                        resolveAgentIdFromSessionKey(state.sessionKey) ||
+                        "main";
+                      await loadAgentSkills(state, agentId);
+                    }
+                  }),
                 onDetailOpen: (key) => (state.skillsDetailKey = key),
                 onDetailClose: () => (state.skillsDetailKey = null),
                 onClawHubQueryChange: (query) => {
@@ -1927,6 +2023,267 @@ export function renderApp(state: AppViewState) {
                 onClawHubDetailOpen: (slug) => loadClawHubDetail(state, slug),
                 onClawHubDetailClose: () => closeClawHubDetail(state),
                 onClawHubInstall: (slug) => installFromClawHub(state, slug),
+              }),
+            )
+          : nothing}
+        ${state.tab === "skillHub"
+          ? lazyRender(lazySkillHub, (m) =>
+              m.renderSkillHub({
+                loading: state.skillHubLoading,
+                entries: state.skillHubEntries,
+                error: state.skillHubError,
+                scope: state.skillHubScope,
+                sort: state.skillHubSort,
+                query: state.skillHubQuery,
+                detail: state.skillHubDetail,
+                detailSlug: state.skillHubDetailSlug,
+                detailLoading: state.skillHubDetailLoading,
+                detailError: state.skillHubDetailError,
+                busySlug: state.skillHubBusySlug,
+                message: state.skillHubMessage,
+                workspacePublishing: state.skillHubWorkspacePublishing,
+                uploading: state.skillHubUploading,
+                workspacePanelOpen: state.skillHubWorkspacePanelOpen,
+                editorOpen: state.skillHubEditorOpen,
+                editorMode: state.skillHubEditorMode,
+                editorTitle: state.skillHubEditorTitle,
+                editorSkillName: state.skillHubEditorSkillName,
+                editorFile: state.skillHubEditorFile,
+                editorPrompts: state.skillHubEditorPrompts,
+                editorError: state.skillHubEditorError,
+                editorLoading: state.skillHubEditorLoading,
+                workspaceSkillsReport: state.employeeMode ? state.agentSkillsReport : state.skillsReport,
+                onScopeChange: (scope) => {
+                  state.skillHubScope = scope;
+                  void loadSkillHub(state);
+                },
+                onSortChange: (sort) => {
+                  state.skillHubSort = sort;
+                  void loadSkillHub(state);
+                },
+                onQueryChange: (query) => {
+                  state.skillHubQuery = query;
+                  void loadSkillHub(state);
+                },
+                onRefresh: () => void loadSkillHub(state),
+                onOpenDetail: (slug) => void loadSkillHubDetail(state, slug),
+                onCloseDetail: () => closeSkillHubDetail(state),
+                onLike: (slug) => void toggleLikeSkillHubSkill(state, slug),
+                onCopy: async (text, successText) => {
+                  try {
+                    await navigator.clipboard.writeText(text);
+                    state.skillHubMessage = { kind: "success", text: successText };
+                  } catch (err) {
+                    state.skillHubMessage = {
+                      kind: "error",
+                      text: err instanceof Error ? err.message : String(err),
+                    };
+                  }
+                },
+                onInstall: async (slug) => {
+                  await installSkillHubSkill(state, slug);
+                  if (state.employeeMode) {
+                    const agentId =
+                      state.employeeProfile?.agentId?.trim() ||
+                      resolveAgentIdFromSessionKey(state.sessionKey) ||
+                      "main";
+                    await loadAgentSkills(state, agentId);
+                  } else {
+                    await loadSkills(state);
+                  }
+                },
+                onUpdate: async (slug) => {
+                  await updateSkillHubSkill(state, slug);
+                  if (state.employeeMode) {
+                    const agentId =
+                      state.employeeProfile?.agentId?.trim() ||
+                      resolveAgentIdFromSessionKey(state.sessionKey) ||
+                      "main";
+                    await loadAgentSkills(state, agentId);
+                  } else {
+                    await loadSkills(state);
+                  }
+                },
+                onDelete: (slug) => {
+                  if (
+                    typeof window !== "undefined" &&
+                    !window.confirm(
+                      "이 스킬을 workspace에서 제거합니다. 다시 사용하려면 Skill Hub에서 다시 설치해야 합니다.",
+                    )
+                  ) {
+                    return;
+                  }
+                  void (async () => {
+                    await deleteSkillHubSkill(state, slug);
+                    if (state.employeeMode) {
+                      const agentId =
+                        state.employeeProfile?.agentId?.trim() ||
+                        resolveAgentIdFromSessionKey(state.sessionKey) ||
+                        "main";
+                      await loadAgentSkills(state, agentId);
+                    } else {
+                      await loadSkills(state);
+                    }
+                  })();
+                },
+                onHide: (slug) => {
+                  if (
+                    typeof window !== "undefined" &&
+                    !window.confirm("이 스킬을 Hub에서 숨깁니다. 새 설치에는 더 이상 노출되지 않습니다.")
+                  ) {
+                    return;
+                  }
+                  void hideSkillHubSkill(state, slug);
+                },
+                onOpenPublishEditor: (skillName, title) => {
+                  state.skillHubEditorOpen = true;
+                  state.skillHubEditorMode = "publish";
+                  state.skillHubEditorTitle = title;
+                  state.skillHubEditorSkillName = skillName;
+                  state.skillHubEditorSlug = null;
+                  state.skillHubEditorFile = null;
+                  state.skillHubEditorPrompts = ["", "", ""];
+                  state.skillHubEditorError = null;
+                  state.skillHubEditorLoading = true;
+                  void (async () => {
+                    try {
+                      const existing = await resolveExistingSkillHubPromptsForSkillName(state, skillName);
+                      if (
+                        !state.skillHubEditorOpen ||
+                        state.skillHubEditorMode !== "publish" ||
+                        state.skillHubEditorSkillName !== skillName
+                      ) {
+                        return;
+                      }
+                      state.skillHubEditorSlug = existing?.slug ?? null;
+                      state.skillHubEditorPrompts = toEditorPrompts(existing?.examplePrompts ?? []);
+                    } catch (err) {
+                      if (
+                        state.skillHubEditorOpen &&
+                        state.skillHubEditorMode === "publish" &&
+                        state.skillHubEditorSkillName === skillName
+                      ) {
+                        state.skillHubEditorError = err instanceof Error ? err.message : String(err);
+                      }
+                    } finally {
+                      if (
+                        state.skillHubEditorOpen &&
+                        state.skillHubEditorMode === "publish" &&
+                        state.skillHubEditorSkillName === skillName
+                      ) {
+                        state.skillHubEditorLoading = false;
+                      }
+                    }
+                  })();
+                },
+                onOpenUploadEditor: () => {
+                  state.skillHubEditorOpen = true;
+                  state.skillHubEditorMode = "upload";
+                  state.skillHubEditorTitle = null;
+                  state.skillHubEditorSkillName = null;
+                  state.skillHubEditorSlug = null;
+                  state.skillHubEditorFile = null;
+                  state.skillHubEditorPrompts = ["", "", ""];
+                  state.skillHubEditorError = null;
+                  state.skillHubEditorLoading = false;
+                },
+                onToggleWorkspacePanel: () => {
+                  state.skillHubWorkspacePanelOpen = !state.skillHubWorkspacePanelOpen;
+                },
+                onOpenEditPromptsEditor: (slug, title, prompts) => {
+                  state.skillHubEditorOpen = true;
+                  state.skillHubEditorMode = "edit-prompts";
+                  state.skillHubEditorTitle = title;
+                  state.skillHubEditorSkillName = null;
+                  state.skillHubEditorSlug = slug;
+                  state.skillHubEditorFile = null;
+                  state.skillHubEditorPrompts = [prompts[0] ?? "", prompts[1] ?? "", prompts[2] ?? ""];
+                  state.skillHubEditorError = null;
+                  state.skillHubEditorLoading = false;
+                },
+                onEditorClose: () => {
+                  state.skillHubEditorOpen = false;
+                  state.skillHubEditorMode = null;
+                  state.skillHubEditorTitle = null;
+                  state.skillHubEditorSkillName = null;
+                  state.skillHubEditorSlug = null;
+                  state.skillHubEditorFile = null;
+                  state.skillHubEditorPrompts = ["", "", ""];
+                  state.skillHubEditorError = null;
+                  state.skillHubEditorLoading = false;
+                },
+                onEditorPromptChange: (index, value) => {
+                  const next = state.skillHubEditorPrompts.slice(0, 3);
+                  while (next.length < 3) next.push("");
+                  next[index] = value.slice(0, 200);
+                  state.skillHubEditorPrompts = next;
+                },
+                onEditorFileChange: (file) => {
+                  state.skillHubEditorFile = file;
+                  state.skillHubEditorError = null;
+                },
+                onEditorSubmit: () => {
+                  const prompts = state.skillHubEditorPrompts
+                    .map((value) => value.replace(/\s+/g, " ").trim())
+                    .filter(Boolean)
+                    .slice(0, 3);
+                  void (async () => {
+                    state.skillHubEditorError = null;
+                    try {
+                      if (state.skillHubEditorMode === "publish") {
+                        if (!state.skillHubEditorSkillName) {
+                          state.skillHubEditorError = "Missing workspace skill.";
+                          return;
+                        }
+                        await publishWorkspaceSkillWithPrompts(
+                          state,
+                          state.skillHubEditorSkillName,
+                          prompts,
+                        );
+                      } else if (state.skillHubEditorMode === "upload") {
+                        if (!state.skillHubEditorFile) {
+                          state.skillHubEditorError = "Choose a .skill file first.";
+                          return;
+                        }
+                        await uploadSkillHubPackageWithPrompts(
+                          state,
+                          state.skillHubEditorFile,
+                          prompts,
+                        );
+                      } else if (state.skillHubEditorMode === "edit-prompts") {
+                        if (!state.skillHubEditorSlug) {
+                          state.skillHubEditorError = "Missing skill id.";
+                          return;
+                        }
+                        await updateSkillHubExamplePromptsAction(
+                          state,
+                          state.skillHubEditorSlug,
+                          prompts,
+                        );
+                      }
+                      state.skillHubEditorOpen = false;
+                      state.skillHubEditorMode = null;
+                      state.skillHubEditorTitle = null;
+                      state.skillHubEditorSkillName = null;
+                      state.skillHubEditorSlug = null;
+                      state.skillHubEditorFile = null;
+                      state.skillHubEditorPrompts = ["", "", ""];
+                      state.skillHubEditorError = null;
+                      state.skillHubEditorLoading = false;
+                      if (state.employeeMode) {
+                        const agentId =
+                          state.employeeProfile?.agentId?.trim() ||
+                          resolveAgentIdFromSessionKey(state.sessionKey) ||
+                          "main";
+                        await loadAgentSkills(state, agentId);
+                      } else {
+                        await loadSkills(state);
+                      }
+                    } catch (err) {
+                      state.skillHubEditorError = err instanceof Error ? err.message : String(err);
+                    }
+                  })();
+                },
               }),
             )
           : nothing}

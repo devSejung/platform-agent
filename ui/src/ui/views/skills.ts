@@ -48,6 +48,7 @@ export type SkillsStatusFilter = "all" | "ready" | "needs-setup" | "disabled";
 
 export type SkillsProps = {
   readOnly?: boolean;
+  allowWorkspaceActions?: boolean;
   connected: boolean;
   loading: boolean;
   report: SkillStatusReport | null;
@@ -75,6 +76,8 @@ export type SkillsProps = {
   onEdit: (skillKey: string, value: string) => void;
   onSaveKey: (skillKey: string) => void;
   onInstall: (skillKey: string, name: string, installId: string) => void;
+  onDelete: (skillKey: string, slug?: string) => void;
+  onUpdateHubSkill: (slug: string) => void;
   onDetailOpen: (skillKey: string) => void;
   onDetailClose: () => void;
   onClawHubQueryChange: (query: string) => void;
@@ -83,13 +86,13 @@ export type SkillsProps = {
   onClawHubInstall: (slug: string) => void;
 };
 
-type StatusTabDef = { id: SkillsStatusFilter; label: string };
+type StatusTabDef = { id: SkillsStatusFilter; labelKey: string };
 
 const STATUS_TABS: StatusTabDef[] = [
-  { id: "all", label: "All" },
-  { id: "ready", label: "Ready" },
-  { id: "needs-setup", label: "Needs Setup" },
-  { id: "disabled", label: "Disabled" },
+  { id: "all", labelKey: "skills.statusTabs.all" },
+  { id: "ready", labelKey: "skills.statusTabs.ready" },
+  { id: "needs-setup", labelKey: "skills.statusTabs.needsSetup" },
+  { id: "disabled", labelKey: "skills.statusTabs.disabled" },
 ];
 
 function skillMatchesStatus(skill: SkillStatusEntry, status: SkillsStatusFilter): boolean {
@@ -139,12 +142,12 @@ function resolveSkillScope(skill: SkillStatusEntry, report: SkillStatusReport | 
 function formatSkillScope(scope: SkillScope): string {
   switch (scope) {
     case "workspace":
-      return "Workspace";
+      return t("skills.scope.workspace");
     case "bundled":
-      return "Bundled";
+      return t("skills.scope.bundled");
     case "global":
     default:
-      return "Global";
+      return t("skills.scope.global");
   }
 }
 
@@ -157,44 +160,44 @@ function normalizeSkillSource(source: string): {
     case "openclaw-workspace":
       return {
         id: "workspace",
-        label: "Workspace",
+        label: t("skills.sources.workspace.label"),
         description: "<workspace>/skills",
       };
     case "openclaw-extra":
       return {
         id: "configured-global",
-        label: "Configured Global",
+        label: t("skills.sources.configuredGlobal.label"),
         description: "skills.load.extraDirs",
       };
     case "agents-skills-project":
       return {
         id: "project-global",
-        label: "Project Global",
+        label: t("skills.sources.projectGlobal.label"),
         description: "<workspace>/.agents/skills",
       };
     case "agents-skills-personal":
       return {
         id: "personal-global",
-        label: "Personal Global",
+        label: t("skills.sources.personalGlobal.label"),
         description: "~/.agents/skills",
       };
     case "openclaw-managed":
       return {
         id: "managed",
-        label: "Managed",
-        description: "OpenClaw managed skills",
+        label: t("skills.sources.managed.label"),
+        description: t("skills.sources.managed.description"),
       };
     case "openclaw-bundled":
       return {
         id: "bundled",
-        label: "Built-in",
-        description: "Bundled with OpenClaw",
+        label: t("skills.sources.builtIn.label"),
+        description: t("skills.sources.builtIn.description"),
       };
     default:
       return {
         id: source || "unknown",
-        label: source || "Unknown",
-        description: "Unknown source",
+        label: source || t("skills.sources.unknown.label"),
+        description: t("skills.sources.unknown.description"),
       };
   }
 }
@@ -332,39 +335,39 @@ function renderSkillsDiagnostics(
   const issuePreview = diagnostics.issueSkills.slice(0, 3);
 
   return html`
-    <div class="skills-diagnostics" aria-label="Skills diagnostics">
+    <div class="skills-diagnostics" aria-label=${t("skills.diagnostics.ariaLabel")}>
       <div class="skills-diagnostics__header">
         <div>
-          <div class="skills-diagnostics__title">Skill Diagnostics</div>
+          <div class="skills-diagnostics__title">${t("skills.diagnostics.title")}</div>
           <div class="skills-diagnostics__subtitle">
-            Final merged view for this workspace. Configured Global maps to
+            ${t("skills.diagnostics.subtitlePrefix")}
             <code>skills.load.extraDirs</code>.
           </div>
         </div>
         <div class="skills-diagnostics__root" title=${report.workspaceDir}>
-          Workspace: ${compactPath(report.workspaceDir, 44)}
+          ${t("skills.diagnostics.workspacePrefix")} ${compactPath(report.workspaceDir, 44)}
         </div>
       </div>
 
       <div class="skills-diagnostics__stats">
         <div class="skills-diagnostics__stat">
-          <span>Ready</span>
+          <span>${t("skills.statusTabs.ready")}</span>
           <strong>${diagnostics.ready}</strong>
         </div>
         <div class="skills-diagnostics__stat ${diagnostics.needsSetup ? "is-warn" : ""}">
-          <span>Needs Setup</span>
+          <span>${t("skills.statusTabs.needsSetup")}</span>
           <strong>${diagnostics.needsSetup}</strong>
         </div>
         <div class="skills-diagnostics__stat ${diagnostics.disabled ? "is-muted" : ""}">
-          <span>Disabled</span>
+          <span>${t("skills.statusTabs.disabled")}</span>
           <strong>${diagnostics.disabled}</strong>
         </div>
         <div class="skills-diagnostics__stat ${diagnostics.unavailable ? "is-muted" : ""}">
-          <span>Unavailable</span>
+          <span>${t("skills.diagnostics.unavailable")}</span>
           <strong>${diagnostics.unavailable}</strong>
         </div>
         <div class="skills-diagnostics__stat ${diagnostics.configuredGlobal ? "is-info" : ""}">
-          <span>Configured Global</span>
+          <span>${t("skills.sources.configuredGlobal.label")}</span>
           <strong>${diagnostics.configuredGlobal}</strong>
         </div>
       </div>
@@ -380,8 +383,10 @@ function renderSkillsDiagnostics(
               <div class="skills-source-card__desc">${source.description}</div>
               <div class="skills-source-card__meta">
                 ${source.ready}
-                ready${source.blocked ? `, ${source.blocked} blocked` : ""}${source.unavailable
-                  ? `, ${source.unavailable} unavailable`
+                ${t("skills.diagnostics.readyCount")}${source.blocked
+                  ? `, ${source.blocked} ${t("skills.diagnostics.blockedCount")}`
+                  : ""}${source.unavailable
+                  ? `, ${source.unavailable} ${t("skills.diagnostics.unavailableCount")}`
                   : ""}
               </div>
               ${source.roots.length
@@ -398,13 +403,13 @@ function renderSkillsDiagnostics(
 
       ${issuePreview.length
         ? html`
-            <div class="skills-issue-panel">
-              <div class="skills-issue-panel__title">Needs attention</div>
+              <div class="skills-issue-panel">
+              <div class="skills-issue-panel__title">${t("skills.diagnostics.needsAttention")}</div>
               <div class="skills-issue-panel__items">
                 ${issuePreview.map((skill) => {
                   const missing = computeSkillMissing(skill);
                   const reasons = computeSkillReasons(skill);
-                  const detail = [...reasons, ...missing].join(", ") || "not eligible";
+                  const detail = [...reasons, ...missing].join(", ") || t("skills.diagnostics.notEligible");
                   return html`
                     <button
                       class="skills-issue-pill"
@@ -426,6 +431,7 @@ function renderSkillsDiagnostics(
 
 export function renderSkills(props: SkillsProps) {
   const readOnly = Boolean(props.readOnly);
+  const allowWorkspaceActions = Boolean(props.allowWorkspaceActions);
   const skills = props.report?.skills ?? [];
 
   const statusCounts: Record<SkillsStatusFilter, number> = {
@@ -468,8 +474,8 @@ export function renderSkills(props: SkillsProps) {
           <div class="card-title">Skills</div>
           <div class="card-sub">
             ${readOnly
-              ? "Skills available for this workspace."
-              : "Installed skills and their status."}
+              ? t("skills.readOnlySubtitle")
+              : t("skills.subtitle")}
           </div>
         </div>
         <button
@@ -488,7 +494,7 @@ export function renderSkills(props: SkillsProps) {
               class="agent-tab ${props.statusFilter === tab.id ? "active" : ""}"
               @click=${() => props.onStatusFilterChange(tab.id)}
             >
-              ${tab.label}<span class="agent-tab-count">${statusCounts[tab.id]}</span>
+              ${t(tab.labelKey)}<span class="agent-tab-count">${statusCounts[tab.id]}</span>
             </button>
           `,
         )}
@@ -505,57 +511,25 @@ export function renderSkills(props: SkillsProps) {
               href="https://clawhub.com"
               target="_blank"
               rel="noreferrer"
-              title="Browse skills on ClawHub"
-              >Browse Skills Store</a
+              title=${t("skills.browseTitle")}
+              >${t("skills.browseAction")}</a
             >`}
         <label class="field" style="flex: 1; min-width: 180px;">
           <input
             .value=${props.filter}
             @input=${(e: Event) => props.onFilterChange((e.target as HTMLInputElement).value)}
-            placeholder="Filter installed skills"
+            placeholder=${t("skills.filterPlaceholder")}
             autocomplete="off"
             name="skills-filter"
           />
         </label>
-        <div class="muted">${filtered.length} shown</div>
+        <div class="muted">${filtered.length} ${t("skills.shown")}</div>
       </div>
 
       ${renderSkillsDiagnostics(props.report, skills, props.onDetailOpen)}
 
-      <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-          <div style="font-weight: 600;">ClawHub</div>
-          <div class="muted" style="font-size: 13px;">
-            Search and install skills from the registry
-          </div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-          <label class="field" style="flex: 1; min-width: 180px;">
-            <input
-              .value=${props.clawhubQuery}
-              @input=${(e: Event) =>
-                props.onClawHubQueryChange((e.target as HTMLInputElement).value)}
-              placeholder="Search ClawHub skills…"
-              autocomplete="off"
-              name="clawhub-search"
-            />
-          </label>
-          ${props.clawhubSearchLoading ? html`<span class="muted">Searching…</span>` : nothing}
-        </div>
-        ${props.clawhubSearchError
-          ? html`<div class="callout danger" style="margin-top: 8px;">
-              ${props.clawhubSearchError}
-            </div>`
-          : nothing}
-        ${props.clawhubInstallMessage
-          ? html`<div
-              class="callout ${props.clawhubInstallMessage.kind === "error" ? "danger" : "success"}"
-              style="margin-top: 8px;"
-            >
-              ${props.clawhubInstallMessage.text}
-            </div>`
-          : nothing}
-        ${renderClawHubResults(props)}
+      <div class="callout info" style="margin-top: 16px;">
+        ${t("skills.skillHubCalloutPrefix")} <strong>Skill Hub</strong> ${t("skills.skillHubCalloutSuffix")}
       </div>
 
       ${props.error
@@ -566,15 +540,15 @@ export function renderSkills(props: SkillsProps) {
             <div class="skills-empty-state">
               <div class="skills-empty-state__title">
                 ${!props.connected && !props.report
-                  ? "Not connected to gateway."
-                  : "No skills match the current view."}
+                  ? t("skills.empty.disconnectedTitle")
+                  : t("skills.empty.noMatchTitle")}
               </div>
               <div class="skills-empty-state__body">
                 ${!props.connected && !props.report
-                  ? "Connect to the gateway, then refresh skill status."
+                  ? t("skills.empty.disconnectedBody")
                   : props.statusFilter !== "all" || props.filter.trim()
-                    ? "Clear the status filter or search text to see the full merged skill set."
-                    : "Check that SKILL.md exists directly under each skill folder and includes name and description frontmatter."}
+                    ? t("skills.empty.filteredBody")
+                    : t("skills.empty.setupBody")}
               </div>
             </div>
           `
@@ -589,7 +563,13 @@ export function renderSkills(props: SkillsProps) {
                     </summary>
                     <div class="list skills-grid">
                       ${group.skills.map((skill) =>
-                        renderSkill(skill, props, readOnly, resolveSkillScope(skill, props.report)),
+                        renderSkill(
+                          skill,
+                          props,
+                          readOnly,
+                          allowWorkspaceActions,
+                          resolveSkillScope(skill, props.report),
+                        ),
                       )}
                     </div>
                   </details>
@@ -599,7 +579,7 @@ export function renderSkills(props: SkillsProps) {
           `}
     </section>
 
-    ${detailSkill ? renderSkillDetail(detailSkill, props) : nothing}
+    ${detailSkill ? renderSkillDetail(detailSkill, props, allowWorkspaceActions) : nothing}
     ${props.clawhubDetailSlug ? renderClawHubDetailDialog(props) : nothing}
   `;
 }
@@ -610,7 +590,7 @@ function renderClawHubResults(props: SkillsProps) {
     return nothing;
   }
   if (results.length === 0) {
-    return html`<div class="muted" style="margin-top: 8px;">No skills found on ClawHub.</div>`;
+    return html`<div class="muted" style="margin-top: 8px;">${t("skills.clawhub.empty")}</div>`;
   }
   return html`
     <div class="list" style="margin-top: 8px;">
@@ -636,7 +616,9 @@ function renderClawHubResults(props: SkillsProps) {
                   props.onClawHubInstall(r.slug);
                 }}
               >
-                ${props.clawhubInstallSlug === r.slug ? "Installing\u2026" : "Install"}
+                ${props.clawhubInstallSlug === r.slug
+                  ? t("skillHub.actions.installing")
+                  : t("skillHub.actions.install")}
               </button>
             </div>
           </div>
@@ -682,6 +664,13 @@ function renderClawHubDetailDialog(props: SkillsProps) {
           </button>
         </div>
         <div class="md-preview-dialog__body" style="display: grid; gap: 16px;">
+          ${props.clawhubInstallMessage
+            ? html`<div
+                class="callout ${props.clawhubInstallMessage.kind === "error" ? "danger" : "success"}"
+              >
+                ${props.clawhubInstallMessage.text}
+              </div>`
+            : nothing}
           ${props.clawhubDetailLoading
             ? html`<div class="muted">${t("common.loading")}</div>`
             : props.clawhubDetailError
@@ -741,6 +730,7 @@ function renderSkill(
   skill: SkillStatusEntry,
   props: SkillsProps,
   readOnly: boolean,
+  allowWorkspaceActions: boolean,
   scope: SkillScope,
 ) {
   const busy = props.busyKey === skill.skillKey;
@@ -754,6 +744,13 @@ function renderSkill(
           ${skill.emoji ? html`<span>${skill.emoji}</span>` : nothing}
           <span>${skill.name}</span>
           <span class="chip">${formatSkillScope(scope)}</span>
+          ${skill.source === "openclaw-workspace" && !skill.hubSlug
+            ? html`<span class="chip">${t("skills.badges.workspaceLocal")}</span>`
+            : nothing}
+          ${skill.hubSlug ? html`<span class="chip">${t("skills.badges.hubInstalled")}</span>` : nothing}
+          ${skill.updateAvailable
+            ? html`<span class="chip">${t("skillHub.badges.updateAvailable")}</span>`
+            : nothing}
         </div>
         <div class="list-sub">${clampText(skill.description, 140)}</div>
       </div>
@@ -762,7 +759,9 @@ function renderSkill(
         style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;"
       >
         ${readOnly
-          ? html`<span class="muted">${skill.disabled ? "Disabled" : "Enabled"}</span>`
+          ? html`<span class="muted"
+              >${skill.disabled ? t("common.disabled") : t("common.enabled")}</span
+            >`
           : html`<label class="skill-toggle-wrap" @click=${(e: Event) => e.stopPropagation()}>
               <input
                 type="checkbox"
@@ -775,12 +774,27 @@ function renderSkill(
                 }}
               />
             </label>`}
+        ${allowWorkspaceActions && skill.canDelete
+          ? html`<button
+              class="btn btn--sm"
+              @click=${(e: Event) => {
+                e.stopPropagation();
+                props.onDelete(skill.skillKey, skill.hubSlug);
+              }}
+            >
+              ${t("skillHub.actions.delete")}
+            </button>`
+          : nothing}
       </div>
     </div>
   `;
 }
 
-function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
+function renderSkillDetail(
+  skill: SkillStatusEntry,
+  props: SkillsProps,
+  allowWorkspaceActions: boolean,
+) {
   const readOnly = Boolean(props.readOnly);
   const busy = props.busyKey === skill.skillKey;
   const scope = resolveSkillScope(skill, props.report);
@@ -825,7 +839,7 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
               (e.currentTarget as HTMLElement).closest("dialog")?.close();
             }}
           >
-            Close
+            ${t("skillHub.actions.close")}
           </button>
         </div>
         <div class="md-preview-dialog__body" style="display: grid; gap: 16px;">
@@ -835,13 +849,17 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
             </div>
             <div class="chip-row" style="margin-top: 6px;">
               <span class="chip">${formatSkillScope(scope)}</span>
+              ${skill.source === "openclaw-workspace" && !skill.hubSlug
+                ? html`<span class="chip">${t("skills.badges.workspaceLocal")}</span>`
+                : nothing}
+              ${skill.hubSlug ? html`<span class="chip">${t("skills.badges.hubInstalled")}</span>` : nothing}
             </div>
             ${renderSkillStatusChips({ skill, showBundledBadge })}
           </div>
 
           <div class="skills-detail-paths">
             <div>
-              <span>Source</span>
+              <span>${t("skills.detail.source")}</span>
               <code>${normalizeSkillSource(skill.source).label}</code>
             </div>
             <div>
@@ -849,7 +867,7 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
               <code title=${skill.filePath}>${compactPath(skill.filePath, 92)}</code>
             </div>
             <div>
-              <span>Base dir</span>
+              <span>${t("skills.detail.baseDir")}</span>
               <code title=${skill.baseDir}>${compactPath(skill.baseDir, 92)}</code>
             </div>
           </div>
@@ -860,21 +878,21 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
                   class="callout"
                   style="border-color: var(--warn-subtle); background: var(--warn-subtle); color: var(--warn);"
                 >
-                  <div style="font-weight: 600; margin-bottom: 4px;">Missing requirements</div>
+                  <div style="font-weight: 600; margin-bottom: 4px;">${t("skills.detail.missingRequirements")}</div>
                   <div>${missing.join(", ")}</div>
                 </div>
               `
             : nothing}
           ${reasons.length > 0
             ? html`
-                <div class="muted" style="font-size: 13px;">Reason: ${reasons.join(", ")}</div>
+                <div class="muted" style="font-size: 13px;">${t("skills.detail.reasonPrefix")} ${reasons.join(", ")}</div>
               `
             : nothing}
 
           <div style="display: flex; align-items: center; gap: 12px;">
             ${readOnly
               ? html`<span style="font-size: 13px; font-weight: 500;">
-                  ${skill.disabled ? "Disabled" : "Enabled"}
+                  ${skill.disabled ? t("common.disabled") : t("common.enabled")}
                 </span>`
               : html`
                   <label class="skill-toggle-wrap">
@@ -887,8 +905,19 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
                     />
                   </label>
                   <span style="font-size: 13px; font-weight: 500;">
-                    ${skill.disabled ? "Disabled" : "Enabled"}
+                    ${skill.disabled ? t("common.disabled") : t("common.enabled")}
                   </span>
+                  ${allowWorkspaceActions && skill.hubSlug && skill.updateAvailable
+                    ? html`<button
+                        class="btn"
+                        ?disabled=${busy}
+                        @click=${() => props.onUpdateHubSkill(skill.hubSlug!)}
+                      >
+                        ${busy
+                          ? t("skillHub.actions.updating")
+                          : t("skills.detail.updateToVersion", { version: skill.latestVersion ?? "" })}
+                      </button>`
+                    : nothing}
                   ${canInstall
                     ? html`<button
                         class="btn"
@@ -897,6 +926,11 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
                           props.onInstall(skill.skillKey, skill.name, skill.install[0].id)}
                       >
                         ${busy ? "Installing\u2026" : skill.install[0].label}
+                      </button>`
+                    : nothing}
+                  ${allowWorkspaceActions && skill.canDelete
+                    ? html`<button class="btn" ?disabled=${busy} @click=${() => props.onDelete(skill.skillKey, skill.hubSlug)}>
+                        ${t("skills.detail.deleteFromWorkspace")}
                       </button>`
                     : nothing}
                 `}

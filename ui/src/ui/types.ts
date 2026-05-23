@@ -671,6 +671,13 @@ export type SkillStatusEntry = {
   };
   configChecks: SkillsStatusConfigCheck[];
   install: SkillInstallOption[];
+  hubSlug?: string;
+  installedVersion?: string;
+  latestVersion?: string;
+  updateAvailable?: boolean;
+  hiddenByUploader?: boolean;
+  uploadedByYou?: boolean;
+  canDelete?: boolean;
 };
 
 export type SkillStatusReport = {

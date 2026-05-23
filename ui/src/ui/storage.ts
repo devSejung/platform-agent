@@ -5,8 +5,9 @@ const LEGACY_TOKEN_SESSION_KEY = "openclaw.control.token.v1";
 const CONTROL_TOKEN_SESSION_KEY_PREFIX = "openclaw.control.token.v1:";
 const EMPLOYEE_TOKEN_SESSION_KEY_PREFIX = "openclaw.employee.token.v1:";
 const MAX_SCOPED_SESSION_ENTRIES = 10;
+type UiStorageMode = "control" | "employee";
 
-function resolveUiStorageMode(): "control" | "employee" {
+function resolveUiStorageMode(): UiStorageMode {
   const pathname =
     typeof location !== "undefined"
       ? location.pathname
@@ -24,15 +25,15 @@ function resolveUiStorageMode(): "control" | "employee" {
   return "control";
 }
 
-function settingsKeyPrefixForMode(mode: "control" | "employee"): string {
+function settingsKeyPrefixForMode(mode: UiStorageMode): string {
   return mode === "employee" ? EMPLOYEE_SETTINGS_KEY_PREFIX : CONTROL_SETTINGS_KEY_PREFIX;
 }
 
-function tokenKeyPrefixForMode(mode: "control" | "employee"): string {
+function tokenKeyPrefixForMode(mode: UiStorageMode): string {
   return mode === "employee" ? EMPLOYEE_TOKEN_SESSION_KEY_PREFIX : CONTROL_TOKEN_SESSION_KEY_PREFIX;
 }
 
-function settingsKeyForGateway(gatewayUrl: string, mode = resolveUiStorageMode()): string {
+function settingsKeyForGateway(gatewayUrl: string, mode: UiStorageMode = resolveUiStorageMode()): string {
   return `${settingsKeyPrefixForMode(mode)}${normalizeGatewayTokenScope(gatewayUrl)}`;
 }
 
@@ -237,6 +238,7 @@ export function loadSettings(): UiSettings {
     navWidth: 220,
     navGroupsCollapsed: {},
     borderRadius: 50,
+    locale: mode === "employee" ? "ko" : undefined,
   };
 
   try {
@@ -256,7 +258,7 @@ export function loadSettings(): UiSettings {
         : defaults.gatewayUrl;
     const gatewayUrl = parsedGatewayUrl === pageDerivedUrl ? defaultUrl : parsedGatewayUrl;
     const scopedSessionSelection = resolveScopedSessionSelection(gatewayUrl, parsed, defaults);
-    const { theme, mode } = parseThemeSelection(
+    const { theme, mode: themeMode } = parseThemeSelection(
       (parsed as { theme?: unknown }).theme,
       (parsed as { themeMode?: unknown }).themeMode,
     );
@@ -267,7 +269,7 @@ export function loadSettings(): UiSettings {
       sessionKey: scopedSessionSelection.sessionKey,
       lastActiveSessionKey: scopedSessionSelection.lastActiveSessionKey,
       theme,
-      themeMode: mode,
+      themeMode,
       chatFocusMode:
         typeof parsed.chatFocusMode === "boolean" ? parsed.chatFocusMode : defaults.chatFocusMode,
       chatShowThinking:

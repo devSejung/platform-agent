@@ -13,6 +13,7 @@ import type { OpenClawApp } from "./app.ts";
 import { loadAgentFiles } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
+import { loadSkillHub } from "./controllers/skill-hub.ts";
 import { loadAgents } from "./controllers/agents.ts";
 import { loadChannels } from "./controllers/channels.ts";
 import { loadConfig, loadConfigSchema } from "./controllers/config.ts";
@@ -36,6 +37,7 @@ import {
   tabFromPath,
   type Tab,
 } from "./navigation.ts";
+import { resolveAgentIdFromSessionKey } from "./session-key.ts";
 import { saveSettings, type UiSettings } from "./storage.ts";
 import { startThemeTransition, type ThemeTransitionContext } from "./theme-transition.ts";
 import { resolveTheme, type ResolvedTheme, type ThemeMode, type ThemeName } from "./theme.ts";
@@ -45,6 +47,12 @@ import { resetChatViewState } from "./views/chat.ts";
 type SettingsHost = {
   settings: UiSettings;
   employeeMode?: boolean;
+  employeeProfile?: {
+    employeeId?: string | null;
+    name?: string | null;
+    department?: string | null;
+    agentId?: string | null;
+  };
   password?: string;
   theme: ThemeName;
   themeMode: ThemeMode;
@@ -242,7 +250,13 @@ export function setThemeMode(
 
 export async function refreshActiveTab(host: SettingsHost) {
   if (host.employeeMode) {
-    if (host.tab !== "chat" && host.tab !== "cron" && host.tab !== "heartbeat" && host.tab !== "skills") {
+    if (
+      host.tab !== "chat" &&
+      host.tab !== "cron" &&
+      host.tab !== "heartbeat" &&
+      host.tab !== "skills" &&
+      host.tab !== "skillHub"
+    ) {
       host.tab = "chat";
     }
     if (host.tab === "chat") {
@@ -267,6 +281,16 @@ export async function refreshActiveTab(host: SettingsHost) {
         await loadAgentSkills(host as unknown as OpenClawApp, agentId);
       }
     }
+    if (host.tab === "skillHub") {
+      const agentId =
+        host.employeeProfile?.agentId?.trim() ||
+        resolveAgentIdFromSessionKey(host.sessionKey) ||
+        null;
+      if (agentId) {
+        await loadAgentSkills(host as unknown as OpenClawApp, agentId);
+      }
+      await loadSkillHub(host as unknown as OpenClawApp);
+    }
     return;
   }
   if (host.tab === "overview") {
@@ -289,6 +313,10 @@ export async function refreshActiveTab(host: SettingsHost) {
   }
   if (host.tab === "skills") {
     await loadSkills(host as unknown as OpenClawApp);
+  }
+  if (host.tab === "skillHub") {
+    await loadSkills(host as unknown as OpenClawApp);
+    await loadSkillHub(host as unknown as OpenClawApp);
   }
   if (host.tab === "agents") {
     await loadAgents(host as unknown as OpenClawApp);

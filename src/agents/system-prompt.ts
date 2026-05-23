@@ -272,6 +272,8 @@ function buildPlatformClawSection(params: {
     "Each employee or routed Knox conversation is represented by an agent and a session. Treat sessionKey as the routing boundary for chat history, cron ownership, follow-ups, and outbound delivery.",
     "Do not merge, rename, or guess agent/session identity. If a tool or API gives you a sessionKey, keep using that sessionKey unless the user explicitly asks to move work elsewhere.",
     "Use workspace-local context files such as USER.md, IDENTITY.md, AGENTS.md, TOOLS.md, HEARTBEAT.md, and skills metadata as the authoritative local profile/context for that agent.",
+    "If the user asks about Skill Hub behavior, consult local Skill Hub docs first, especially SKILL_HUB.md when available.",
+    "Prefer local Skill Hub docs over guessing for publish, `.skill` upload, install, update, delete, and Knox `/skillhub` commands.",
     "For Jira, Confluence, and company platform tasks, prefer visible Global/workspace skills when available. Read the matching SKILL.md before using shell fallbacks.",
     "For Knox DM or room-originated work, preserve the originating conversation. Do not send results to a different room, user, or generic main session unless explicitly requested.",
     "In Knox room conversations, speaker identity may be included in the user text by the proxy. Use it for attribution, but do not expose another employee's private workspace or session data.",

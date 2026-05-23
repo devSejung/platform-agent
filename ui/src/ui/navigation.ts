@@ -7,7 +7,7 @@ export const TAB_GROUPS = [
     label: "control",
     tabs: ["overview", "channels", "instances", "sessions", "usage", "cron"],
   },
-  { label: "agent", tabs: ["agents", "skills", "nodes", "dreams"] },
+  { label: "agent", tabs: ["agents", "skills", "skillHub", "nodes", "dreams"] },
   {
     label: "settings",
     tabs: [
@@ -23,9 +23,7 @@ export const TAB_GROUPS = [
   },
 ] as const;
 
-export const EMPLOYEE_TAB_GROUPS = [
-  { label: "chat", tabs: ["chat", "cron", "heartbeat", "skills"] },
-] as const;
+export const EMPLOYEE_TAB_GROUPS = [{ label: "chat", tabs: ["chat", "cron", "heartbeat", "skills", "skillHub"] }] as const;
 
 export type Tab =
   | "agents"
@@ -37,6 +35,7 @@ export type Tab =
   | "cron"
   | "heartbeat"
   | "skills"
+  | "skillHub"
   | "nodes"
   | "chat"
   | "config"
@@ -59,6 +58,7 @@ const TAB_PATHS: Record<Tab, string> = {
   cron: "/cron",
   heartbeat: "/heartbeat",
   skills: "/skills",
+  skillHub: "/skill-hub",
   nodes: "/nodes",
   chat: "/chat",
   config: "/config",
@@ -182,6 +182,8 @@ export function iconForTab(tab: Tab): IconName {
       return "activity";
     case "skills":
       return "zap";
+    case "skillHub":
+      return "folder";
     case "nodes":
       return "monitor";
     case "config":
@@ -208,15 +210,38 @@ export function iconForTab(tab: Tab): IconName {
 }
 
 export function titleForTab(tab: Tab) {
-  if (tab === "heartbeat") {
-    return "Heartbeat";
-  }
-  return t(`tabs.${tab}`);
+  const titles: Record<Tab, string> = {
+    agents: "Agents",
+    overview: "Overview",
+    channels: "Channels",
+    instances: "Instances",
+    sessions: "Sessions",
+    usage: "Usage",
+    cron: "Cron Jobs",
+    heartbeat: "Heartbeat",
+    skills: "Skills",
+    skillHub: "Skill Hub",
+    nodes: "Nodes",
+    chat: "Chat",
+    config: "Config",
+    communications: "Communications",
+    appearance: "Appearance",
+    automation: "Automation",
+    infrastructure: "Infrastructure",
+    aiAgents: "AI & Agents",
+    debug: "Debug",
+    logs: "Logs",
+    dreams: "Dreaming",
+  };
+  return titles[tab];
 }
 
 export function subtitleForTab(tab: Tab) {
   if (tab === "heartbeat") {
     return "Recent delivery health and wake status.";
+  }
+  if (tab === "skillHub") {
+    return "Publish, install, update, and manage shared skills.";
   }
   return t(`subtitles.${tab}`);
 }

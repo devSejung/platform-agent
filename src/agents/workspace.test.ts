@@ -278,6 +278,18 @@ describe("upsertWorkspaceUserProfile", () => {
     expect(content).toContain("- 파트: AI Platform Part");
     expect(content).toContain("- Email: eon@company.example");
     expect(content).toContain("- Confluence Space: PLATFORM");
+    expect(content).toContain("## PlatformClaw Skill Hub");
+    expect(content).toContain("- Skill Hub는 전사 공용 스킬 레지스트리입니다.");
+    expect(content).toContain(
+      "- 현재 workspace의 로컬 스킬을 publish하거나 `.skill` 패키지를 업로드할 수 있습니다.",
+    );
+    expect(content).toContain("- Skill Hub 설치/업데이트/삭제는 현재 workspace에만 적용됩니다.");
+    expect(content).toContain(
+      "- Knox 명령은 `/skillhub install <slug>`, `/skillhub update <slug>`, `/skillhub delete <slug>` 형식만 사용하세요.",
+    );
+    expect(content).toContain(
+      "- Hidden 상태인 허브 스킬은 신규 설치할 수 없고, 기존 설치자는 update/delete만 가능합니다.",
+    );
     expect(content).toContain("<!-- OPENCLAW_USER_NOTES_START -->");
     expect(content).toContain("- 자유롭게 추가할 사용자 정보:");
     expect(content).toContain("초기 사용자 노트입니다.");

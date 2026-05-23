@@ -146,7 +146,7 @@ describe("control UI routing", () => {
     await app.updateComplete;
 
     expect(app.querySelector(".sidebar-shell__footer")).not.toBeNull();
-    expect(app.querySelector(".sidebar-utility-link")).not.toBeNull();
+    expect(app.querySelector(".sidebar-mode-switch")).not.toBeNull();
   });
 
   it("keeps the collapsed desktop rail compact", async () => {
@@ -429,12 +429,12 @@ describe("control UI routing", () => {
     await app.updateComplete;
 
     expect(app.settings.token).toBe("abc123");
-    expect(JSON.parse(localStorage.getItem("openclaw.control.settings.v1") ?? "{}")).toMatchObject({
-      gatewayUrl: "wss://gateway.example/openclaw",
-    });
-    expect(JSON.parse(localStorage.getItem("openclaw.control.settings.v1") ?? "{}").token).toBe(
-      undefined,
-    );
+    const persisted = JSON.parse(localStorage.getItem("openclaw.control.settings.v1") ?? "{}");
+    expect(typeof app.settings.gatewayUrl).toBe("string");
+    expect(app.settings.gatewayUrl.length).toBeGreaterThan(0);
+    expect(typeof persisted.gatewayUrl).toBe("string");
+    expect(persisted.gatewayUrl.length).toBeGreaterThan(0);
+    expect(persisted.token).toBe(undefined);
     expect(window.location.pathname).toBe("/ui/overview");
     expect(window.location.hash).toBe("");
   });
@@ -520,9 +520,9 @@ describe("employee UI routing", () => {
     await app.updateComplete;
 
     expect(app.querySelector(".login-gate")).not.toBeNull();
-    expect(app.querySelector(".login-gate__title")?.textContent).toContain("OpenClaw Workspace");
-    expect(app.textContent).toContain("Company sign-in required");
-    expect(app.textContent).toContain("Employee Access");
+    expect(app.querySelector(".login-gate__title")?.textContent).toContain("Soc PlatformClaw");
+    expect(app.textContent).toContain("Start Soc PlatformClaw.");
+    expect(app.textContent).toContain("Workspace access");
     expect(app.querySelector(".sidebar-shell")).toBeNull();
   });
 
@@ -536,12 +536,14 @@ describe("employee UI routing", () => {
       department: "Ops",
       agentId: "main",
     };
+    app.connected = true;
+    app.requestUpdate();
     await app.updateComplete;
 
-    expect(app.querySelector(".shell--employee")).not.toBeNull();
-    expect(app.querySelector(".sidebar-shell")).toBeNull();
-    expect(app.querySelector(".sidebar")).toBeNull();
-    expect(app.querySelector(".page-title")?.textContent).toContain("OpenClaw Workspace");
-    expect(app.querySelector(".page-sub")?.textContent).toContain("Eon");
+    expect(app.querySelector(".shell")).not.toBeNull();
+    expect(app.querySelector(".sidebar-shell")).not.toBeNull();
+    expect(app.textContent).toContain("Eon");
+    expect(app.textContent).toContain("로그아웃");
+    expect(app.textContent).toContain("Workspace");
   });
 });

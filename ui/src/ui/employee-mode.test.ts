@@ -23,9 +23,7 @@ describe("employee mode", () => {
     await app.updateComplete;
 
     expect(app.employeeMode).toBe(true);
-    expect(app.querySelector(".login-gate__title")?.textContent).toContain(
-      "Soc PlatformClaw 업무 워크스페이스",
-    );
+    expect(app.querySelector(".login-gate__title")?.textContent).toContain("Soc PlatformClaw");
   });
 
   it("falls back to employee mode from the root route even without the inline mode flag", async () => {
@@ -37,9 +35,7 @@ describe("employee mode", () => {
     await app.updateComplete;
 
     expect(app.employeeMode).toBe(true);
-    expect(app.querySelector(".login-gate__title")?.textContent).toContain(
-      "Soc PlatformClaw 업무 워크스페이스",
-    );
+    expect(app.querySelector(".login-gate__title")?.textContent).toContain("Soc PlatformClaw");
   });
 
   it("renders an employee login gate before connecting", async () => {
@@ -52,11 +48,9 @@ describe("employee mode", () => {
     await app.updateComplete;
 
     expect(app.querySelector(".login-gate")).not.toBeNull();
-    expect(app.querySelector(".login-gate__title")?.textContent).toContain(
-      "Soc PlatformClaw 업무 워크스페이스",
-    );
-    expect(app.textContent).toContain("회사 계정으로 로그인해 주세요");
-    expect(app.textContent).toContain("로그인 안내");
+    expect(app.querySelector(".login-gate__title")?.textContent).toContain("Soc PlatformClaw");
+    expect(app.textContent).toContain("Start Soc PlatformClaw.");
+    expect(app.textContent).toContain("Workspace access");
     expect(app.querySelector(".sidebar-shell")).toBeNull();
   });
 
@@ -68,13 +62,15 @@ describe("employee mode", () => {
       department: "Ops",
       agentId: "main",
     };
+    app.connected = true;
+    app.requestUpdate();
     await app.updateComplete;
 
-    expect(app.querySelector(".shell--employee")).not.toBeNull();
-    expect(app.querySelector(".sidebar-shell")).toBeNull();
-    expect(app.querySelector(".sidebar")).toBeNull();
-    expect(app.querySelector(".page-title")?.textContent).toContain("Soc PlatformClaw Workspace");
-    expect(app.querySelector(".page-sub")?.textContent).toContain("Eon");
+    expect(app.querySelector(".shell")).not.toBeNull();
+    expect(app.querySelector(".sidebar-shell")).not.toBeNull();
+    expect(app.textContent).toContain("PlatformClaw");
+    expect(app.textContent).toContain("Workspace");
+    expect(app.textContent).toContain("Eon");
     expect(app.textContent).toContain("로그아웃");
   });
 
@@ -87,12 +83,14 @@ describe("employee mode", () => {
       agentId: "eon",
     };
     app.chatModelCatalog = [{ id: "gpt-5", name: "GPT-5", provider: "openai" }];
+    app.connected = true;
     app.requestUpdate();
     await app.updateComplete;
 
-    expect(app.textContent).toContain("대화");
-    expect(app.textContent).toContain("자동화");
-    expect(app.textContent).toContain("하트비트");
+    expect(app.textContent).toContain("Chat");
+    expect(app.textContent).toContain("Cron Jobs");
+    expect(app.textContent).toContain("Heartbeat");
+    expect(app.textContent).toContain("Skill Hub");
     expect(app.querySelector("[data-chat-model-select='true']")).not.toBeNull();
   });
 });

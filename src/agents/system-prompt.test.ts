@@ -330,6 +330,12 @@ describe("buildAgentSystemPrompt", () => {
       "Do not call sessions_send to push cron results into agent:<id>:main or another session.",
     );
     expect(prompt).toContain(
+      "If the user asks about Skill Hub behavior, consult local Skill Hub docs first, especially SKILL_HUB.md when available.",
+    );
+    expect(prompt).toContain(
+      "Prefer local Skill Hub docs over guessing for publish, `.skill` upload, install, update, delete, and Knox `/skillhub` commands.",
+    );
+    expect(prompt).toContain(
       "For Jira, Confluence, and company platform tasks, prefer visible Global/workspace skills when available.",
     );
   });

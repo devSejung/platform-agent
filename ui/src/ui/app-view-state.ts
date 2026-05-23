@@ -9,6 +9,7 @@ import type {
   ClawHubSkillDetail,
   SkillMessage,
 } from "./controllers/skills.ts";
+import type { SkillHubDetail, SkillHubEntry, SkillHubScope } from "./controllers/skill-hub.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import type { UiSettings } from "./storage.ts";
@@ -326,6 +327,30 @@ export type AppViewState = {
     clawhubDetailError: string | null;
     clawhubInstallSlug: string | null;
     clawhubInstallMessage: { kind: "success" | "error"; text: string } | null;
+    skillHubLoading: boolean;
+    skillHubEntries: SkillHubEntry[];
+    skillHubError: string | null;
+    skillHubScope: SkillHubScope;
+    skillHubSort: import("./controllers/skill-hub.ts").SkillHubSort;
+    skillHubQuery: string;
+    skillHubDetail: SkillHubDetail | null;
+    skillHubDetailSlug: string | null;
+    skillHubDetailLoading: boolean;
+    skillHubDetailError: string | null;
+    skillHubBusySlug: string | null;
+    skillHubMessage: { kind: "success" | "error"; text: string } | null;
+    skillHubWorkspacePublishing: boolean;
+    skillHubUploading: boolean;
+    skillHubWorkspacePanelOpen: boolean;
+    skillHubEditorOpen: boolean;
+    skillHubEditorMode: "publish" | "upload" | "edit-prompts" | null;
+    skillHubEditorSlug: string | null;
+    skillHubEditorTitle: string | null;
+    skillHubEditorSkillName: string | null;
+    skillHubEditorFile: File | null;
+    skillHubEditorPrompts: string[];
+    skillHubEditorError: string | null;
+    skillHubEditorLoading: boolean;
     healthLoading: boolean;
     healthResult: HealthSummary | null;
     healthError: string | null;

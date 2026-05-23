@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
 import type { ReplyDispatcher } from "./reply/reply-dispatcher.js";
 import { buildTestCtx } from "./reply/test-ctx.js";
@@ -13,6 +13,11 @@ const hoisted = vi.hoisted(() => ({
   dispatchReplyFromConfigMock: vi.fn(),
   finalizeInboundContextMock: vi.fn((ctx: unknown, _opts?: unknown) => ctx),
   createReplyDispatcherWithTypingMock: vi.fn(),
+  resolveSessionAgentIdMock: vi.fn(() => "agent-main"),
+  resolveAgentWorkspaceDirMock: vi.fn(() => "/tmp/workspace"),
+  installSkillFromHubMock: vi.fn(),
+  updateSkillFromHubMock: vi.fn(),
+  deleteSkillFromWorkspaceMock: vi.fn(),
 }));
 
 vi.mock("./reply/dispatch-from-config.js", () => ({
@@ -36,11 +41,35 @@ vi.mock("./reply/reply-dispatcher.js", async () => {
   };
 });
 
+vi.mock("../agents/agent-scope.js", () => ({
+  resolveSessionAgentId: (...args: unknown[]) => hoisted.resolveSessionAgentIdMock(...args),
+  resolveAgentWorkspaceDir: (...args: unknown[]) => hoisted.resolveAgentWorkspaceDirMock(...args),
+}));
+
+vi.mock("../agents/skill-hub.js", () => ({
+  installSkillFromHub: (...args: unknown[]) => hoisted.installSkillFromHubMock(...args),
+  updateSkillFromHub: (...args: unknown[]) => hoisted.updateSkillFromHubMock(...args),
+  deleteSkillFromWorkspace: (...args: unknown[]) => hoisted.deleteSkillFromWorkspaceMock(...args),
+  resolveSkillHubActor: ({ employee, fallbackAgentId }: { employee?: { employeeId?: string; name?: string }; fallbackAgentId: string }) => ({
+    employeeId: employee?.employeeId ?? fallbackAgentId,
+    name: employee?.name,
+  }),
+  formatSkillHubInstallMessage: (slug: string) => `Skill installed: ${slug}`,
+  formatSkillHubUpdateMessage: (slug: string, version: string) =>
+    `Skill updated: ${slug} -> v${version}`,
+  formatSkillHubDeleteMessage: (slug: string) => `Skill deleted from workspace: ${slug}`,
+  formatSkillHubError: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+}));
+
 const {
   dispatchInboundMessage,
   dispatchInboundMessageWithBufferedDispatcher,
   withReplyDispatcher,
 } = await import("./dispatch.js");
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function createDispatcher(record: string[]): ReplyDispatcher {
   return {
@@ -59,6 +88,59 @@ function createDispatcher(record: string[]): ReplyDispatcher {
 }
 
 describe("withReplyDispatcher", () => {
+  it("intercepts strict /skillhub install commands before normal reply dispatch", async () => {
+    const sendFinalReply = vi.fn(() => true);
+    const dispatcher = {
+      sendToolResult: () => true,
+      sendBlockReply: () => true,
+      sendFinalReply,
+      getQueuedCounts: () => ({ tool: 0, block: 0, final: 1 }),
+      getFailedCounts: () => ({ tool: 0, block: 0, final: 0 }),
+      markComplete: vi.fn(),
+      waitForIdle: vi.fn(async () => {}),
+    } satisfies ReplyDispatcher;
+
+    await dispatchInboundMessage({
+      ctx: buildTestCtx({
+        Body: "/skillhub install jira-ticket-summarizer",
+        SessionKey: "main",
+        SenderId: "emp-1",
+        SenderName: "Eon",
+      }),
+      cfg: {} as OpenClawConfig,
+      dispatcher,
+      replyResolver: async () => ({ text: "ignored" }),
+    });
+
+    expect(hoisted.installSkillFromHubMock).toHaveBeenCalledWith({
+      workspaceDir: "/tmp/workspace",
+      actor: { employeeId: "emp-1", name: "Eon" },
+      slug: "jira-ticket-summarizer",
+    });
+    expect(hoisted.dispatchReplyFromConfigMock).not.toHaveBeenCalled();
+    expect(sendFinalReply).toHaveBeenCalledWith({
+      text: "Skill installed: jira-ticket-summarizer",
+    });
+  });
+
+  it("does not intercept non-strict /skillhub text", async () => {
+    const dispatcher = createDispatcher([]);
+    hoisted.dispatchReplyFromConfigMock.mockResolvedValueOnce({ text: "ok" });
+
+    await dispatchInboundMessage({
+      ctx: buildTestCtx({
+        Body: "please run /skillhub install jira-ticket-summarizer later",
+        SessionKey: "main",
+      }),
+      cfg: {} as OpenClawConfig,
+      dispatcher,
+      replyResolver: async () => ({ text: "ok" }),
+    });
+
+    expect(hoisted.installSkillFromHubMock).not.toHaveBeenCalled();
+    expect(hoisted.dispatchReplyFromConfigMock).toHaveBeenCalledTimes(1);
+  });
+
   it("dispatchInboundMessage owns dispatcher lifecycle", async () => {
     const order: string[] = [];
     const dispatcher = {

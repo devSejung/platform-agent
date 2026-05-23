@@ -126,6 +126,26 @@ describe("buildInboundMetaSystemPrompt", () => {
     expect(payload["flags"]).toBeUndefined();
   });
 
+  it("adds multi-user shared-session guidance for group chats", () => {
+    const prompt = buildInboundMetaSystemPrompt({
+      OriginatingTo: "room:platform",
+      OriginatingChannel: "knox",
+      Provider: "knox",
+      Surface: "knox",
+      ChatType: "group",
+    } as TemplateContext);
+
+    const payload = parseInboundMetaPayload(prompt);
+    expect(payload["session_mode"]).toBe("multi-user-shared");
+    expect(payload["session_behavior"]).toEqual({
+      continuity: "group sessions may be newly initialized and shared by multiple participants",
+      guidance:
+        "use sender and conversation metadata for turn-local grounding; do not assume one sender's personal history applies to the whole session",
+    });
+    expect(prompt).toContain("multiple humans may address the same shared session");
+    expect(prompt).toContain("Do not assume personal continuity for one sender");
+  });
+
   it("omits sender_id when blank", () => {
     const prompt = buildInboundMetaSystemPrompt({
       MessageSid: "458",

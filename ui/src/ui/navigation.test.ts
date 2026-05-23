@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { t } from "../i18n/index.ts";
 import {
   TAB_GROUPS,
   iconForTab,
@@ -71,8 +72,8 @@ describe("subtitleForTab", () => {
   });
 
   it("returns descriptive subtitles", () => {
-    expect(subtitleForTab("chat")).toContain("quick interventions");
-    expect(subtitleForTab("config")).toContain("openclaw.json");
+    expect(subtitleForTab("chat")).toBe(t("subtitles.chat"));
+    expect(subtitleForTab("config")).toBe(t("subtitles.config"));
   });
 });
 

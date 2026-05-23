@@ -1,6 +1,24 @@
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { canExecRequestNode } from "../../agents/exec-defaults.js";
 import {
+  deleteSkillFromWorkspace,
+  formatHubPublishMessage,
+  formatSkillHubDeleteMessage,
+  formatSkillHubError,
+  formatSkillHubInstallMessage,
+  formatSkillHubUpdateMessage,
+  getSkillHubDetail,
+  hideSkillFromHub,
+  installSkillFromHub,
+  listSkillHubEntries,
+  publishWorkspaceSkillToHub,
+  resolveSkillHubActor,
+  toggleSkillHubLike,
+  updateSkillFromHub,
+  updateSkillHubExamplePrompts,
+  uploadSkillPackageToHub,
+} from "../../agents/skill-hub.js";
+import {
   installSkillFromClawHub,
   searchSkillsFromClawHub,
   updateSkillsFromClawHub,
@@ -23,12 +41,43 @@ import {
   formatValidationErrors,
   validateSkillsBinsParams,
   validateSkillsDetailParams,
+  validateSkillHubDeleteParams,
+  validateSkillHubDetailParams,
+  validateSkillHubExamplePromptsUpdateParams,
+  validateSkillHubHideParams,
+  validateSkillHubInstallParams,
+  validateSkillHubLikeParams,
+  validateSkillHubListParams,
+  validateSkillHubPublishParams,
+  validateSkillHubUploadParams,
+  validateSkillsDeleteParams,
   validateSkillsInstallParams,
   validateSkillsSearchParams,
   validateSkillsStatusParams,
   validateSkillsUpdateParams,
 } from "../protocol/index.js";
 import type { GatewayRequestHandlers } from "./types.js";
+
+function resolveSkillsWorkspace(params: {
+  cfg: OpenClawConfig;
+  client?: { internal?: { employee?: { agentId?: string; employeeId?: string; name?: string | null } } };
+  agentIdRaw?: string;
+}) {
+  const employeeAgentId = getEmployeeAgentId(params.client);
+  const agentId = employeeAgentId
+    ? employeeAgentId
+    : params.agentIdRaw?.trim()
+      ? normalizeAgentId(params.agentIdRaw)
+      : resolveDefaultAgentId(params.cfg);
+  return {
+    agentId,
+    workspaceDir: resolveAgentWorkspaceDir(params.cfg, agentId),
+    actor: resolveSkillHubActor({
+      employee: params.client?.internal?.employee,
+      fallbackAgentId: agentId,
+    }),
+  };
+}
 
 function collectSkillBins(entries: SkillEntry[]): string[] {
   const bins = new Set<string>();
@@ -181,7 +230,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
       return;
     }
     const cfg = loadConfig();
-    const workspaceDirRaw = resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg));
+    const { workspaceDir: workspaceDirRaw } = resolveSkillsWorkspace({ cfg });
     if (params && typeof params === "object" && "source" in params && params.source === "clawhub") {
       const p = params as {
         source: "clawhub";
@@ -271,7 +320,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
         return;
       }
       const cfg = loadConfig();
-      const workspaceDir = resolveAgentWorkspaceDir(cfg, resolveDefaultAgentId(cfg));
+      const { workspaceDir } = resolveSkillsWorkspace({ cfg });
       const results = await updateSkillsFromClawHub({
         workspaceDir,
         slug: p.slug,
@@ -338,5 +387,382 @@ export const skillsHandlers: GatewayRequestHandlers = {
     };
     await writeConfigFile(nextConfig);
     respond(true, { ok: true, skillKey: p.skillKey, config: current }, undefined);
+  },
+  "skills.delete": async ({ params, respond, client }) => {
+    if (!validateSkillsDeleteParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.delete params: ${formatValidationErrors(validateSkillsDeleteParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { workspaceDir } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const result = await deleteSkillFromWorkspace({
+        workspaceDir,
+        skillKey: (params as { skillKey: string }).skillKey,
+        slug: typeof (params as { slug?: string }).slug === "string" ? (params as { slug?: string }).slug : undefined,
+        config: cfg,
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          kind: result.kind,
+          ...(result.kind === "hub"
+            ? { slug: result.slug, message: formatSkillHubDeleteMessage(result.slug) }
+            : {
+                skillKey: result.skillKey,
+                message: "이 스킬을 workspace에서 완전히 삭제했습니다.",
+              }),
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.list": async ({ params, respond, client }) => {
+    if (!validateSkillHubListParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.list params: ${formatValidationErrors(validateSkillHubListParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { workspaceDir, actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const entries = await listSkillHubEntries({
+        workspaceDir,
+        actor,
+        query: typeof (params as { query?: string }).query === "string" ? (params as { query?: string }).query : undefined,
+        scope:
+          typeof (params as { scope?: string }).scope === "string"
+            ? ((params as { scope?: "discover" | "installed" | "uploads" | "updates" }).scope ?? "discover")
+            : "discover",
+        sort:
+          typeof (params as { sort?: string }).sort === "string"
+            ? ((params as { sort?: "recent" | "installs" | "likes" | "az" }).sort ?? "recent")
+            : "recent",
+      });
+      respond(true, { entries }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.detail": async ({ params, respond, client }) => {
+    if (!validateSkillHubDetailParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.detail params: ${formatValidationErrors(validateSkillHubDetailParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { workspaceDir, actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const detail = await getSkillHubDetail({
+        workspaceDir,
+        actor,
+        slug: (params as { slug: string }).slug,
+      });
+      respond(true, { detail }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.publish": async ({ params, respond, client }) => {
+    if (!validateSkillHubPublishParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.publish params: ${formatValidationErrors(validateSkillHubPublishParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { workspaceDir, actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const result = await publishWorkspaceSkillToHub({
+        workspaceDir,
+        config: cfg,
+        actor,
+        skillName: (params as { skillName: string }).skillName,
+        examplePrompts:
+          Array.isArray((params as { examplePrompts?: string[] }).examplePrompts)
+            ? (params as { examplePrompts?: string[] }).examplePrompts
+            : undefined,
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          slug: result.slug,
+          version: result.version,
+          message: formatHubPublishMessage(result),
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.upload": async ({ params, respond, client }) => {
+    if (!validateSkillHubUploadParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.upload params: ${formatValidationErrors(validateSkillHubUploadParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const result = await uploadSkillPackageToHub({
+        actor,
+        filename: (params as { filename: string }).filename,
+        contentBase64: (params as { contentBase64: string }).contentBase64,
+        examplePrompts:
+          Array.isArray((params as { examplePrompts?: string[] }).examplePrompts)
+            ? (params as { examplePrompts?: string[] }).examplePrompts
+            : undefined,
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          slug: result.slug,
+          version: result.version,
+          message: formatHubPublishMessage(result),
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.install": async ({ params, respond, client }) => {
+    if (!validateSkillHubInstallParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.install params: ${formatValidationErrors(validateSkillHubInstallParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { workspaceDir, actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const result = await installSkillFromHub({
+        workspaceDir,
+        actor,
+        slug: (params as { slug: string }).slug,
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          slug: result.slug,
+          version: result.version,
+          message: formatSkillHubInstallMessage(result.slug),
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.update": async ({ params, respond, client }) => {
+    if (!validateSkillHubInstallParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.update params: ${formatValidationErrors(validateSkillHubInstallParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { workspaceDir, actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const result = await updateSkillFromHub({
+        workspaceDir,
+        actor,
+        slug: (params as { slug: string }).slug,
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          slug: result.slug,
+          version: result.version,
+          message: formatSkillHubUpdateMessage(result.slug, result.version),
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.hide": async ({ params, respond, client }) => {
+    if (!validateSkillHubHideParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.hide params: ${formatValidationErrors(validateSkillHubHideParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      await hideSkillFromHub({
+        slug: (params as { slug: string }).slug,
+        actor,
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          slug: (params as { slug: string }).slug,
+          message: `Hidden from Skill Hub: ${(params as { slug: string }).slug}`,
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.like": async ({ params, respond, client }) => {
+    if (!validateSkillHubLikeParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.like params: ${formatValidationErrors(validateSkillHubLikeParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const result = await toggleSkillHubLike({
+        slug: (params as { slug: string }).slug,
+        actor,
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          slug: result.slug,
+          liked: result.liked,
+          likeCount: result.likeCount,
+          message: result.liked ? `Liked ${result.slug}` : `Unliked ${result.slug}`,
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.examplePrompts.update": async ({ params, respond, client }) => {
+    if (!validateSkillHubExamplePromptsUpdateParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.examplePrompts.update params: ${formatValidationErrors(validateSkillHubExamplePromptsUpdateParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const result = await updateSkillHubExamplePrompts({
+        slug: (params as { slug: string }).slug,
+        actor,
+        examplePrompts: (params as { examplePrompts: string[] }).examplePrompts,
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          slug: result.slug,
+          examplePrompts: result.examplePrompts,
+          message: "Example prompts updated.",
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.delete": async ({ params, respond, client }) => {
+    if (!validateSkillHubDeleteParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.delete params: ${formatValidationErrors(validateSkillHubDeleteParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { workspaceDir } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const slug = (params as { slug: string }).slug;
+      await deleteSkillFromWorkspace({
+        workspaceDir,
+        skillKey: slug,
+        slug,
+        config: cfg,
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          slug,
+          message: formatSkillHubDeleteMessage(slug),
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
   },
 };

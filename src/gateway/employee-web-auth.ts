@@ -3,6 +3,11 @@ import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent
 import { ensureAgentWorkspace, upsertWorkspaceUserProfile } from "../agents/workspace.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-key.js";
+import {
+  provisionEmployeeAccount,
+  resolveEmployeeAccountSummary,
+} from "../accounts/account-provisioning.js";
+import { listAccountMembershipSummaries } from "../accounts/account-store.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
 import { upsertEmployeeActivationRecord } from "./employee-activation.js";
 import {
@@ -272,9 +277,17 @@ function normalizeEmployeeAuthRecord(
   };
 }
 
+function resolveSessionExpiryIso(exp?: number): string | null {
+  if (typeof exp !== "number" || !Number.isFinite(exp)) {
+    return null;
+  }
+  return new Date(exp * 1000).toISOString();
+}
+
 async function initializeEmployeeWorkspaceAndActivation(params: {
   config: OpenClawConfig;
   authResult: EmployeeExternalAuthSuccess;
+  accountSummary?: ReturnType<typeof resolveEmployeeAccountSummary> | null;
 }): Promise<{
   workspaceCreated: boolean;
   userProfileSeeded: boolean;
@@ -285,6 +298,15 @@ async function initializeEmployeeWorkspaceAndActivation(params: {
   );
   const workspaceDir = resolveAgentWorkspaceDir(params.config, agentId);
   const workspace = await ensureAgentWorkspace({ dir: workspaceDir, ensureBootstrapFiles: true });
+  const accountSummary =
+    params.accountSummary ?? resolveEmployeeAccountSummary({ employeeId: params.authResult.employeeId });
+  const memberships = listAccountMembershipSummaries(params.authResult.employeeId)
+    .filter((entry) => !entry.archived)
+    .map((entry) =>
+      entry.scopeType === "group"
+        ? `Group: ${entry.scopeName} (${entry.groupRole})`
+        : `Part: ${entry.parentGroupName ?? "Group"} / ${entry.scopeName} (${entry.groupRole})`,
+    );
   const userProfile = await upsertWorkspaceUserProfile({
     workspaceDir,
     profile: {
@@ -295,6 +317,9 @@ async function initializeEmployeeWorkspaceAndActivation(params: {
       email: params.authResult.email,
       confluenceSpace: params.authResult.confluenceSpace,
       notes: params.authResult.notes,
+      accountGlobalRole: accountSummary?.globalRole ?? "member",
+      topLevelGroups: accountSummary?.topLevelGroupNames ?? [],
+      memberships,
     },
   });
   const activation = await upsertEmployeeActivationRecord({
@@ -485,6 +510,16 @@ export function handleEmployeeBootstrapRequest(
     sendJson(res, 200, method === "HEAD" ? undefined : body);
     return true;
   }
+  provisionEmployeeAccount({
+    config,
+    employeeId: session.employeeId,
+    name: session.name,
+    department: session.department,
+    agentId: session.agentId,
+    sessionExpiresAt: resolveSessionExpiryIso(session.exp),
+    recordSession: false,
+  });
+  const accountSummary = resolveEmployeeAccountSummary({ employeeId: session.employeeId });
 
   const nowSec = Math.floor(Date.now() / 1000);
   const token = signEmployeeBootstrapToken({
@@ -506,6 +541,7 @@ export function handleEmployeeBootstrapRequest(
     sessionKey: session.sessionKey ?? buildAgentMainSessionKey({ agentId: session.agentId }),
     gatewayUrl: gatewayUrl?.trim() || session.gatewayUrl,
     token,
+    ...(accountSummary ? { account: accountSummary } : {}),
     ui: resolveEmployeeUiSurfaceConfig(config),
   };
   sendJson(res, 200, method === "HEAD" ? undefined : body);
@@ -567,9 +603,20 @@ export async function handleEmployeeLoginRequest(params: {
   );
   let provisioningNotice: EmployeeUiLoginNotice | undefined;
   try {
+    provisionEmployeeAccount({
+      config: params.config,
+      employeeId: authResult.employeeId,
+      email: authResult.email,
+      name: authResult.name,
+      department: authResult.department,
+      agentId: sessionPayload.agentId,
+      sessionExpiresAt: resolveSessionExpiryIso(sessionPayload.exp),
+    });
+    const accountSummary = resolveEmployeeAccountSummary({ employeeId: authResult.employeeId });
     const provisioning = await initializeEmployeeWorkspaceAndActivation({
       config: params.config,
       authResult,
+      accountSummary,
     });
     provisioningNotice = buildEmployeeProvisioningNotice(provisioning);
   } catch (error) {
@@ -640,9 +687,20 @@ export async function handleEmployeeAdSsoRequest(params: {
   );
   let provisioningNotice: EmployeeUiLoginNotice | undefined;
   try {
+    provisionEmployeeAccount({
+      config: params.config,
+      employeeId: authResult.employeeId,
+      email: authResult.email,
+      name: authResult.name,
+      department: authResult.department,
+      agentId: sessionPayload.agentId,
+      sessionExpiresAt: resolveSessionExpiryIso(sessionPayload.exp),
+    });
+    const accountSummary = resolveEmployeeAccountSummary({ employeeId: authResult.employeeId });
     const provisioning = await initializeEmployeeWorkspaceAndActivation({
       config: params.config,
       authResult,
+      accountSummary,
     });
     provisioningNotice = buildEmployeeProvisioningNotice(provisioning);
   } catch (error) {

@@ -9,6 +9,7 @@ export type SkillHubEntry = {
   summary: string;
   uploaderName: string;
   uploaderEmployeeId: string;
+  ownerAccountId: string;
   latestVersion: string;
   publishedAt: string;
   updatedAt: string;
@@ -19,6 +20,7 @@ export type SkillHubEntry = {
   uploadedByYou: boolean;
   likedByYou: boolean;
   installed: boolean;
+  canTransferOwnership: boolean;
   installedVersion?: string;
   updateAvailable: boolean;
   flags: {
@@ -394,6 +396,24 @@ export async function updateSkillHubExamplePromptsAction(
     state.client.request("skillhub.examplePrompts.update", {
       slug,
       examplePrompts,
+    }),
+  );
+}
+
+export async function transferSkillHubOwnershipAction(
+  state: SkillHubState,
+  params: { slug: string; targetAccountId: string; reason?: string },
+) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  await runMutation(
+    state,
+    params.slug,
+    state.client.request("skillhub.transferOwnership", {
+      slug: params.slug,
+      targetAccountId: params.targetAccountId,
+      ...(params.reason?.trim() ? { reason: params.reason.trim() } : {}),
     }),
   );
 }

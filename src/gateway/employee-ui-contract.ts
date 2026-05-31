@@ -20,6 +20,16 @@ export type EmployeeUiSurfaceConfig = {
   announcement?: EmployeeUiAnnouncement;
 };
 
+export type EmployeeUiAccountSummary = {
+  accountId: string;
+  globalRole: "member" | "admin";
+  groupCount: number;
+  partCount: number;
+  topLevelGroupNames: string[];
+  hasAdminAccess: boolean;
+  hasLeaderScope: boolean;
+};
+
 export type EmployeeUiBootstrapAuthenticatedResponse = {
   authenticated: true;
   employeeId: string;
@@ -29,6 +39,7 @@ export type EmployeeUiBootstrapAuthenticatedResponse = {
   sessionKey: string;
   gatewayUrl?: string;
   token: string;
+  account?: EmployeeUiAccountSummary;
   ui?: EmployeeUiSurfaceConfig;
 };
 

@@ -17,6 +17,7 @@ import {
 } from "./app-settings.ts";
 import { handleAgentEvent, resetToolStream, type AgentEventPayload } from "./app-tool-stream.ts";
 import type { OpenClawApp } from "./app.ts";
+import type { EmployeeUiAccountSummary } from "../../../src/gateway/employee-ui-contract.ts";
 import { shouldReloadHistoryForFinalEvent } from "./chat-event-reload.ts";
 import { formatConnectError } from "./connect-error.ts";
 import { loadAgents } from "./controllers/agents.ts";
@@ -70,6 +71,7 @@ type GatewayHost = {
     department: string | null;
     agentId: string | null;
   };
+  employeeAccountSummary: EmployeeUiAccountSummary | null;
   password: string;
   clientInstanceId: string;
   client: GatewayBrowserClient | null;

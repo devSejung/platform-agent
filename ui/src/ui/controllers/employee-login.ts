@@ -179,6 +179,7 @@ export async function logoutEmployee(state: EmployeeLoginState) {
       department: null,
       agentId: null,
     };
+    state.employeeAccountSummary = null;
     state.employeeBootstrapError = null;
     state.employeeLoginNotice = null;
     state.employeeLoginIdentifier = "";

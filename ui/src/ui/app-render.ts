@@ -112,11 +112,28 @@ import {
   publishWorkspaceSkillWithPrompts,
   resolveExistingSkillHubPromptsForSkillName,
   toEditorPrompts,
+  transferSkillHubOwnershipAction,
   toggleLikeSkillHubSkill,
   updateSkillHubSkill,
   updateSkillHubExamplePromptsAction,
   uploadSkillHubPackageWithPrompts,
 } from "./controllers/skill-hub.ts";
+import { searchDirectoryAccounts } from "./controllers/accounts.ts";
+import {
+  loadAdminAccounts,
+  loadAdminAccountDetail,
+  updateAdminAccountRoleAction,
+} from "./controllers/admin-accounts.ts";
+import {
+  addGroupMemberAction,
+  archiveGroupScopeAction,
+  createGroupAction,
+  createPartAction,
+  loadGroups,
+  loadGroupDetail,
+  loadGroupScopeOptions,
+  removeGroupMemberAction,
+} from "./controllers/groups.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import "./components/dashboard-header.ts";
 import { icons } from "./icons.ts";
@@ -184,6 +201,8 @@ const lazyNodes = createLazy(() => import("./views/nodes.ts"));
 const lazySessions = createLazy(() => import("./views/sessions.ts"));
 const lazySkills = createLazy(() => import("./views/skills.ts"));
 const lazySkillHub = createLazy(() => import("./views/skill-hub.ts"));
+const lazyGroups = createLazy(() => import("./views/groups.ts"));
+const lazyAdmin = createLazy(() => import("./views/admin.ts"));
 const lazyDreamingView = createLazy(() => import("./views/dreaming.ts"));
 
 function formatDreamNextCycle(nextRunAtMs: number | undefined): string | null {
@@ -445,9 +464,26 @@ function renderEmployeeIdentitySummary(state: AppViewState, navCollapsed: boolea
   const employeeName = trimStringOrNull(state.employeeProfile.name);
   const department = trimStringOrNull(state.employeeProfile.department);
   const agentId = trimStringOrNull(state.employeeProfile.agentId);
+  const accountSummary = state.employeeAccountSummary;
   if (!employeeId && !employeeName && !department && !agentId) {
     return nothing;
   }
+  const roleLabel =
+    accountSummary?.globalRole === "admin"
+      ? "Admin"
+      : accountSummary?.hasLeaderScope
+        ? "Leader"
+        : accountSummary?.globalRole === "member"
+          ? "Member"
+          : null;
+  const groupSummary = accountSummary
+    ? [
+        accountSummary.groupCount > 0 ? `${accountSummary.groupCount} group` : null,
+        accountSummary.partCount > 0 ? `${accountSummary.partCount} part` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
   return html`
     <section class="sidebar-identity" aria-label="Employee identity">
       <div class="sidebar-identity__header">
@@ -457,12 +493,34 @@ function renderEmployeeIdentitySummary(state: AppViewState, navCollapsed: boolea
       ${employeeName
         ? html`<div class="sidebar-identity__primary">${employeeName}</div>`
         : nothing}
+      ${roleLabel || groupSummary
+        ? html`
+            <div class="sidebar-identity__chips">
+              ${roleLabel
+                ? html`<span class="sidebar-identity__chip sidebar-identity__chip--role"
+                    >${roleLabel}</span
+                  >`
+                : nothing}
+              ${groupSummary
+                ? html`<span class="sidebar-identity__chip">${groupSummary}</span>`
+                : nothing}
+            </div>
+          `
+        : nothing}
       <div class="sidebar-identity__meta">
         ${department
           ? html`
               <div class="sidebar-identity__row">
                 <span class="sidebar-identity__label">Department</span>
                 <strong>${department}</strong>
+              </div>
+            `
+          : nothing}
+        ${accountSummary?.topLevelGroupNames?.length
+          ? html`
+              <div class="sidebar-identity__row">
+                <span class="sidebar-identity__label">Groups</span>
+                <strong>${accountSummary.topLevelGroupNames.join(", ")}</strong>
               </div>
             `
           : nothing}
@@ -636,7 +694,10 @@ export function renderApp(state: AppViewState) {
   if (!state.connected) {
     return html` ${renderLoginGate(state)} ${renderGatewayUrlConfirmation(state)} `;
   }
-  const visibleTabGroups = tabGroupsForMode(state.employeeMode);
+  const visibleTabGroups = tabGroupsForMode(state.employeeMode).map((group) => ({
+    ...group,
+    tabs: group.tabs.filter((tab) => (tab === "admin" ? Boolean(state.employeeAccountSummary?.hasAdminAccess) : true)),
+  }));
   const allowedTabs = new Set(visibleTabGroups.flatMap((group) => [...group.tabs]));
   if (!allowedTabs.has(state.tab)) {
     queueMicrotask(() => state.setTab("chat"));
@@ -2052,6 +2113,14 @@ export function renderApp(state: AppViewState) {
                 editorPrompts: state.skillHubEditorPrompts,
                 editorError: state.skillHubEditorError,
                 editorLoading: state.skillHubEditorLoading,
+                transferOpen: state.skillHubTransferOpen,
+                transferTitle: state.skillHubTransferTitle,
+                transferQuery: state.skillHubTransferQuery,
+                transferResults: state.skillHubTransferResults,
+                transferTargetAccountId: state.skillHubTransferTargetAccountId,
+                transferReason: state.skillHubTransferReason,
+                transferError: state.skillHubTransferError,
+                transferLoading: state.skillHubTransferLoading,
                 workspaceSkillsReport: state.employeeMode ? state.agentSkillsReport : state.skillsReport,
                 onScopeChange: (scope) => {
                   state.skillHubScope = scope;
@@ -2282,6 +2351,384 @@ export function renderApp(state: AppViewState) {
                     } catch (err) {
                       state.skillHubEditorError = err instanceof Error ? err.message : String(err);
                     }
+                  })();
+                },
+                onOpenTransfer: async (slug, title) => {
+                  state.skillHubTransferOpen = true;
+                  state.skillHubTransferSlug = slug;
+                  state.skillHubTransferTitle = title;
+                  state.skillHubTransferQuery = "";
+                  state.skillHubTransferResults = [];
+                  state.skillHubTransferTargetAccountId = null;
+                  state.skillHubTransferReason = "";
+                  state.skillHubTransferError = null;
+                  state.skillHubTransferLoading = true;
+                  try {
+                    const result = await searchDirectoryAccounts({
+                      client: state.client,
+                      connected: state.connected,
+                      query: "",
+                      limit: 12,
+                    });
+                    state.skillHubTransferResults = result.entries;
+                    state.skillHubTransferError = result.error;
+                  } finally {
+                    state.skillHubTransferLoading = false;
+                  }
+                },
+                onCloseTransfer: () => {
+                  state.skillHubTransferOpen = false;
+                  state.skillHubTransferSlug = null;
+                  state.skillHubTransferTitle = null;
+                  state.skillHubTransferQuery = "";
+                  state.skillHubTransferResults = [];
+                  state.skillHubTransferTargetAccountId = null;
+                  state.skillHubTransferReason = "";
+                  state.skillHubTransferError = null;
+                  state.skillHubTransferLoading = false;
+                },
+                onTransferQueryChange: async (value) => {
+                  state.skillHubTransferQuery = value;
+                  state.skillHubTransferLoading = true;
+                  try {
+                    const result = await searchDirectoryAccounts({
+                      client: state.client,
+                      connected: state.connected,
+                      query: value,
+                      limit: 12,
+                    });
+                    state.skillHubTransferResults = result.entries;
+                    state.skillHubTransferError = result.error;
+                  } finally {
+                    state.skillHubTransferLoading = false;
+                  }
+                },
+                onTransferTargetSelect: (accountId) => {
+                  state.skillHubTransferTargetAccountId = accountId;
+                },
+                onTransferReasonChange: (value) => {
+                  state.skillHubTransferReason = value;
+                },
+                onTransferSubmit: () => {
+                  if (!state.skillHubTransferSlug || !state.skillHubTransferTargetAccountId) {
+                    return;
+                  }
+                  void (async () => {
+                    state.skillHubTransferLoading = true;
+                    state.skillHubTransferError = null;
+                    try {
+                      await transferSkillHubOwnershipAction(state, {
+                        slug: state.skillHubTransferSlug,
+                        targetAccountId: state.skillHubTransferTargetAccountId,
+                        reason: state.skillHubTransferReason,
+                      });
+                      state.skillHubTransferOpen = false;
+                      state.skillHubTransferSlug = null;
+                      state.skillHubTransferTitle = null;
+                      state.skillHubTransferQuery = "";
+                      state.skillHubTransferResults = [];
+                      state.skillHubTransferTargetAccountId = null;
+                      state.skillHubTransferReason = "";
+                    } catch (err) {
+                      state.skillHubTransferError = err instanceof Error ? err.message : String(err);
+                    } finally {
+                      state.skillHubTransferLoading = false;
+                    }
+                  })();
+                },
+              }),
+            )
+          : nothing}
+        ${state.tab === "groups"
+          ? lazyRender(lazyGroups, (m) =>
+              m.renderGroups({
+                loading: state.groupsLoading,
+                entries: state.groupsEntries,
+                error: state.groupsError,
+                includeArchived: state.groupsIncludeArchived,
+                detailGroupId: state.groupsDetailGroupId,
+                detailLoading: state.groupsDetailLoading,
+                detail: state.groupsDetail,
+                detailError: state.groupsDetailError,
+                message: state.groupsMessage,
+                createOpen: state.groupsCreateOpen,
+                createName: state.groupsCreateName,
+                createDescription: state.groupsCreateDescription,
+                createSubmitting: state.groupsCreateSubmitting,
+                partCreateOpen: state.groupsPartCreateOpen,
+                partCreateParentId: state.groupsPartCreateParentId,
+                partCreateName: state.groupsPartCreateName,
+                partCreateDescription: state.groupsPartCreateDescription,
+                partCreateSubmitting: state.groupsPartCreateSubmitting,
+                memberModalOpen: state.groupsMemberModalOpen,
+                memberModalScopeType: state.groupsMemberModalScopeType,
+                memberModalScopeLabel: state.groupsMemberModalScopeLabel,
+                memberModalQuery: state.groupsMemberModalQuery,
+                memberModalResults: state.groupsMemberModalResults,
+                memberModalSelectedAccountId: state.groupsMemberModalSelectedAccountId,
+                memberModalRole: state.groupsMemberModalRole,
+                memberModalError: state.groupsMemberModalError,
+                memberModalLoading: state.groupsMemberModalLoading,
+                canAssignLeader: Boolean(state.employeeAccountSummary?.hasAdminAccess),
+                onToggleArchived: async (next) => {
+                  state.groupsIncludeArchived = next;
+                  await loadGroups(state);
+                  if (state.groupsDetailGroupId) {
+                    await loadGroupDetail(state, state.groupsDetailGroupId);
+                  }
+                },
+                onRefresh: () =>
+                  void (async () => {
+                    await Promise.all([loadGroups(state), loadGroupScopeOptions(state)]);
+                    const currentGroupId =
+                      state.groupsDetailGroupId ?? state.groupsEntries[0]?.id ?? null;
+                    if (currentGroupId) {
+                      await loadGroupDetail(state, currentGroupId);
+                    }
+                  })(),
+                onSelectGroup: (groupId) => void loadGroupDetail(state, groupId),
+                onOpenCreate: () => {
+                  state.groupsCreateOpen = true;
+                },
+                onCloseCreate: () => {
+                  state.groupsCreateOpen = false;
+                  state.groupsCreateName = "";
+                  state.groupsCreateDescription = "";
+                },
+                onCreateNameChange: (value) => (state.groupsCreateName = value),
+                onCreateDescriptionChange: (value) => (state.groupsCreateDescription = value),
+                onSubmitCreate: () => {
+                  void (async () => {
+                    state.groupsCreateSubmitting = true;
+                    try {
+                      await createGroupAction(state, {
+                        name: state.groupsCreateName,
+                        description: state.groupsCreateDescription,
+                      });
+                      state.groupsCreateOpen = false;
+                      state.groupsCreateName = "";
+                      state.groupsCreateDescription = "";
+                    } finally {
+                      state.groupsCreateSubmitting = false;
+                    }
+                  })();
+                },
+                onOpenCreatePart: (groupId) => {
+                  state.groupsPartCreateOpen = true;
+                  state.groupsPartCreateParentId = groupId;
+                },
+                onCloseCreatePart: () => {
+                  state.groupsPartCreateOpen = false;
+                  state.groupsPartCreateParentId = null;
+                  state.groupsPartCreateName = "";
+                  state.groupsPartCreateDescription = "";
+                },
+                onPartNameChange: (value) => (state.groupsPartCreateName = value),
+                onPartDescriptionChange: (value) => (state.groupsPartCreateDescription = value),
+                onSubmitCreatePart: () => {
+                  if (!state.groupsPartCreateParentId) {
+                    return;
+                  }
+                  void (async () => {
+                    state.groupsPartCreateSubmitting = true;
+                    try {
+                      await createPartAction(state, {
+                        groupId: state.groupsPartCreateParentId,
+                        name: state.groupsPartCreateName,
+                        description: state.groupsPartCreateDescription,
+                      });
+                      state.groupsPartCreateOpen = false;
+                      state.groupsPartCreateParentId = null;
+                      state.groupsPartCreateName = "";
+                      state.groupsPartCreateDescription = "";
+                    } finally {
+                      state.groupsPartCreateSubmitting = false;
+                    }
+                  })();
+                },
+                onOpenAddMember: async (scopeType, scopeId, label) => {
+                  state.groupsMemberModalOpen = true;
+                  state.groupsMemberModalScopeType = scopeType;
+                  state.groupsMemberModalScopeId = scopeId;
+                  state.groupsMemberModalScopeLabel = label;
+                  state.groupsMemberModalQuery = "";
+                  state.groupsMemberModalResults = [];
+                  state.groupsMemberModalSelectedAccountId = null;
+                  state.groupsMemberModalRole = "member";
+                  state.groupsMemberModalError = null;
+                  const result = await searchDirectoryAccounts({
+                    client: state.client,
+                    connected: state.connected,
+                    query: "",
+                    limit: 12,
+                  });
+                  state.groupsMemberModalResults = result.entries;
+                  state.groupsMemberModalError = result.error;
+                },
+                onCloseAddMember: () => {
+                  state.groupsMemberModalOpen = false;
+                  state.groupsMemberModalScopeId = null;
+                  state.groupsMemberModalScopeLabel = null;
+                  state.groupsMemberModalQuery = "";
+                  state.groupsMemberModalResults = [];
+                  state.groupsMemberModalSelectedAccountId = null;
+                  state.groupsMemberModalRole = "member";
+                  state.groupsMemberModalError = null;
+                  state.groupsMemberModalLoading = false;
+                },
+                onMemberQueryChange: async (value) => {
+                  state.groupsMemberModalQuery = value;
+                  const result = await searchDirectoryAccounts({
+                    client: state.client,
+                    connected: state.connected,
+                    query: value,
+                    limit: 12,
+                  });
+                  state.groupsMemberModalResults = result.entries;
+                  state.groupsMemberModalError = result.error;
+                },
+                onSelectMemberAccount: (accountId) => {
+                  state.groupsMemberModalSelectedAccountId = accountId;
+                },
+                onMemberRoleChange: (value) => {
+                  state.groupsMemberModalRole = value;
+                },
+                onSubmitAddMember: () => {
+                  if (!state.groupsMemberModalScopeId || !state.groupsMemberModalSelectedAccountId) {
+                    return;
+                  }
+                  void (async () => {
+                    state.groupsMemberModalLoading = true;
+                    try {
+                      await addGroupMemberAction(state, {
+                        scopeType: state.groupsMemberModalScopeType,
+                        scopeId: state.groupsMemberModalScopeId,
+                        accountId: state.groupsMemberModalSelectedAccountId,
+                        groupRole: state.groupsMemberModalRole,
+                      });
+                      state.groupsMemberModalOpen = false;
+                      state.groupsMemberModalScopeId = null;
+                      state.groupsMemberModalScopeLabel = null;
+                      state.groupsMemberModalRole = "member";
+                    } finally {
+                      state.groupsMemberModalLoading = false;
+                    }
+                  })();
+                },
+                onRemoveMember: (scopeType, scopeId, accountId, label) => {
+                  if (!window.confirm(`Remove ${label} from this ${scopeType}?`)) {
+                    return;
+                  }
+                  void removeGroupMemberAction(state, { scopeType, scopeId, accountId });
+                },
+                onPromoteMember: (scopeType, scopeId, accountId) => {
+                  void addGroupMemberAction(state, {
+                    scopeType,
+                    scopeId,
+                    accountId,
+                    groupRole: "leader",
+                  });
+                },
+                onDemoteMember: (scopeType, scopeId, accountId) => {
+                  void addGroupMemberAction(state, {
+                    scopeType,
+                    scopeId,
+                    accountId,
+                    groupRole: "member",
+                  });
+                },
+                onArchiveScope: (scopeId, label) => {
+                  if (!window.confirm(`Archive ${label}?`)) {
+                    return;
+                  }
+                  void archiveGroupScopeAction(state, scopeId);
+                },
+              }),
+            )
+          : nothing}
+        ${state.tab === "admin"
+          ? lazyRender(lazyAdmin, (m) =>
+              m.renderAdmin({
+                loading: state.adminAccountsLoading,
+                entries: state.adminAccountsEntries,
+                error: state.adminAccountsError,
+                query: state.adminAccountsQuery,
+                detailLoading: state.adminAccountDetailLoading,
+                detail: state.adminAccountDetail,
+                detailError: state.adminAccountDetailError,
+                message: state.adminAccountMessage,
+                roleModalOpen: state.adminRoleModalOpen,
+                roleModalAccountName: state.adminRoleModalAccountName,
+                roleModalNextRole: state.adminRoleModalNextRole,
+                groupScopeOptions: state.groupsScopeOptions,
+                onQueryChange: (value) => {
+                  state.adminAccountsQuery = value;
+                  void loadAdminAccounts(state);
+                },
+                onRefresh: () =>
+                  void (async () => {
+                    await Promise.all([loadAdminAccounts(state), loadGroupScopeOptions(state)]);
+                    if (state.adminAccountDetailAccountId) {
+                      await loadAdminAccountDetail(state, state.adminAccountDetailAccountId);
+                    }
+                  })(),
+                onOpenDetail: (accountId) => void loadAdminAccountDetail(state, accountId),
+                onCloseDetail: () => {
+                  state.adminAccountDetail = null;
+                  state.adminAccountDetailAccountId = null;
+                  state.adminAccountDetailError = null;
+                },
+                onOpenRoleModal: (accountId, accountName, currentRole) => {
+                  state.adminRoleModalOpen = true;
+                  state.adminRoleModalAccountId = accountId;
+                  state.adminRoleModalAccountName = accountName;
+                  state.adminRoleModalNextRole = currentRole;
+                },
+                onCloseRoleModal: () => {
+                  state.adminRoleModalOpen = false;
+                  state.adminRoleModalAccountId = null;
+                  state.adminRoleModalAccountName = null;
+                },
+                onRoleChangeSelect: (value) => (state.adminRoleModalNextRole = value),
+                onConfirmRoleChange: () => {
+                  if (!state.adminRoleModalAccountId) {
+                    return;
+                  }
+                  void (async () => {
+                    await updateAdminAccountRoleAction(state, {
+                      accountId: state.adminRoleModalAccountId!,
+                      globalRole: state.adminRoleModalNextRole,
+                    });
+                    state.adminRoleModalOpen = false;
+                    state.adminRoleModalAccountId = null;
+                    state.adminRoleModalAccountName = null;
+                  })();
+                },
+                onAddMembership: (scopeType, scopeId, groupRole) => {
+                  if (!state.adminAccountDetail?.accountId) {
+                    return;
+                  }
+                  void (async () => {
+                    await addGroupMemberAction(state, {
+                      scopeType,
+                      scopeId,
+                      accountId: state.adminAccountDetail!.accountId,
+                      groupRole,
+                    });
+                    await loadAdminAccountDetail(state, state.adminAccountDetail!.accountId);
+                  })();
+                },
+                onRemoveMembership: (scopeType, scopeId) => {
+                  if (!state.adminAccountDetail?.accountId) {
+                    return;
+                  }
+                  void (async () => {
+                    await removeGroupMemberAction(state, {
+                      scopeType,
+                      scopeId,
+                      accountId: state.adminAccountDetail!.accountId,
+                    });
+                    await loadAdminAccountDetail(state, state.adminAccountDetail!.accountId);
                   })();
                 },
               }),

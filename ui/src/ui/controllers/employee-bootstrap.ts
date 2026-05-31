@@ -1,5 +1,6 @@
 import {
   EMPLOYEE_BOOTSTRAP_PATH,
+  type EmployeeUiAccountSummary,
   type EmployeeUiBootstrapResponse,
 } from "../../../../src/gateway/employee-ui-contract.js";
 import type { UiSettings } from "../storage.ts";
@@ -25,6 +26,7 @@ export type EmployeeBootstrapState = {
     department: string | null;
     agentId: string | null;
   };
+  employeeAccountSummary: EmployeeUiAccountSummary | null;
   employeeBootstrapToken: string | null;
   employeeBootstrapReady: boolean;
   employeeBootstrapError: string | null;
@@ -67,6 +69,7 @@ export async function loadEmployeeBootstrap(
         department: null,
         agentId: null,
       };
+      state.employeeAccountSummary = null;
       state.employeeBootstrapReady = false;
       state.employeeBootstrapError = null;
       return;
@@ -99,6 +102,7 @@ export async function loadEmployeeBootstrap(
       department: parsed.department ?? null,
       agentId: parsed.agentId,
     };
+    state.employeeAccountSummary = parsed.account ?? null;
     state.employeeBootstrapToken = parsed.token;
     state.employeeBootstrapReady = true;
     state.employeeBootstrapError = null;

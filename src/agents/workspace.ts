@@ -160,6 +160,9 @@ export type WorkspaceUserProfileSeed = {
   email?: string;
   confluenceSpace?: string;
   notes?: string;
+  accountGlobalRole?: "member" | "admin";
+  topLevelGroups?: string[];
+  memberships?: string[];
 };
 
 export type ExtraBootstrapLoadDiagnosticCode =
@@ -244,6 +247,20 @@ function buildWorkspaceUserAutoBlock(profile: WorkspaceUserProfileSeed): string 
   }
   if (profile.confluenceSpace?.trim()) {
     lines.push(`- Confluence Space: ${profile.confluenceSpace.trim()}`);
+  }
+  lines.push("", "## PlatformClaw Account", "");
+  lines.push(`- Account ID: ${profile.employeeId}`);
+  lines.push(`- Global Role: ${profile.accountGlobalRole ?? "member"}`);
+  const groups = (profile.topLevelGroups ?? []).map((value) => value.trim()).filter(Boolean);
+  lines.push(`- Top-level Groups: ${groups.length > 0 ? groups.join(", ") : "none assigned"}`);
+  const memberships = (profile.memberships ?? []).map((value) => value.trim()).filter(Boolean);
+  if (memberships.length > 0) {
+    lines.push("- Group / Part memberships:");
+    for (const membership of memberships) {
+      lines.push(`  - ${membership}`);
+    }
+  } else {
+    lines.push("- Group / Part memberships: none assigned");
   }
   lines.push(
     "",

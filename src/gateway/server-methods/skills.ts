@@ -14,6 +14,7 @@ import {
   publishWorkspaceSkillToHub,
   resolveSkillHubActor,
   toggleSkillHubLike,
+  transferSkillHubOwnership,
   updateSkillFromHub,
   updateSkillHubExamplePrompts,
   uploadSkillPackageToHub,
@@ -49,6 +50,7 @@ import {
   validateSkillHubLikeParams,
   validateSkillHubListParams,
   validateSkillHubPublishParams,
+  validateSkillHubTransferOwnershipParams,
   validateSkillHubUploadParams,
   validateSkillsDeleteParams,
   validateSkillsInstallParams,
@@ -723,6 +725,45 @@ export const skillsHandlers: GatewayRequestHandlers = {
           slug: result.slug,
           examplePrompts: result.examplePrompts,
           message: "Example prompts updated.",
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.transferOwnership": async ({ params, respond, client }) => {
+    if (!validateSkillHubTransferOwnershipParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.transferOwnership params: ${formatValidationErrors(
+            validateSkillHubTransferOwnershipParams.errors,
+          )}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const result = await transferSkillHubOwnership({
+        slug: (params as { slug: string }).slug,
+        actor,
+        targetAccountId: (params as { targetAccountId: string }).targetAccountId,
+        reason:
+          typeof (params as { reason?: string }).reason === "string"
+            ? (params as { reason?: string }).reason
+            : undefined,
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          slug: result.slug,
+          message: `Ownership transferred to ${result.ownerName}`,
         },
         undefined,
       );

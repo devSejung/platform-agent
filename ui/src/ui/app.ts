@@ -34,7 +34,10 @@ import {
   submitEmployeeLogin,
 } from "./controllers/employee-login.ts";
 import { renderApp } from "./app-render.ts";
-import type { EmployeeUiLoginNotice } from "../../../src/gateway/employee-ui-contract.ts";
+import type {
+  EmployeeUiAccountSummary,
+  EmployeeUiLoginNotice,
+} from "../../../src/gateway/employee-ui-contract.ts";
 import {
   exportLogs as exportLogsInternal,
   handleChatScroll as handleChatScrollInternal,
@@ -75,6 +78,9 @@ import type {
   SkillMessage,
 } from "./controllers/skills.ts";
 import type { SkillHubDetail, SkillHubEntry, SkillHubScope } from "./controllers/skill-hub.ts";
+import type { AccountDirectoryEntry } from "./controllers/accounts.ts";
+import type { AdminAccountDetail, AdminAccountEntry } from "./controllers/admin-accounts.ts";
+import type { GroupDetail, GroupEntry, GroupScopeOption } from "./controllers/groups.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import { resolveAgentIdFromSessionKey } from "./session-key.ts";
@@ -182,6 +188,7 @@ export class OpenClawApp extends LitElement {
     department: null as string | null,
     agentId: null as string | null,
   };
+  @state() employeeAccountSummary: EmployeeUiAccountSummary | null = null;
   @state() tab: Tab = "chat";
   @state() onboarding = resolveOnboardingMode();
   @state() connected = false;
@@ -511,6 +518,59 @@ export class OpenClawApp extends LitElement {
   @state() skillHubEditorPrompts = ["", "", ""];
   @state() skillHubEditorError: string | null = null;
   @state() skillHubEditorLoading = false;
+  @state() skillHubTransferOpen = false;
+  @state() skillHubTransferSlug: string | null = null;
+  @state() skillHubTransferTitle: string | null = null;
+  @state() skillHubTransferQuery = "";
+  @state() skillHubTransferResults: AccountDirectoryEntry[] = [];
+  @state() skillHubTransferTargetAccountId: string | null = null;
+  @state() skillHubTransferReason = "";
+  @state() skillHubTransferLoading = false;
+  @state() skillHubTransferError: string | null = null;
+
+  @state() groupsLoading = false;
+  @state() groupsEntries: GroupEntry[] = [];
+  @state() groupsError: string | null = null;
+  @state() groupsIncludeArchived = false;
+  @state() groupsDetailGroupId: string | null = null;
+  @state() groupsDetailLoading = false;
+  @state() groupsDetail: GroupDetail | null = null;
+  @state() groupsDetailError: string | null = null;
+  @state() groupsScopeOptions: GroupScopeOption[] = [];
+  @state() groupsMessage: { kind: "success" | "error"; text: string } | null = null;
+  @state() groupsCreateOpen = false;
+  @state() groupsCreateName = "";
+  @state() groupsCreateDescription = "";
+  @state() groupsCreateSubmitting = false;
+  @state() groupsPartCreateOpen = false;
+  @state() groupsPartCreateParentId: string | null = null;
+  @state() groupsPartCreateName = "";
+  @state() groupsPartCreateDescription = "";
+  @state() groupsPartCreateSubmitting = false;
+  @state() groupsMemberModalOpen = false;
+  @state() groupsMemberModalScopeType: "group" | "part" = "group";
+  @state() groupsMemberModalScopeId: string | null = null;
+  @state() groupsMemberModalScopeLabel: string | null = null;
+  @state() groupsMemberModalQuery = "";
+  @state() groupsMemberModalResults: AccountDirectoryEntry[] = [];
+  @state() groupsMemberModalSelectedAccountId: string | null = null;
+  @state() groupsMemberModalRole: "member" | "leader" = "member";
+  @state() groupsMemberModalError: string | null = null;
+  @state() groupsMemberModalLoading = false;
+
+  @state() adminAccountsLoading = false;
+  @state() adminAccountsEntries: AdminAccountEntry[] = [];
+  @state() adminAccountsError: string | null = null;
+  @state() adminAccountsQuery = "";
+  @state() adminAccountDetailLoading = false;
+  @state() adminAccountDetail: AdminAccountDetail | null = null;
+  @state() adminAccountDetailError: string | null = null;
+  @state() adminAccountDetailAccountId: string | null = null;
+  @state() adminAccountMessage: { kind: "success" | "error"; text: string } | null = null;
+  @state() adminRoleModalOpen = false;
+  @state() adminRoleModalAccountId: string | null = null;
+  @state() adminRoleModalAccountName: string | null = null;
+  @state() adminRoleModalNextRole: "member" | "admin" = "member";
 
   @state() healthLoading = false;
   @state() healthResult: HealthSummary | null = null;

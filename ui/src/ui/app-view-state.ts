@@ -10,12 +10,18 @@ import type {
   SkillMessage,
 } from "./controllers/skills.ts";
 import type { SkillHubDetail, SkillHubEntry, SkillHubScope } from "./controllers/skill-hub.ts";
+import type { AccountDirectoryEntry } from "./controllers/accounts.ts";
+import type { AdminAccountDetail, AdminAccountEntry } from "./controllers/admin-accounts.ts";
+import type { GroupDetail, GroupEntry, GroupScopeOption } from "./controllers/groups.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import type { UiSettings } from "./storage.ts";
 import type { ThemeTransitionContext } from "./theme-transition.ts";
 import type { ResolvedTheme, ThemeMode, ThemeName } from "./theme.ts";
-import type { EmployeeUiLoginNotice } from "../../../src/gateway/employee-ui-contract.ts";
+import type {
+  EmployeeUiAccountSummary,
+  EmployeeUiLoginNotice,
+} from "../../../src/gateway/employee-ui-contract.ts";
 import type {
   AgentsListResult,
   AgentsFilesListResult,
@@ -66,6 +72,7 @@ export type AppViewState = {
     department: string | null;
     agentId: string | null;
   };
+  employeeAccountSummary: EmployeeUiAccountSummary | null;
   password: string;
   loginShowGatewayToken: boolean;
   loginShowGatewayPassword: boolean;
@@ -351,6 +358,56 @@ export type AppViewState = {
     skillHubEditorPrompts: string[];
     skillHubEditorError: string | null;
     skillHubEditorLoading: boolean;
+    skillHubTransferOpen: boolean;
+    skillHubTransferSlug: string | null;
+    skillHubTransferTitle: string | null;
+    skillHubTransferQuery: string;
+    skillHubTransferResults: AccountDirectoryEntry[];
+    skillHubTransferTargetAccountId: string | null;
+    skillHubTransferReason: string;
+    skillHubTransferLoading: boolean;
+    skillHubTransferError: string | null;
+    groupsLoading: boolean;
+    groupsEntries: GroupEntry[];
+    groupsError: string | null;
+    groupsIncludeArchived: boolean;
+    groupsDetailGroupId: string | null;
+    groupsDetailLoading: boolean;
+    groupsDetail: GroupDetail | null;
+    groupsDetailError: string | null;
+    groupsScopeOptions: GroupScopeOption[];
+    groupsMessage: { kind: "success" | "error"; text: string } | null;
+    groupsCreateOpen: boolean;
+    groupsCreateName: string;
+    groupsCreateDescription: string;
+    groupsCreateSubmitting: boolean;
+    groupsPartCreateOpen: boolean;
+    groupsPartCreateParentId: string | null;
+    groupsPartCreateName: string;
+    groupsPartCreateDescription: string;
+    groupsPartCreateSubmitting: boolean;
+    groupsMemberModalOpen: boolean;
+    groupsMemberModalScopeType: "group" | "part";
+    groupsMemberModalScopeId: string | null;
+    groupsMemberModalScopeLabel: string | null;
+    groupsMemberModalQuery: string;
+    groupsMemberModalResults: AccountDirectoryEntry[];
+    groupsMemberModalSelectedAccountId: string | null;
+    groupsMemberModalError: string | null;
+    groupsMemberModalLoading: boolean;
+    adminAccountsLoading: boolean;
+    adminAccountsEntries: AdminAccountEntry[];
+    adminAccountsError: string | null;
+    adminAccountsQuery: string;
+    adminAccountDetailLoading: boolean;
+    adminAccountDetail: AdminAccountDetail | null;
+    adminAccountDetailError: string | null;
+    adminAccountDetailAccountId: string | null;
+    adminAccountMessage: { kind: "success" | "error"; text: string } | null;
+    adminRoleModalOpen: boolean;
+    adminRoleModalAccountId: string | null;
+    adminRoleModalAccountName: string | null;
+    adminRoleModalNextRole: "member" | "admin";
     healthLoading: boolean;
     healthResult: HealthSummary | null;
     healthError: string | null;

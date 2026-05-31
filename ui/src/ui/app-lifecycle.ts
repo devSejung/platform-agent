@@ -25,6 +25,7 @@ import {
 import { loadControlUiBootstrapConfig } from "./controllers/control-ui-bootstrap.ts";
 import { loadEmployeeBootstrap } from "./controllers/employee-bootstrap.ts";
 import type { Tab } from "./navigation.ts";
+import type { EmployeeUiAccountSummary } from "../../../src/gateway/employee-ui-contract.ts";
 
 type LifecycleHost = {
   basePath: string;
@@ -46,6 +47,7 @@ type LifecycleHost = {
     department: string | null;
     agentId: string | null;
   };
+  employeeAccountSummary: EmployeeUiAccountSummary | null;
   chatHasAutoScrolled: boolean;
   chatManualRefreshInFlight: boolean;
   chatLoading: boolean;

@@ -254,6 +254,7 @@ function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readT
     "Source: https://github.com/openclaw/openclaw",
     "Find new skills: https://clawhub.ai",
     "For PlatformClaw/OpenClaw behavior, commands, config, or architecture: consult local docs and workspace wiki first.",
+    "For PlatformClaw account, group, admin, or Skill Hub behavior: consult local PlatformClaw docs first (for example AGENT.md, SKILL_HUB.md, ACCOUNT_SYSTEM_* docs) before guessing.",
     "When diagnosing issues, run `openclaw status` yourself when possible; only ask the user if you lack access (e.g., sandboxed).",
     "",
   ];

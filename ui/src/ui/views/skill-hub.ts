@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { t } from "../../i18n/index.ts";
+import type { AccountDirectoryEntry } from "../controllers/accounts.ts";
 import type {
   SkillHubDetail,
   SkillHubEntry,
@@ -34,6 +35,14 @@ export type SkillHubProps = {
   editorPrompts: string[];
   editorError: string | null;
   editorLoading: boolean;
+  transferOpen: boolean;
+  transferTitle: string | null;
+  transferQuery: string;
+  transferResults: AccountDirectoryEntry[];
+  transferTargetAccountId: string | null;
+  transferReason: string;
+  transferError: string | null;
+  transferLoading: boolean;
   onScopeChange: (scope: SkillHubScope) => void;
   onSortChange: (sort: SkillHubSort) => void;
   onQueryChange: (query: string) => void;
@@ -54,6 +63,12 @@ export type SkillHubProps = {
   onEditorPromptChange: (index: number, value: string) => void;
   onEditorFileChange: (file: File | null) => void;
   onEditorSubmit: () => void;
+  onOpenTransfer: (slug: string, title: string) => void;
+  onCloseTransfer: () => void;
+  onTransferQueryChange: (value: string) => void;
+  onTransferTargetSelect: (accountId: string) => void;
+  onTransferReasonChange: (value: string) => void;
+  onTransferSubmit: () => void;
 };
 
 const SCOPE_TABS: Array<{ id: SkillHubScope; labelKey: string }> = [
@@ -69,6 +84,17 @@ const SORT_OPTIONS: Array<{ id: SkillHubSort; labelKey: string }> = [
   { id: "likes", labelKey: "skillHub.sort.likes" },
   { id: "az", labelKey: "skillHub.sort.az" },
 ];
+
+function ensureDialogOpen(el?: Element) {
+  if (!(el instanceof HTMLDialogElement) || el.open) {
+    return;
+  }
+  try {
+    el.showModal();
+  } catch {
+    el.setAttribute("open", "");
+  }
+}
 
 function relativeDate(iso: string): string {
   const value = new Date(iso);
@@ -387,6 +413,13 @@ function renderDetailDialog(props: SkillHubProps) {
                             </button>
                           `
                         : nothing}
+                      ${detail.canTransferOwnership
+                        ? html`
+                            <button class="btn" @click=${() => props.onOpenTransfer(detail.slug, detail.displayName)}>
+                              ${t("skillHub.actions.transferOwnership")}
+                            </button>
+                          `
+                        : nothing}
                     </div>
                     <div class="skills-detail-paths">
                       <div>
@@ -543,6 +576,71 @@ function renderEditorDialog(props: SkillHubProps) {
   `;
 }
 
+function renderTransferDialog(props: SkillHubProps) {
+  if (!props.transferOpen) {
+    return nothing;
+  }
+  return html`
+    <dialog class="md-preview-dialog" open ${ref(ensureDialogOpen)} @close=${props.onCloseTransfer}>
+      <div class="md-preview-dialog__panel">
+        <div class="md-preview-dialog__header">
+          <div>
+            <div class="md-preview-dialog__title">${t("skillHub.transfer.title")}</div>
+            <div class="md-preview-dialog__subtitle">${props.transferTitle ?? ""}</div>
+          </div>
+          <button class="btn btn--sm" @click=${props.onCloseTransfer}>${t("common.close")}</button>
+        </div>
+        <div class="md-preview-dialog__body" style="display:grid; gap:12px;">
+          <input
+            class="input"
+            .value=${props.transferQuery}
+            placeholder=${t("skillHub.transfer.searchPlaceholder")}
+            @input=${(e: Event) => props.onTransferQueryChange((e.target as HTMLInputElement).value)}
+          />
+          <div class="list">
+            ${props.transferResults.map(
+              (entry) => html`
+                <button
+                  class="list-item"
+                  style="text-align:left; width:100%; ${props.transferTargetAccountId === entry.accountId
+                    ? "outline:2px solid var(--accent);"
+                    : ""}"
+                  @click=${() => props.onTransferTargetSelect(entry.accountId)}
+                >
+                  <div class="list-main">
+                    <div class="list-title">${entry.displayName}</div>
+                    <div class="list-sub">${entry.employeeId}${entry.email ? ` · ${entry.email}` : ""}</div>
+                  </div>
+                </button>
+              `,
+            )}
+          </div>
+          <textarea
+            class="input"
+            rows="3"
+            .value=${props.transferReason}
+            placeholder=${t("skillHub.transfer.reasonPlaceholder")}
+            @input=${(e: Event) => props.onTransferReasonChange((e.target as HTMLTextAreaElement).value)}
+          ></textarea>
+          ${props.transferError ? html`<div class="callout danger">${props.transferError}</div>` : nothing}
+          <div style="display:flex; justify-content:flex-end; gap:10px;">
+            <button class="btn" @click=${props.onCloseTransfer}>${t("common.cancel")}</button>
+            <button
+              class="btn primary"
+              ?disabled=${props.transferLoading || !props.transferTargetAccountId}
+              @click=${props.onTransferSubmit}
+            >
+              ${props.transferLoading
+                ? t("skillHub.actions.transferring")
+                : t("skillHub.actions.transferOwnership")}
+            </button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+  `;
+}
+
 export function renderSkillHub(props: SkillHubProps) {
   return html`
     <section style="display:grid; gap:18px;">
@@ -619,6 +717,7 @@ export function renderSkillHub(props: SkillHubProps) {
       </section>
       ${props.detailSlug ? renderDetailDialog(props) : nothing}
       ${props.editorOpen ? renderEditorDialog(props) : nothing}
+      ${props.transferOpen ? renderTransferDialog(props) : nothing}
     </section>
   `;
 }

@@ -23,7 +23,9 @@ export const TAB_GROUPS = [
   },
 ] as const;
 
-export const EMPLOYEE_TAB_GROUPS = [{ label: "chat", tabs: ["chat", "cron", "heartbeat", "skills", "skillHub"] }] as const;
+export const EMPLOYEE_TAB_GROUPS = [
+  { label: "chat", tabs: ["chat", "cron", "heartbeat", "skills", "skillHub", "groups", "admin"] },
+] as const;
 
 export type Tab =
   | "agents"
@@ -36,6 +38,8 @@ export type Tab =
   | "heartbeat"
   | "skills"
   | "skillHub"
+  | "groups"
+  | "admin"
   | "nodes"
   | "chat"
   | "config"
@@ -59,6 +63,8 @@ const TAB_PATHS: Record<Tab, string> = {
   heartbeat: "/heartbeat",
   skills: "/skills",
   skillHub: "/skill-hub",
+  groups: "/groups",
+  admin: "/admin",
   nodes: "/nodes",
   chat: "/chat",
   config: "/config",
@@ -184,6 +190,10 @@ export function iconForTab(tab: Tab): IconName {
       return "zap";
     case "skillHub":
       return "folder";
+    case "groups":
+      return "users";
+    case "admin":
+      return "shield";
     case "nodes":
       return "monitor";
     case "config":
@@ -221,6 +231,8 @@ export function titleForTab(tab: Tab) {
     heartbeat: "Heartbeat",
     skills: "Skills",
     skillHub: "Skill Hub",
+    groups: "Groups",
+    admin: "Admin",
     nodes: "Nodes",
     chat: "Chat",
     config: "Config",
@@ -242,6 +254,12 @@ export function subtitleForTab(tab: Tab) {
   }
   if (tab === "skillHub") {
     return "Publish, install, update, and manage shared skills.";
+  }
+  if (tab === "groups") {
+    return "Browse groups, parts, and managed memberships.";
+  }
+  if (tab === "admin") {
+    return "Review accounts, roles, and membership assignments.";
   }
   return t(`subtitles.${tab}`);
 }

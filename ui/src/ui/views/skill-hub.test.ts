@@ -59,6 +59,14 @@ function createProps(overrides: Partial<SkillHubProps> = {}): SkillHubProps {
     editorPrompts: ["", "", ""],
     editorError: null,
     editorLoading: false,
+    transferOpen: false,
+    transferTitle: null,
+    transferQuery: "",
+    transferResults: [],
+    transferTargetAccountId: null,
+    transferReason: "",
+    transferError: null,
+    transferLoading: false,
     onScopeChange: () => undefined,
     onSortChange: () => undefined,
     onQueryChange: () => undefined,
@@ -79,6 +87,12 @@ function createProps(overrides: Partial<SkillHubProps> = {}): SkillHubProps {
     onEditorPromptChange: () => undefined,
     onEditorFileChange: () => undefined,
     onEditorSubmit: () => undefined,
+    onOpenTransfer: () => undefined,
+    onCloseTransfer: () => undefined,
+    onTransferQueryChange: () => undefined,
+    onTransferTargetSelect: () => undefined,
+    onTransferReasonChange: () => undefined,
+    onTransferSubmit: () => undefined,
     ...overrides,
   };
 }
@@ -137,5 +151,35 @@ describe("renderSkillHub", () => {
 
     expect(container.querySelector("dialog")?.hasAttribute("open")).toBe(true);
     expect(container.textContent).toContain("Upload skill package");
+  });
+
+  it("renders the ownership transfer dialog when requested", async () => {
+    const container = document.createElement("div");
+
+    render(
+      renderSkillHub(
+        createProps({
+          transferOpen: true,
+          transferTitle: "Demo Skill",
+          transferResults: [
+            {
+              accountId: "eon",
+              employeeId: "eon",
+              displayName: "Eon",
+              email: "eon@example.com",
+              department: "Platform",
+              globalRole: "admin",
+              status: "active",
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    expect(container.querySelector("dialog")?.hasAttribute("open")).toBe(true);
+    expect(container.textContent).toContain("Transfer ownership");
+    expect(container.textContent).toContain("Eon");
   });
 });

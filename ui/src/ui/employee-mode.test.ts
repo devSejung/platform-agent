@@ -93,4 +93,106 @@ describe("employee mode", () => {
     expect(app.textContent).toContain("Skill Hub");
     expect(app.querySelector("[data-chat-model-select='true']")).not.toBeNull();
   });
+
+  it("shows Groups for all employees and hides Admin without admin access", async () => {
+    const app = mountConnectedEmployeeApp("/employee/groups");
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.employeeAccountSummary = {
+      accountId: "eon",
+      globalRole: "member",
+      groupCount: 1,
+      partCount: 1,
+      topLevelGroupNames: ["Platform"],
+      hasAdminAccess: false,
+      hasLeaderScope: true,
+    };
+    app.tab = "groups";
+    app.groupsEntries = [
+      {
+        id: "group-platform",
+        name: "Platform",
+        description: "Platform group",
+        scopeType: "group",
+        parentGroupId: null,
+        parentGroupName: null,
+        groupLevel: 1,
+        createdByAccountId: "eon",
+        ownerAccountId: "eon",
+        createdAt: "2026-06-01T00:00:00.000Z",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+        archivedAt: null,
+        partCount: 1,
+        memberCount: 2,
+        leaderCount: 1,
+        canManageMembers: true,
+        canCreatePart: false,
+        canArchive: false,
+      },
+    ];
+    app.groupsDetailGroupId = "group-platform";
+    app.groupsDetail = {
+      group: app.groupsEntries[0]!,
+      members: [
+        {
+          accountId: "eon",
+          displayName: "Eon",
+          email: "eon@example.com",
+          department: "Ops",
+          groupRole: "leader",
+        },
+      ],
+      parts: [],
+    };
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    expect(app.textContent).toContain("Groups");
+    expect(app.textContent).toContain("Platform");
+    expect(app.textContent).not.toContain("Admin");
+  });
+
+  it("shows Admin only for admin accounts and renders the account list view", async () => {
+    const app = mountConnectedEmployeeApp("/employee/admin");
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.employeeAccountSummary = {
+      accountId: "eon",
+      globalRole: "admin",
+      groupCount: 1,
+      partCount: 0,
+      topLevelGroupNames: ["Platform"],
+      hasAdminAccess: true,
+      hasLeaderScope: true,
+    };
+    app.tab = "admin";
+    app.adminAccountsEntries = [
+      {
+        accountId: "leader",
+        employeeId: "leader",
+        displayName: "Leader",
+        email: "leader@example.com",
+        department: "Ops",
+        globalRole: "member",
+        status: "active",
+        lastLoginAt: "2026-06-01T10:00:00.000Z",
+        groups: ["Platform"],
+      },
+    ];
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    expect(app.textContent).toContain("Admin");
+    expect(app.textContent).toContain("Review accounts, roles, and membership assignments.");
+  });
 });

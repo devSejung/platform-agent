@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { getAccountById, resolveAccountDisplayName } from "../accounts/account-store.js";
+import { getPlatformClawDatabase } from "../accounts/db.js";
 import { extractArchive } from "./skills-install-extract.js";
 import {
   loadWorkspaceSkillEntries,
@@ -30,9 +32,18 @@ const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)$/;
 const MAX_EXAMPLE_PROMPTS = 3;
 const MAX_EXAMPLE_PROMPT_CHARS = 200;
 
+function trimOrNull(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
 export type SkillHubActor = {
   employeeId: string;
   name?: string | null;
+  globalRole?: "member" | "admin";
 };
 
 export type SkillHubWarningFlags = {
@@ -72,6 +83,10 @@ export type SkillHubMetadata = {
     employeeId: string;
     name?: string;
   };
+  owner: {
+    accountId: string;
+    name?: string;
+  };
   publishedAt: string;
   updatedAt: string;
   latestVersion: string;
@@ -103,6 +118,7 @@ export type SkillHubListEntry = {
   summary: string;
   uploaderName: string;
   uploaderEmployeeId: string;
+  ownerAccountId: string;
   latestVersion: string;
   publishedAt: string;
   updatedAt: string;
@@ -113,6 +129,7 @@ export type SkillHubListEntry = {
   uploadedByYou: boolean;
   likedByYou: boolean;
   installed: boolean;
+  canTransferOwnership: boolean;
   installedVersion?: string;
   updateAvailable: boolean;
   flags: SkillHubWarningFlags;
@@ -195,6 +212,12 @@ function normalizeSkillHubMetadata(value: SkillHubMetadata | Record<string, unkn
       employeeId: String(raw.uploader?.employeeId ?? ""),
       ...(raw.uploader?.name ? { name: String(raw.uploader.name) } : {}),
     },
+    owner: {
+      accountId: String(raw.owner?.accountId ?? raw.uploader?.employeeId ?? ""),
+      ...(raw.owner?.name || raw.uploader?.name
+        ? { name: String(raw.owner?.name ?? raw.uploader?.name) }
+        : {}),
+    },
     publishedAt: String(raw.publishedAt ?? ""),
     updatedAt: String(raw.updatedAt ?? ""),
     latestVersion: String(raw.latestVersion ?? ""),
@@ -245,6 +268,28 @@ async function writeJsonFile(filePath: string, value: unknown) {
 async function appendEventLog(filename: string, value: Record<string, unknown>) {
   await ensureDir(EVENTS_ROOT);
   await fsp.appendFile(path.join(EVENTS_ROOT, filename), `${JSON.stringify(value)}\n`, "utf8");
+}
+
+function appendSkillOwnershipEvent(params: {
+  slug: string;
+  actorAccountId: string;
+  eventType: string;
+  payload?: Record<string, unknown>;
+  env?: NodeJS.ProcessEnv;
+}) {
+  const env = params.env ?? process.env;
+  const { db } = getPlatformClawDatabase(env);
+  db.prepare(
+    `INSERT INTO skill_events (id, skill_id, account_id, event_type, payload_json, created_at)
+     VALUES (@id, @skill_id, @account_id, @event_type, @payload_json, @created_at)`,
+  ).run({
+    id: randomUUID(),
+    skill_id: params.slug,
+    account_id: params.actorAccountId,
+    event_type: params.eventType,
+    payload_json: params.payload ? JSON.stringify(params.payload) : null,
+    created_at: new Date().toISOString(),
+  });
 }
 
 function toSlug(value: string): string {
@@ -532,8 +577,8 @@ async function publishPreparedSkill(params: {
   if (existing && existing.displayName !== params.prepared.displayName) {
     throw new Error(`slug conflict for ${params.prepared.displayName}`);
   }
-  if (existing && existing.uploader.employeeId !== params.actor.employeeId) {
-    throw new Error("only the original uploader can publish a new version of this skill");
+  if (existing && existing.owner.accountId !== params.actor.employeeId) {
+    throw new Error("only the current skill owner can publish a new version of this skill");
   }
   const version = chooseNextVersion(existing, params.prepared.requestedVersion);
   const versionDir = resolveSkillHubVersionDir(slug, version);
@@ -566,6 +611,10 @@ async function publishPreparedSkill(params: {
         summary: params.prepared.summary,
         uploader: {
           employeeId: params.actor.employeeId,
+          ...(params.actor.name?.trim() ? { name: params.actor.name.trim() } : {}),
+        },
+        owner: {
+          accountId: params.actor.employeeId,
           ...(params.actor.name?.trim() ? { name: params.actor.name.trim() } : {}),
         },
         publishedAt: nowIso,
@@ -612,6 +661,12 @@ async function publishPreparedSkill(params: {
     actor: params.actor,
     created: !existing,
     source: "skill-hub",
+  });
+  appendSkillOwnershipEvent({
+    slug,
+    actorAccountId: params.actor.employeeId,
+    eventType: existing ? "skill.version.published" : "skill.created",
+    payload: { version, created: !existing },
   });
   return {
     slug,
@@ -691,8 +746,12 @@ async function mapMetadataToListEntry(params: {
     slug: params.metadata.slug,
     displayName: params.metadata.displayName,
     summary: params.metadata.summary,
-    uploaderName: params.metadata.uploader.name ?? params.metadata.uploader.employeeId,
-    uploaderEmployeeId: params.metadata.uploader.employeeId,
+    uploaderName:
+      params.metadata.owner.name ??
+      params.metadata.uploader.name ??
+      params.metadata.owner.accountId,
+    uploaderEmployeeId: params.metadata.owner.accountId,
+    ownerAccountId: params.metadata.owner.accountId,
     latestVersion: params.metadata.latestVersion,
     publishedAt: params.metadata.publishedAt,
     updatedAt: params.metadata.updatedAt,
@@ -700,9 +759,11 @@ async function mapMetadataToListEntry(params: {
     installerCount: params.metadata.stats.installerCount,
     likeCount: params.metadata.engagement.likeCount,
     hidden: params.metadata.hidden,
-    uploadedByYou: params.metadata.uploader.employeeId === params.actor.employeeId,
+    uploadedByYou: params.metadata.owner.accountId === params.actor.employeeId,
     likedByYou: hasActorLiked(likesState, params.actor),
     installed: Boolean(installed),
+    canTransferOwnership:
+      params.metadata.owner.accountId === params.actor.employeeId || params.actor.globalRole === "admin",
     ...(installed ? { installedVersion: installed.installedVersion } : {}),
     updateAvailable: Boolean(
       installed && compareSemver(params.metadata.latestVersion, installed.installedVersion) > 0,
@@ -936,8 +997,8 @@ export async function hideSkillFromHub(params: {
   if (!metadata) {
     throw new Error(`skill not found: ${params.slug}`);
   }
-  if (metadata.uploader.employeeId !== params.actor.employeeId) {
-    throw new Error("only the uploader can hide this skill");
+  if (metadata.owner.accountId !== params.actor.employeeId) {
+    throw new Error("only the skill owner can hide this skill");
   }
   metadata.hidden = true;
   metadata.updatedAt = new Date().toISOString();
@@ -992,8 +1053,8 @@ export async function updateSkillHubExamplePrompts(params: {
   if (!metadata) {
     throw new Error(`skill not found: ${params.slug}`);
   }
-  if (metadata.uploader.employeeId !== params.actor.employeeId) {
-    throw new Error("only the uploader can edit example prompts");
+  if (metadata.owner.accountId !== params.actor.employeeId) {
+    throw new Error("only the skill owner can edit example prompts");
   }
   metadata.presentation.examplePrompts = sanitizeExamplePrompts(params.examplePrompts);
   metadata.updatedAt = new Date().toISOString();
@@ -1007,6 +1068,60 @@ export async function updateSkillHubExamplePrompts(params: {
   return {
     slug: params.slug,
     examplePrompts: metadata.presentation.examplePrompts,
+  };
+}
+
+export async function transferSkillHubOwnership(params: {
+  slug: string;
+  actor: SkillHubActor;
+  targetAccountId: string;
+  reason?: string | null;
+}): Promise<{ slug: string; ownerAccountId: string; ownerName: string }> {
+  const metadata = await readSkillHubMetadata(params.slug);
+  if (!metadata) {
+    throw new Error(`skill not found: ${params.slug}`);
+  }
+  const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
+  const actorIsAdmin = params.actor.globalRole === "admin";
+  if (!actorIsOwner && !actorIsAdmin) {
+    throw new Error("only the current owner or an admin can transfer skill ownership");
+  }
+  const target = getAccountById(params.targetAccountId);
+  if (!target || target.status !== "active") {
+    throw new Error("target account not found");
+  }
+  if (actorIsAdmin && !actorIsOwner && !trimOrNull(params.reason)) {
+    throw new Error("admins must provide a transfer reason");
+  }
+  const previousOwnerAccountId = metadata.owner.accountId;
+  metadata.owner = {
+    accountId: target.id,
+    ...(resolveAccountDisplayName(target.id) ? { name: resolveAccountDisplayName(target.id)! } : {}),
+  };
+  metadata.updatedAt = new Date().toISOString();
+  await writeSkillHubMetadata(metadata);
+  await appendEventLog("ownership-transfers.ndjson", {
+    ts: metadata.updatedAt,
+    slug: params.slug,
+    actor: params.actor,
+    previousOwnerAccountId,
+    nextOwnerAccountId: target.id,
+    reason: trimOrNull(params.reason),
+  });
+  appendSkillOwnershipEvent({
+    slug: params.slug,
+    actorAccountId: params.actor.employeeId,
+    eventType: "skill.ownership.transferred",
+    payload: {
+      previousOwnerAccountId,
+      nextOwnerAccountId: target.id,
+      reason: trimOrNull(params.reason),
+    },
+  });
+  return {
+    slug: params.slug,
+    ownerAccountId: target.id,
+    ownerName: resolveAccountDisplayName(target.id) ?? target.id,
   };
 }
 
@@ -1088,9 +1203,11 @@ export function resolveSkillHubActor(params: {
   fallbackAgentId: string;
 }): SkillHubActor {
   const employeeId = params.employee?.employeeId?.trim() || params.fallbackAgentId;
+  const account = getAccountById(employeeId);
   return {
     employeeId,
     name: params.employee?.name?.trim() || undefined,
+    globalRole: account?.globalRole,
   };
 }
 

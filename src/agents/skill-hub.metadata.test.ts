@@ -32,6 +32,7 @@ describe("skill hub metadata compatibility", () => {
       displayName: "Demo Skill",
       summary: "Existing metadata",
       uploader: { employeeId: "agent-demo", name: "Demo" },
+      owner: { accountId: "agent-demo", name: "Demo" },
       publishedAt: "2026-05-21T00:00:00.000Z",
       updatedAt: "2026-05-21T00:00:00.000Z",
       latestVersion: "1.0.0",
@@ -64,6 +65,7 @@ describe("skill hub metadata compatibility", () => {
       displayName: "Demo Skill",
       summary: "Existing metadata",
       uploader: { employeeId: "agent-demo", name: "Demo" },
+      owner: { accountId: "agent-demo", name: "Demo" },
       publishedAt: "2026-05-21T00:00:00.000Z",
       updatedAt: "2026-05-21T00:00:00.000Z",
       latestVersion: "1.0.0",
@@ -102,12 +104,13 @@ describe("skill hub metadata compatibility", () => {
     expect(detail?.likeCount).toBe(0);
   });
 
-  it("allows only the uploader to edit example prompts", async () => {
+  it("allows only the owner to edit example prompts", async () => {
     await writeJson(path.join(stateDir, "skill-hub", "metadata", "demo-skill.json"), {
       slug: "demo-skill",
       displayName: "Demo Skill",
       summary: "Existing metadata",
       uploader: { employeeId: "agent-demo", name: "Demo" },
+      owner: { accountId: "agent-demo", name: "Demo" },
       publishedAt: "2026-05-21T00:00:00.000Z",
       updatedAt: "2026-05-21T00:00:00.000Z",
       latestVersion: "1.0.0",
@@ -134,7 +137,7 @@ describe("skill hub metadata compatibility", () => {
         actor: { employeeId: "agent-other", name: "Other" },
         examplePrompts: ["one"],
       }),
-    ).rejects.toThrow("only the uploader can edit example prompts");
+    ).rejects.toThrow("only the skill owner can edit example prompts");
 
     await updateSkillHubExamplePrompts({
       slug: "demo-skill",
@@ -148,5 +151,75 @@ describe("skill hub metadata compatibility", () => {
       slug: "demo-skill",
     });
     expect(detail?.examplePrompts).toEqual(["prompt one", "prompt two", "ignored"]);
+  });
+
+  it("transfers ownership to another active account and preserves install state semantics", async () => {
+    await writeJson(path.join(stateDir, "skill-hub", "metadata", "demo-skill.json"), {
+      slug: "demo-skill",
+      displayName: "Demo Skill",
+      summary: "Existing metadata",
+      uploader: { employeeId: "agent-demo", name: "Demo" },
+      owner: { accountId: "agent-demo", name: "Demo" },
+      publishedAt: "2026-05-21T00:00:00.000Z",
+      updatedAt: "2026-05-21T00:00:00.000Z",
+      latestVersion: "1.0.0",
+      hidden: false,
+      flags: { hasHiddenFiles: false, hasExecutableFiles: false },
+      stats: { installCount: 0, installerCount: 0 },
+      presentation: { examplePrompts: [] },
+      engagement: { likeCount: 0 },
+      versions: [
+        {
+          version: "1.0.0",
+          uploadedBy: { employeeId: "agent-demo", name: "Demo" },
+          uploadedAt: "2026-05-21T00:00:00.000Z",
+          path: "registry/skills/demo-skill/1.0.0",
+        },
+      ],
+    });
+
+    const { provisionEmployeeAccount } = await import("../accounts/account-provisioning.js");
+    provisionEmployeeAccount({
+      config: { agents: { defaults: { workspace: workspaceDir } } },
+      employeeId: "agent-demo",
+      email: "demo@example.com",
+      name: "Demo",
+      department: "Platform",
+      agentId: "agent-demo",
+    });
+    provisionEmployeeAccount({
+      config: { agents: { defaults: { workspace: workspaceDir } } },
+      employeeId: "agent-target",
+      email: "target@example.com",
+      name: "Target",
+      department: "Platform",
+      agentId: "agent-target",
+    });
+
+    const { getSkillHubDetail, transferSkillHubOwnership } = await import("./skill-hub.js");
+    const result = await transferSkillHubOwnership({
+      slug: "demo-skill",
+      actor: { employeeId: "agent-demo", name: "Demo" },
+      targetAccountId: "agent-target",
+    });
+
+    expect(result.ownerAccountId).toBe("agent-target");
+
+    const previousOwnerView = await getSkillHubDetail({
+      workspaceDir,
+      actor: { employeeId: "agent-demo", name: "Demo" },
+      slug: "demo-skill",
+    });
+    const nextOwnerView = await getSkillHubDetail({
+      workspaceDir,
+      actor: { employeeId: "agent-target", name: "Target" },
+      slug: "demo-skill",
+    });
+
+    expect(previousOwnerView?.uploadedByYou).toBe(false);
+    expect(previousOwnerView?.canTransferOwnership).toBe(false);
+    expect(nextOwnerView?.uploadedByYou).toBe(true);
+    expect(nextOwnerView?.canTransferOwnership).toBe(true);
+    expect(nextOwnerView?.ownerAccountId).toBe("agent-target");
   });
 });

@@ -22,7 +22,9 @@ import { loadDebug } from "./controllers/debug.ts";
 import { loadDevices } from "./controllers/devices.ts";
 import { loadDreamDiary, loadDreamingStatus } from "./controllers/dreaming.ts";
 import { loadEmployeeHeartbeat } from "./controllers/heartbeat.ts";
+import { loadAdminAccounts } from "./controllers/admin-accounts.ts";
 import { loadExecApprovals } from "./controllers/exec-approvals.ts";
+import { loadGroups, loadGroupDetail, loadGroupScopeOptions } from "./controllers/groups.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
@@ -53,6 +55,11 @@ type SettingsHost = {
     department?: string | null;
     agentId?: string | null;
   };
+  employeeAccountSummary?: {
+    hasAdminAccess?: boolean;
+  } | null;
+  groupsEntries?: Array<{ id: string }>;
+  groupsDetailGroupId?: string | null;
   password?: string;
   theme: ThemeName;
   themeMode: ThemeMode;
@@ -255,8 +262,13 @@ export async function refreshActiveTab(host: SettingsHost) {
       host.tab !== "cron" &&
       host.tab !== "heartbeat" &&
       host.tab !== "skills" &&
-      host.tab !== "skillHub"
+      host.tab !== "skillHub" &&
+      host.tab !== "groups" &&
+      host.tab !== "admin"
     ) {
+      host.tab = "chat";
+    }
+    if (host.tab === "admin" && !host.employeeAccountSummary?.hasAdminAccess) {
       host.tab = "chat";
     }
     if (host.tab === "chat") {
@@ -290,6 +302,23 @@ export async function refreshActiveTab(host: SettingsHost) {
         await loadAgentSkills(host as unknown as OpenClawApp, agentId);
       }
       await loadSkillHub(host as unknown as OpenClawApp);
+    }
+    if (host.tab === "groups") {
+      await loadGroups(host as unknown as OpenClawApp);
+      await loadGroupScopeOptions(host as unknown as OpenClawApp);
+      const selectedGroupId =
+        (host as unknown as OpenClawApp).groupsDetailGroupId ||
+        (host as unknown as OpenClawApp).groupsEntries?.[0]?.id ||
+        null;
+      if (selectedGroupId) {
+        await loadGroupDetail(host as unknown as OpenClawApp, selectedGroupId);
+      }
+    }
+    if (host.tab === "admin" && host.employeeAccountSummary?.hasAdminAccess) {
+      await Promise.all([
+        loadAdminAccounts(host as unknown as OpenClawApp),
+        loadGroupScopeOptions(host as unknown as OpenClawApp),
+      ]);
     }
     return;
   }

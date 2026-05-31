@@ -302,6 +302,29 @@ import {
   type WizardStep,
   WizardStepSchema,
 } from "./schema.js";
+import {
+  type AccountsSearchParams,
+  AccountsSearchParamsSchema,
+  type AdminAccountDetailParams,
+  AdminAccountDetailParamsSchema,
+  type AdminAccountRoleUpdateParams,
+  AdminAccountRoleUpdateParamsSchema,
+  type AdminAccountsListParams,
+  AdminAccountsListParamsSchema,
+  GroupArchiveParamsSchema,
+  GroupCreateParamsSchema,
+  type GroupDetailParams,
+  GroupDetailParamsSchema,
+  GroupMembershipAddParamsSchema,
+  GroupMembershipRemoveParamsSchema,
+  GroupMutationResultSchema,
+  GroupPartCreateParamsSchema,
+  type GroupsListParams,
+  GroupsListParamsSchema,
+  GroupScopesListParamsSchema,
+  type SkillHubTransferOwnershipParams,
+  SkillHubTransferOwnershipParamsSchema,
+} from "./schema/accounts-groups.js";
 
 const ajv = new (AjvPkg as unknown as new (opts?: object) => import("ajv").default)({
   allErrors: true,
@@ -461,6 +484,27 @@ export const validateSkillHubLikeParams = ajv.compile(SkillHubLikeParamsSchema);
 export const validateSkillHubExamplePromptsUpdateParams = ajv.compile(
   SkillHubExamplePromptsUpdateParamsSchema,
 );
+export const validateSkillHubTransferOwnershipParams = ajv.compile<SkillHubTransferOwnershipParams>(
+  SkillHubTransferOwnershipParamsSchema,
+);
+export const validateAccountsSearchParams = ajv.compile<AccountsSearchParams>(AccountsSearchParamsSchema);
+export const validateAdminAccountsListParams = ajv.compile<AdminAccountsListParams>(
+  AdminAccountsListParamsSchema,
+);
+export const validateAdminAccountDetailParams = ajv.compile<AdminAccountDetailParams>(
+  AdminAccountDetailParamsSchema,
+);
+export const validateAdminAccountRoleUpdateParams = ajv.compile<AdminAccountRoleUpdateParams>(
+  AdminAccountRoleUpdateParamsSchema,
+);
+export const validateGroupsListParams = ajv.compile<GroupsListParams>(GroupsListParamsSchema);
+export const validateGroupDetailParams = ajv.compile<GroupDetailParams>(GroupDetailParamsSchema);
+export const validateGroupCreateParams = ajv.compile(GroupCreateParamsSchema);
+export const validateGroupPartCreateParams = ajv.compile(GroupPartCreateParamsSchema);
+export const validateGroupScopesListParams = ajv.compile(GroupScopesListParamsSchema);
+export const validateGroupMembershipAddParams = ajv.compile(GroupMembershipAddParamsSchema);
+export const validateGroupMembershipRemoveParams = ajv.compile(GroupMembershipRemoveParamsSchema);
+export const validateGroupArchiveParams = ajv.compile(GroupArchiveParamsSchema);
 export const validateSkillsDeleteParams = ajv.compile(SkillsDeleteParamsSchema);
 export const validateCronListParams = ajv.compile<CronListParams>(CronListParamsSchema);
 export const validateCronStatusParams = ajv.compile<CronStatusParams>(CronStatusParamsSchema);

@@ -324,7 +324,7 @@ async function listSkillHubMetadata(): Promise<SkillHubMetadata[]> {
       return value ? normalizeSkillHubMetadata(value) : null;
     }),
   );
-  return entries.filter((entry): entry is SkillHubMetadata => Boolean(entry)).sort((a, b) =>
+  return entries.filter((entry): entry is SkillHubMetadata => Boolean(entry)).toSorted((a, b) =>
     a.displayName.localeCompare(b.displayName),
   );
 }
@@ -750,23 +750,23 @@ export async function listSkillHubEntries(params: {
       return !entry.hidden || entry.installed || entry.uploadedByYou;
     });
   const sort = params.sort ?? "recent";
-  return entries.sort((a, b) => {
+  return entries.toSorted((a, b) => {
     const pinned = Number(b.uploadedByYou) - Number(a.uploadedByYou);
     if (pinned !== 0 && sort !== "az") {
       return pinned;
     }
     switch (sort) {
       case "installs":
-        if (b.installCount !== a.installCount) return b.installCount - a.installCount;
+        if (b.installCount !== a.installCount) {return b.installCount - a.installCount;}
         break;
       case "likes":
-        if (b.likeCount !== a.likeCount) return b.likeCount - a.likeCount;
+        if (b.likeCount !== a.likeCount) {return b.likeCount - a.likeCount;}
         break;
       case "az":
         return a.displayName.localeCompare(b.displayName);
       case "recent":
       default:
-        if (b.updatedAt !== a.updatedAt) return b.updatedAt.localeCompare(a.updatedAt);
+        if (b.updatedAt !== a.updatedAt) {return b.updatedAt.localeCompare(a.updatedAt);}
         break;
     }
     return a.displayName.localeCompare(b.displayName);
@@ -786,7 +786,7 @@ export async function getSkillHubDetail(params: {
   return {
     ...(await mapMetadataToListEntry({ metadata, actor: params.actor, installState })),
     examplePrompts: metadata.presentation.examplePrompts,
-    versions: metadata.versions.slice().sort((a, b) => compareSemver(b.version, a.version)),
+    versions: metadata.versions.slice().toSorted((a, b) => compareSemver(b.version, a.version)),
   };
 }
 

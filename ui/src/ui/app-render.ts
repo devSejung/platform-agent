@@ -2214,7 +2214,7 @@ export function renderApp(state: AppViewState) {
                 },
                 onEditorPromptChange: (index, value) => {
                   const next = state.skillHubEditorPrompts.slice(0, 3);
-                  while (next.length < 3) next.push("");
+                  while (next.length < 3) {next.push("");}
                   next[index] = value.slice(0, 200);
                   state.skillHubEditorPrompts = next;
                 },

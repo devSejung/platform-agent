@@ -50,16 +50,23 @@ function authorizeGatewayMethod(method: string, client: GatewayRequestOptions["c
     return errorShape(ErrorCodes.INVALID_REQUEST, `unauthorized role: ${roleRaw}`);
   }
   const scopes = client.connect.scopes ?? [];
+  const requestedScopes = Array.isArray(client.requestedScopes) ? client.requestedScopes : scopes;
+  const effectiveScopesForAuthorization =
+    role === "operator" &&
+    client.usesSharedGatewayAuth === true &&
+    client.allowSharedOperatorScopesWithoutDeviceIdentity === true
+      ? requestedScopes
+      : scopes;
   if (!isRoleAuthorizedForMethod(role, method)) {
     return errorShape(ErrorCodes.INVALID_REQUEST, `unauthorized role: ${role}`);
   }
   if (role === "node" || role === "employee") {
     return null;
   }
-  if (scopes.includes(ADMIN_SCOPE)) {
+  if (effectiveScopesForAuthorization.includes(ADMIN_SCOPE)) {
     return null;
   }
-  const scopeAuth = authorizeOperatorScopesForMethod(method, scopes);
+  const scopeAuth = authorizeOperatorScopesForMethod(method, effectiveScopesForAuthorization);
   if (!scopeAuth.allowed) {
     return errorShape(ErrorCodes.INVALID_REQUEST, `missing scope: ${scopeAuth.missingScope}`);
   }

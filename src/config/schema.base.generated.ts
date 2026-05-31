@@ -22892,6 +22892,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       help: 'Gateway auth mode: "none", "token", "password", or "trusted-proxy" depending on your edge architecture. Use token/password for direct exposure, and trusted-proxy only behind hardened identity-aware proxies.',
       tags: ["network"],
     },
+    "gateway.auth.allowSharedOperatorScopesWithoutDeviceIdentity": {
+      label: "Gateway Shared Operator Scope Relaxation",
+      help: "Allows shared token/password operator clients to keep requested scopes without a paired device identity. Use only when you intentionally trust backend clients behind the shared gateway secret to perform write/admin actions.",
+      tags: ["access", "network"],
+    },
     "gateway.auth.allowTailscale": {
       label: "Gateway Auth Allow Tailscale Identity",
       help: "Allows trusted Tailscale identity paths to satisfy gateway auth checks when configured. Use this only when your tailnet identity posture is strong and operator workflows depend on it.",

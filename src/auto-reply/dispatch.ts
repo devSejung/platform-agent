@@ -44,8 +44,6 @@ async function tryHandleSkillHubCommand(params: {
   const commandText = firstNonEmptyText([
     params.ctx.BodyForCommands,
     params.ctx.CommandBody,
-    params.ctx.RawBody,
-    params.ctx.Body,
   ]);
   const match = commandText.match(SKILL_HUB_COMMAND_RE);
   if (!match) {

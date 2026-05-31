@@ -146,6 +146,12 @@ export type GatewayAuthConfig = {
   token?: SecretInput;
   /** Shared password for password mode (consider env instead). */
   password?: SecretInput;
+  /**
+   * Allow shared token/password operator clients to keep requested scopes without a paired device.
+   * Prefer paired device identity in production; enable this only when you intentionally trust
+   * shared-auth backend clients to perform write/admin actions.
+   */
+  allowSharedOperatorScopesWithoutDeviceIdentity?: boolean;
   /** Allow Tailscale identity headers when serve mode is enabled. */
   allowTailscale?: boolean;
   /** Rate-limit configuration for failed authentication attempts. */

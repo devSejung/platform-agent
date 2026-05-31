@@ -19,6 +19,9 @@ type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
 
 export type GatewayClient = {
   connect: ConnectParams;
+  requestedScopes?: string[];
+  usesSharedGatewayAuth?: boolean;
+  allowSharedOperatorScopesWithoutDeviceIdentity?: boolean;
   connId?: string;
   clientIp?: string;
   canvasHostUrl?: string;

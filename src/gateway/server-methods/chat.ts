@@ -1624,11 +1624,17 @@ export const chatHandlers: GatewayRequestHandlers = {
         logGateway: context.logGateway,
       });
 
+      const explicitCommandBody =
+        typeof p.commandBody === "string" && p.commandBody.trim() ? p.commandBody : undefined;
       const trimmedMessage = parsedMessage.trim();
       const injectThinking = Boolean(
         p.thinking && trimmedMessage && !trimmedMessage.startsWith("/"),
       );
-      const commandBody = injectThinking ? `/think ${p.thinking} ${parsedMessage}` : parsedMessage;
+      const commandBody = explicitCommandBody
+        ? explicitCommandBody
+        : injectThinking
+          ? `/think ${p.thinking} ${parsedMessage}`
+          : parsedMessage;
       const messageForAgent = systemProvenanceReceipt
         ? [systemProvenanceReceipt, parsedMessage].filter(Boolean).join("\n\n")
         : parsedMessage;

@@ -103,6 +103,7 @@ describe("withReplyDispatcher", () => {
     await dispatchInboundMessage({
       ctx: buildTestCtx({
         Body: "/skillhub install jira-ticket-summarizer",
+        CommandBody: "/skillhub install jira-ticket-summarizer",
         SessionKey: "main",
         SenderId: "emp-1",
         SenderName: "Eon",
@@ -139,6 +140,42 @@ describe("withReplyDispatcher", () => {
 
     expect(hoisted.installSkillFromHubMock).not.toHaveBeenCalled();
     expect(hoisted.dispatchReplyFromConfigMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("intercepts /skillhub from CommandBody even when Body has wrapper text", async () => {
+    const sendFinalReply = vi.fn(() => true);
+    const dispatcher = {
+      sendToolResult: vi.fn(() => true),
+      sendBlockReply: vi.fn(() => true),
+      sendFinalReply,
+      getQueuedCounts: vi.fn(() => ({ tool: 0, block: 0, final: 1 })),
+      getFailedCounts: vi.fn(() => ({ tool: 0, block: 0, final: 0 })),
+      markComplete: vi.fn(),
+      waitForIdle: vi.fn(async () => {}),
+    } satisfies ReplyDispatcher;
+
+    await dispatchInboundMessage({
+      ctx: buildTestCtx({
+        Body: "[그룹방에서 온 메세지입니다]\n사용자정보: eon\n/skillhub install jira-ticket-summarizer",
+        CommandBody: "/skillhub install jira-ticket-summarizer",
+        SessionKey: "main",
+        SenderId: "emp-1",
+        SenderName: "Eon",
+      }),
+      cfg: {} as OpenClawConfig,
+      dispatcher,
+      replyResolver: async () => ({ text: "ignored" }),
+    });
+
+    expect(hoisted.installSkillFromHubMock).toHaveBeenCalledWith({
+      workspaceDir: "/tmp/workspace",
+      actor: { employeeId: "emp-1", name: "Eon" },
+      slug: "jira-ticket-summarizer",
+    });
+    expect(hoisted.dispatchReplyFromConfigMock).not.toHaveBeenCalled();
+    expect(sendFinalReply).toHaveBeenCalledWith({
+      text: "Skill installed: jira-ticket-summarizer",
+    });
   });
 
   it("dispatchInboundMessage owns dispatcher lifecycle", async () => {

@@ -39,6 +39,7 @@ export type ResolvedGatewayAuth = {
   modeSource?: ResolvedGatewayAuthModeSource;
   token?: string;
   password?: string;
+  allowSharedOperatorScopesWithoutDeviceIdentity: boolean;
   allowTailscale: boolean;
   trustedProxy?: GatewayTrustedProxyConfig;
 };
@@ -245,6 +246,10 @@ export function resolveGatewayAuth(params: {
     if (authOverride.password !== undefined) {
       authConfig.password = authOverride.password;
     }
+    if (authOverride.allowSharedOperatorScopesWithoutDeviceIdentity !== undefined) {
+      authConfig.allowSharedOperatorScopesWithoutDeviceIdentity =
+        authOverride.allowSharedOperatorScopesWithoutDeviceIdentity;
+    }
     if (authOverride.allowTailscale !== undefined) {
       authConfig.allowTailscale = authOverride.allowTailscale;
     }
@@ -297,6 +302,8 @@ export function resolveGatewayAuth(params: {
     modeSource,
     token,
     password,
+    allowSharedOperatorScopesWithoutDeviceIdentity:
+      authConfig.allowSharedOperatorScopesWithoutDeviceIdentity === true,
     allowTailscale,
     trustedProxy,
   };

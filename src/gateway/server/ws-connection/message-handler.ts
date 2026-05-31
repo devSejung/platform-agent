@@ -438,7 +438,8 @@ export function attachGatewayWsMessageHandler(params: {
         // Default-deny: scopes must be explicit. Empty/missing scopes means no permissions.
         // Note: If the client does not present a device identity, we can't bind scopes to a paired
         // device/token, so we will clear scopes after auth to avoid self-declared permissions.
-        let scopes = Array.isArray(connectParams.scopes) ? connectParams.scopes : [];
+        const requestedScopes = Array.isArray(connectParams.scopes) ? [...connectParams.scopes] : [];
+        let scopes = [...requestedScopes];
         if (role === "employee") {
           scopes = [];
         }
@@ -612,6 +613,8 @@ export function attachGatewayWsMessageHandler(params: {
             authOk,
             hasSharedAuth,
             isLocalClient,
+            allowSharedOperatorScopesWithoutDeviceIdentity:
+              resolvedAuth.allowSharedOperatorScopesWithoutDeviceIdentity,
           });
           // Shared token/password auth can bypass pairing for trusted operators.
           // Device-less clients only keep self-declared scopes on the explicit
@@ -624,6 +627,8 @@ export function attachGatewayWsMessageHandler(params: {
               preserveInsecureLocalControlUiScopes,
               authMethod,
               trustedProxyAuthOk,
+              allowSharedOperatorScopesWithoutDeviceIdentity:
+                resolvedAuth.allowSharedOperatorScopesWithoutDeviceIdentity,
             })
           ) {
             clearUnboundScopes();
@@ -1272,9 +1277,15 @@ export function attachGatewayWsMessageHandler(params: {
         const nextClient: GatewayWsClient = {
           socket,
           connect: connectParams,
+          requestedScopes,
           connId,
           usesSharedGatewayAuth: authMethod === "token" || authMethod === "password",
           sharedGatewaySessionGeneration,
+          allowSharedOperatorScopesWithoutDeviceIdentity:
+            !device &&
+            role === "operator" &&
+            sharedAuthOk &&
+            resolvedAuth.allowSharedOperatorScopesWithoutDeviceIdentity === true,
           presenceKey,
           clientIp: reportedClientIp,
           canvasHostUrl,

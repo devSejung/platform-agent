@@ -87,7 +87,15 @@ export function shouldClearUnboundScopesForMissingDeviceIdentity(params: {
   preserveInsecureLocalControlUiScopes: boolean;
   authMethod: string | undefined;
   trustedProxyAuthOk?: boolean;
+  allowSharedOperatorScopesWithoutDeviceIdentity?: boolean;
 }): boolean {
+  if (
+    params.decision.kind === "allow" &&
+    params.allowSharedOperatorScopesWithoutDeviceIdentity === true &&
+    (params.authMethod === "token" || params.authMethod === "password")
+  ) {
+    return false;
+  }
   return (
     params.decision.kind !== "allow" ||
     (!params.controlUiAuthPolicy.allowBypass &&
@@ -111,8 +119,16 @@ export function evaluateMissingDeviceIdentity(params: {
   authOk: boolean;
   hasSharedAuth: boolean;
   isLocalClient: boolean;
+  allowSharedOperatorScopesWithoutDeviceIdentity?: boolean;
 }): MissingDeviceIdentityDecision {
   if (params.hasDeviceIdentity) {
+    return { kind: "allow" };
+  }
+  if (
+    params.allowSharedOperatorScopesWithoutDeviceIdentity === true &&
+    params.role === "operator" &&
+    params.sharedAuthOk
+  ) {
     return { kind: "allow" };
   }
   if (params.isControlUi && params.trustedProxyAuthOk) {

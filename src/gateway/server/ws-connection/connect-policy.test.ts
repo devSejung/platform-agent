@@ -362,6 +362,16 @@ describe("ws connect policy", () => {
 
     expect(
       shouldClearUnboundScopesForMissingDeviceIdentity({
+        decision: { kind: "allow" },
+        controlUiAuthPolicy: nonControlUi,
+        preserveInsecureLocalControlUiScopes: false,
+        authMethod: "password",
+        allowSharedOperatorScopesWithoutDeviceIdentity: true,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldClearUnboundScopesForMissingDeviceIdentity({
         decision: { kind: "reject-device-required" },
         controlUiAuthPolicy: nonControlUi,
         preserveInsecureLocalControlUiScopes: false,

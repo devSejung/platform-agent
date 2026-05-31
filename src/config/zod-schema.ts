@@ -697,6 +697,7 @@ export const OpenClawSchema = z
               .optional(),
             token: SecretInputSchema.optional().register(sensitive),
             password: SecretInputSchema.optional().register(sensitive),
+            allowSharedOperatorScopesWithoutDeviceIdentity: z.boolean().optional(),
             allowTailscale: z.boolean().optional(),
             rateLimit: z
               .object({

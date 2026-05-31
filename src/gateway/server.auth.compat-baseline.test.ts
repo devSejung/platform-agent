@@ -14,6 +14,7 @@ import {
   startGatewayServer,
   testState,
   installGatewayTestHooks,
+  withGatewayServer,
 } from "./server.auth.shared.js";
 
 installGatewayTestHooks({ scope: "suite" });
@@ -213,6 +214,42 @@ describe("gateway auth compatibility baseline", () => {
         ws.close();
       }
     });
+
+    test("preserves requested scopes when shared-token scope relaxation is enabled", async () => {
+      const prevAuth = testState.gatewayAuth;
+      const prevGatewayTokenEnv = process.env.OPENCLAW_GATEWAY_TOKEN;
+      try {
+        testState.gatewayAuth = {
+          mode: "token",
+          token: "secret",
+          allowSharedOperatorScopesWithoutDeviceIdentity: true,
+        };
+        process.env.OPENCLAW_GATEWAY_TOKEN = "secret";
+        await withGatewayServer(async ({ port: relaxedPort }) => {
+          const ws = await openWs(relaxedPort);
+          try {
+            const res = await connectReq(ws, {
+              token: "secret",
+              scopes: ["operator.admin"],
+              device: null,
+            });
+            expect(res.ok).toBe(true);
+
+            const adminRes = await rpcReq(ws, "set-heartbeats", { enabled: false });
+            expect(adminRes.ok).toBe(true);
+          } finally {
+            ws.close();
+          }
+        });
+      } finally {
+        testState.gatewayAuth = prevAuth;
+        if (prevGatewayTokenEnv === undefined) {
+          delete process.env.OPENCLAW_GATEWAY_TOKEN;
+        } else {
+          process.env.OPENCLAW_GATEWAY_TOKEN = prevGatewayTokenEnv;
+        }
+      }
+    });
   });
 
   describe("password mode", () => {
@@ -261,6 +298,35 @@ describe("gateway auth compatibility baseline", () => {
 
     test("clears requested scopes for shared-password operator connects without device identity", async () => {
       await expectSharedOperatorScopesCleared(port, { password: "secret" });
+    });
+
+    test("preserves requested scopes when shared-password scope relaxation is enabled", async () => {
+      const prevAuth = testState.gatewayAuth;
+      try {
+        testState.gatewayAuth = {
+          mode: "password",
+          password: "secret",
+          allowSharedOperatorScopesWithoutDeviceIdentity: true,
+        };
+        await withGatewayServer(async ({ port: relaxedPort }) => {
+          const ws = await openWs(relaxedPort);
+          try {
+            const res = await connectReq(ws, {
+              password: "secret",
+              scopes: ["operator.admin"],
+              device: null,
+            });
+            expect(res.ok).toBe(true);
+
+            const adminRes = await rpcReq(ws, "set-heartbeats", { enabled: false });
+            expect(adminRes.ok).toBe(true);
+          } finally {
+            ws.close();
+          }
+        });
+      } finally {
+        testState.gatewayAuth = prevAuth;
+      }
     });
   });
 

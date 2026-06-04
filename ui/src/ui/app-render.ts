@@ -115,7 +115,7 @@ import {
   transferSkillHubOwnershipAction,
   toggleLikeSkillHubSkill,
   updateSkillHubSkill,
-  updateSkillHubExamplePromptsAction,
+  updateSkillHubMetadataAction,
   uploadSkillHubPackageWithPrompts,
 } from "./controllers/skill-hub.ts";
 import { searchDirectoryAccounts } from "./controllers/accounts.ts";
@@ -133,6 +133,8 @@ import {
   loadGroupDetail,
   loadGroupScopeOptions,
   removeGroupMemberAction,
+  updateGroupAction,
+  updatePartAction,
 } from "./controllers/groups.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import "./components/dashboard-header.ts";
@@ -167,6 +169,7 @@ import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderLoginGate } from "./views/login-gate.ts";
 import { renderOverview } from "./views/overview.ts";
+import { renderWorkspaceFiles } from "./views/workspace-files.ts";
 
 // Lazy-loaded view modules – deferred so the initial bundle stays small.
 // Each loader resolves once; subsequent calls return the cached module.
@@ -2110,6 +2113,7 @@ export function renderApp(state: AppViewState) {
                 editorTitle: state.skillHubEditorTitle,
                 editorSkillName: state.skillHubEditorSkillName,
                 editorFile: state.skillHubEditorFile,
+                editorDescription: state.skillHubEditorDescription,
                 editorPrompts: state.skillHubEditorPrompts,
                 editorError: state.skillHubEditorError,
                 editorLoading: state.skillHubEditorLoading,
@@ -2195,14 +2199,18 @@ export function renderApp(state: AppViewState) {
                     }
                   })();
                 },
-                onHide: (slug) => {
+                onSetVisibility: (slug, hidden) => {
                   if (
                     typeof window !== "undefined" &&
-                    !window.confirm("이 스킬을 Hub에서 숨깁니다. 새 설치에는 더 이상 노출되지 않습니다.")
+                    !window.confirm(
+                      hidden
+                        ? "이 스킬을 Hub에서 숨깁니다. 새 설치에는 더 이상 노출되지 않습니다."
+                        : "이 스킬을 다시 Hub에 표시합니다.",
+                    )
                   ) {
                     return;
                   }
-                  void hideSkillHubSkill(state, slug);
+                  void hideSkillHubSkill(state, slug, hidden);
                 },
                 onOpenPublishEditor: (skillName, title) => {
                   state.skillHubEditorOpen = true;
@@ -2211,6 +2219,7 @@ export function renderApp(state: AppViewState) {
                   state.skillHubEditorSkillName = skillName;
                   state.skillHubEditorSlug = null;
                   state.skillHubEditorFile = null;
+                  state.skillHubEditorDescription = "";
                   state.skillHubEditorPrompts = ["", "", ""];
                   state.skillHubEditorError = null;
                   state.skillHubEditorLoading = true;
@@ -2225,6 +2234,7 @@ export function renderApp(state: AppViewState) {
                         return;
                       }
                       state.skillHubEditorSlug = existing?.slug ?? null;
+                      state.skillHubEditorDescription = "";
                       state.skillHubEditorPrompts = toEditorPrompts(existing?.examplePrompts ?? []);
                     } catch (err) {
                       if (
@@ -2252,6 +2262,7 @@ export function renderApp(state: AppViewState) {
                   state.skillHubEditorSkillName = null;
                   state.skillHubEditorSlug = null;
                   state.skillHubEditorFile = null;
+                  state.skillHubEditorDescription = "";
                   state.skillHubEditorPrompts = ["", "", ""];
                   state.skillHubEditorError = null;
                   state.skillHubEditorLoading = false;
@@ -2259,13 +2270,14 @@ export function renderApp(state: AppViewState) {
                 onToggleWorkspacePanel: () => {
                   state.skillHubWorkspacePanelOpen = !state.skillHubWorkspacePanelOpen;
                 },
-                onOpenEditPromptsEditor: (slug, title, prompts) => {
+                onOpenEditMetadataEditor: (slug, title, summary, prompts) => {
                   state.skillHubEditorOpen = true;
-                  state.skillHubEditorMode = "edit-prompts";
+                  state.skillHubEditorMode = "edit-metadata";
                   state.skillHubEditorTitle = title;
                   state.skillHubEditorSkillName = null;
                   state.skillHubEditorSlug = slug;
                   state.skillHubEditorFile = null;
+                  state.skillHubEditorDescription = summary;
                   state.skillHubEditorPrompts = [prompts[0] ?? "", prompts[1] ?? "", prompts[2] ?? ""];
                   state.skillHubEditorError = null;
                   state.skillHubEditorLoading = false;
@@ -2277,9 +2289,13 @@ export function renderApp(state: AppViewState) {
                   state.skillHubEditorSkillName = null;
                   state.skillHubEditorSlug = null;
                   state.skillHubEditorFile = null;
+                  state.skillHubEditorDescription = "";
                   state.skillHubEditorPrompts = ["", "", ""];
                   state.skillHubEditorError = null;
                   state.skillHubEditorLoading = false;
+                },
+                onEditorDescriptionChange: (value) => {
+                  state.skillHubEditorDescription = value.slice(0, 220);
                 },
                 onEditorPromptChange: (index, value) => {
                   const next = state.skillHubEditorPrompts.slice(0, 3);
@@ -2319,16 +2335,16 @@ export function renderApp(state: AppViewState) {
                           state.skillHubEditorFile,
                           prompts,
                         );
-                      } else if (state.skillHubEditorMode === "edit-prompts") {
+                      } else if (state.skillHubEditorMode === "edit-metadata") {
                         if (!state.skillHubEditorSlug) {
                           state.skillHubEditorError = "Missing skill id.";
                           return;
                         }
-                        await updateSkillHubExamplePromptsAction(
-                          state,
-                          state.skillHubEditorSlug,
-                          prompts,
-                        );
+                        await updateSkillHubMetadataAction(state, {
+                          slug: state.skillHubEditorSlug,
+                          summary: state.skillHubEditorDescription,
+                          examplePrompts: prompts,
+                        });
                       }
                       state.skillHubEditorOpen = false;
                       state.skillHubEditorMode = null;
@@ -2336,6 +2352,7 @@ export function renderApp(state: AppViewState) {
                       state.skillHubEditorSkillName = null;
                       state.skillHubEditorSlug = null;
                       state.skillHubEditorFile = null;
+                      state.skillHubEditorDescription = "";
                       state.skillHubEditorPrompts = ["", "", ""];
                       state.skillHubEditorError = null;
                       state.skillHubEditorLoading = false;
@@ -2410,7 +2427,9 @@ export function renderApp(state: AppViewState) {
                   state.skillHubTransferReason = value;
                 },
                 onTransferSubmit: () => {
-                  if (!state.skillHubTransferSlug || !state.skillHubTransferTargetAccountId) {
+                  const slug = state.skillHubTransferSlug;
+                  const targetAccountId = state.skillHubTransferTargetAccountId;
+                  if (!slug || !targetAccountId) {
                     return;
                   }
                   void (async () => {
@@ -2418,8 +2437,8 @@ export function renderApp(state: AppViewState) {
                     state.skillHubTransferError = null;
                     try {
                       await transferSkillHubOwnershipAction(state, {
-                        slug: state.skillHubTransferSlug,
-                        targetAccountId: state.skillHubTransferTargetAccountId,
+                        slug,
+                        targetAccountId,
                         reason: state.skillHubTransferReason,
                       });
                       state.skillHubTransferOpen = false;
@@ -2460,6 +2479,12 @@ export function renderApp(state: AppViewState) {
                 partCreateName: state.groupsPartCreateName,
                 partCreateDescription: state.groupsPartCreateDescription,
                 partCreateSubmitting: state.groupsPartCreateSubmitting,
+                editOpen: state.groupsEditOpen,
+                editScopeType: state.groupsEditScopeType,
+                editTitle: state.groupsEditTitle,
+                editName: state.groupsEditName,
+                editDescription: state.groupsEditDescription,
+                editSubmitting: state.groupsEditSubmitting,
                 memberModalOpen: state.groupsMemberModalOpen,
                 memberModalScopeType: state.groupsMemberModalScopeType,
                 memberModalScopeLabel: state.groupsMemberModalScopeLabel,
@@ -2526,14 +2551,15 @@ export function renderApp(state: AppViewState) {
                 onPartNameChange: (value) => (state.groupsPartCreateName = value),
                 onPartDescriptionChange: (value) => (state.groupsPartCreateDescription = value),
                 onSubmitCreatePart: () => {
-                  if (!state.groupsPartCreateParentId) {
+                  const groupId = state.groupsPartCreateParentId;
+                  if (!groupId) {
                     return;
                   }
                   void (async () => {
                     state.groupsPartCreateSubmitting = true;
                     try {
                       await createPartAction(state, {
-                        groupId: state.groupsPartCreateParentId,
+                        groupId,
                         name: state.groupsPartCreateName,
                         description: state.groupsPartCreateDescription,
                       });
@@ -2543,6 +2569,61 @@ export function renderApp(state: AppViewState) {
                       state.groupsPartCreateDescription = "";
                     } finally {
                       state.groupsPartCreateSubmitting = false;
+                    }
+                  })();
+                },
+                onOpenEdit: (scopeType, entry) => {
+                  state.groupsEditOpen = true;
+                  state.groupsEditScopeType = scopeType;
+                  state.groupsEditScopeId = entry.id;
+                  state.groupsEditParentGroupId =
+                    scopeType === "part" ? entry.parentGroupId : entry.id;
+                  state.groupsEditTitle = entry.name;
+                  state.groupsEditName = entry.name;
+                  state.groupsEditDescription = entry.description ?? "";
+                },
+                onCloseEdit: () => {
+                  state.groupsEditOpen = false;
+                  state.groupsEditScopeId = null;
+                  state.groupsEditParentGroupId = null;
+                  state.groupsEditTitle = null;
+                  state.groupsEditName = "";
+                  state.groupsEditDescription = "";
+                  state.groupsEditSubmitting = false;
+                },
+                onEditNameChange: (value) => (state.groupsEditName = value),
+                onEditDescriptionChange: (value) => (state.groupsEditDescription = value),
+                onSubmitEdit: () => {
+                  const scopeId = state.groupsEditScopeId;
+                  const parentGroupId = state.groupsEditParentGroupId;
+                  if (!scopeId || !parentGroupId) {
+                    return;
+                  }
+                  void (async () => {
+                    state.groupsEditSubmitting = true;
+                    try {
+                      if (state.groupsEditScopeType === "group") {
+                        await updateGroupAction(state, {
+                          groupId: scopeId,
+                          name: state.groupsEditName,
+                          description: state.groupsEditDescription,
+                        });
+                      } else {
+                        await updatePartAction(state, {
+                          groupId: parentGroupId,
+                          partId: scopeId,
+                          name: state.groupsEditName,
+                          description: state.groupsEditDescription,
+                        });
+                      }
+                      state.groupsEditOpen = false;
+                      state.groupsEditScopeId = null;
+                      state.groupsEditParentGroupId = null;
+                      state.groupsEditTitle = null;
+                      state.groupsEditName = "";
+                      state.groupsEditDescription = "";
+                    } finally {
+                      state.groupsEditSubmitting = false;
                     }
                   })();
                 },
@@ -2594,7 +2675,9 @@ export function renderApp(state: AppViewState) {
                   state.groupsMemberModalRole = value;
                 },
                 onSubmitAddMember: () => {
-                  if (!state.groupsMemberModalScopeId || !state.groupsMemberModalSelectedAccountId) {
+                  const scopeId = state.groupsMemberModalScopeId;
+                  const accountId = state.groupsMemberModalSelectedAccountId;
+                  if (!scopeId || !accountId) {
                     return;
                   }
                   void (async () => {
@@ -2602,8 +2685,8 @@ export function renderApp(state: AppViewState) {
                     try {
                       await addGroupMemberAction(state, {
                         scopeType: state.groupsMemberModalScopeType,
-                        scopeId: state.groupsMemberModalScopeId,
-                        accountId: state.groupsMemberModalSelectedAccountId,
+                        scopeId,
+                        accountId,
                         groupRole: state.groupsMemberModalRole,
                       });
                       state.groupsMemberModalOpen = false;
@@ -2645,6 +2728,39 @@ export function renderApp(state: AppViewState) {
                 },
               }),
             )
+          : nothing}
+        ${state.tab === "files"
+          ? renderWorkspaceFiles({
+              loading: state.workspaceFilesLoading,
+              uploading: state.workspaceFilesUploading,
+              error: state.workspaceFilesError,
+              message: state.workspaceFilesMessage,
+              currentPath: state.workspaceFilesCurrentPath,
+              parentPath: state.workspaceFilesParentPath,
+              breadcrumbs: state.workspaceFilesBreadcrumbs,
+              entries: state.workspaceFilesEntries,
+              selectedPaths: state.workspaceFilesSelectedPaths,
+              uploads: state.workspaceFilesUploads,
+              previewLoading: state.workspaceFilesPreviewLoading,
+              previewError: state.workspaceFilesPreviewError,
+              preview: state.workspaceFilesPreview,
+              onNavigate: (relativePath) => void state.loadWorkspaceFiles(relativePath),
+              onRefresh: () => void state.loadWorkspaceFiles(state.workspaceFilesCurrentPath),
+              onToggleSelection: (relativePath, selected) =>
+                state.toggleWorkspaceFileSelection(relativePath, selected),
+              onToggleAllSelections: (relativePaths, selected) =>
+                state.setAllWorkspaceFileSelections(relativePaths, selected),
+              onDownload: (relativePaths) => state.downloadWorkspaceFiles(relativePaths),
+              onOpenFilePreview: (relativePath) =>
+                state.openWorkspaceFilePreview(relativePath),
+              onCloseFilePreview: () => state.closeWorkspaceFilePreview(),
+              onCreateFolder: (name) => state.createWorkspaceFolder(name),
+              onRename: (relativePath, nextName) =>
+                state.renameWorkspaceEntry(relativePath, nextName),
+              onDelete: (relativePaths) => state.deleteWorkspaceEntries(relativePaths),
+              onUpload: (files) => state.uploadWorkspaceFiles(files),
+              requestUpdate: requestHostUpdate,
+            })
           : nothing}
         ${state.tab === "admin"
           ? lazyRender(lazyAdmin, (m) =>

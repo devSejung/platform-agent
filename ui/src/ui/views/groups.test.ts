@@ -17,7 +17,7 @@ function installDialogMethod(name: "showModal" | "close", impl: (this: HTMLDialo
     if (original) {
       Object.defineProperty(HTMLDialogElement.prototype, name, original);
     } else {
-      delete (HTMLDialogElement.prototype as Record<string, unknown>)[name];
+      delete (HTMLDialogElement.prototype as unknown as Record<string, unknown>)[name];
     }
   });
 }
@@ -43,6 +43,7 @@ function createProps(overrides: Partial<GroupsViewProps> = {}): GroupsViewProps 
         memberCount: 2,
         leaderCount: 1,
         canManageMembers: true,
+        canEditMetadata: true,
         canCreatePart: true,
         canArchive: true,
       },
@@ -69,6 +70,7 @@ function createProps(overrides: Partial<GroupsViewProps> = {}): GroupsViewProps 
         memberCount: 1,
         leaderCount: 1,
         canManageMembers: true,
+        canEditMetadata: true,
         canCreatePart: true,
         canArchive: true,
       },
@@ -94,6 +96,12 @@ function createProps(overrides: Partial<GroupsViewProps> = {}): GroupsViewProps 
     partCreateName: "",
     partCreateDescription: "",
     partCreateSubmitting: false,
+    editOpen: false,
+    editScopeType: "group",
+    editTitle: null,
+    editName: "",
+    editDescription: "",
+    editSubmitting: false,
     memberModalOpen: false,
     memberModalScopeType: "group",
     memberModalScopeLabel: null,
@@ -117,6 +125,11 @@ function createProps(overrides: Partial<GroupsViewProps> = {}): GroupsViewProps 
     onPartNameChange: () => undefined,
     onPartDescriptionChange: () => undefined,
     onSubmitCreatePart: () => undefined,
+    onOpenEdit: () => undefined,
+    onCloseEdit: () => undefined,
+    onEditNameChange: () => undefined,
+    onEditDescriptionChange: () => undefined,
+    onSubmitEdit: () => undefined,
     onOpenAddMember: () => undefined,
     onCloseAddMember: () => undefined,
     onMemberQueryChange: () => undefined,

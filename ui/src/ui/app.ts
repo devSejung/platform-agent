@@ -33,6 +33,19 @@ import {
   submitEmployeeAdSso,
   submitEmployeeLogin,
 } from "./controllers/employee-login.ts";
+import {
+  closeWorkspaceFilePreview,
+  createWorkspaceFolderAction,
+  deleteWorkspaceEntriesAction,
+  downloadWorkspaceFiles,
+  loadWorkspaceFiles,
+  openWorkspaceFilePreview,
+  renameWorkspaceEntryAction,
+  setAllWorkspaceFileSelections,
+  toggleWorkspaceFileSelection,
+  uploadWorkspaceFilesAction,
+  type WorkspaceFileUploadItem,
+} from "./controllers/workspace-files.ts";
 import { renderApp } from "./app-render.ts";
 import type {
   EmployeeUiAccountSummary,
@@ -229,6 +242,19 @@ export class OpenClawApp extends LitElement {
   @state() chatQueue: ChatQueueItem[] = [];
   @state() chatAttachments: ChatAttachment[] = [];
   @state() chatManualRefreshInFlight = false;
+  @state() workspaceFilesLoading = false;
+  @state() workspaceFilesUploading = false;
+  @state() workspaceFilesError: string | null = null;
+  @state() workspaceFilesMessage: { kind: "success" | "error"; text: string } | null = null;
+  @state() workspaceFilesCurrentPath = "";
+  @state() workspaceFilesParentPath: string | null = null;
+  @state() workspaceFilesBreadcrumbs: import("../../../src/gateway/employee-workspace-files-contract.ts").WorkspaceFilesBreadcrumbEntry[] = [];
+  @state() workspaceFilesEntries: import("../../../src/gateway/employee-workspace-files-contract.ts").WorkspaceFilesEntry[] = [];
+  @state() workspaceFilesSelectedPaths: string[] = [];
+  @state() workspaceFilesUploads: WorkspaceFileUploadItem[] = [];
+  @state() workspaceFilesPreviewLoading = false;
+  @state() workspaceFilesPreviewError: string | null = null;
+  @state() workspaceFilesPreview: import("../../../src/gateway/employee-workspace-files-contract.ts").WorkspaceFilePreviewResponse | null = null;
   @state() navDrawerOpen = false;
 
   onSlashAction?: (action: string) => void;
@@ -510,11 +536,12 @@ export class OpenClawApp extends LitElement {
   @state() skillHubUploading = false;
   @state() skillHubWorkspacePanelOpen = false;
   @state() skillHubEditorOpen = false;
-  @state() skillHubEditorMode: "publish" | "upload" | "edit-prompts" | null = null;
+  @state() skillHubEditorMode: "publish" | "upload" | "edit-metadata" | null = null;
   @state() skillHubEditorSlug: string | null = null;
   @state() skillHubEditorTitle: string | null = null;
   @state() skillHubEditorSkillName: string | null = null;
   @state() skillHubEditorFile: File | null = null;
+  @state() skillHubEditorDescription = "";
   @state() skillHubEditorPrompts = ["", "", ""];
   @state() skillHubEditorError: string | null = null;
   @state() skillHubEditorLoading = false;
@@ -547,6 +574,14 @@ export class OpenClawApp extends LitElement {
   @state() groupsPartCreateName = "";
   @state() groupsPartCreateDescription = "";
   @state() groupsPartCreateSubmitting = false;
+  @state() groupsEditOpen = false;
+  @state() groupsEditScopeType: "group" | "part" = "group";
+  @state() groupsEditScopeId: string | null = null;
+  @state() groupsEditParentGroupId: string | null = null;
+  @state() groupsEditTitle: string | null = null;
+  @state() groupsEditName = "";
+  @state() groupsEditDescription = "";
+  @state() groupsEditSubmitting = false;
   @state() groupsMemberModalOpen = false;
   @state() groupsMemberModalScopeType: "group" | "part" = "group";
   @state() groupsMemberModalScopeId: string | null = null;
@@ -791,6 +826,73 @@ export class OpenClawApp extends LitElement {
 
   async handleAbortChat() {
     await handleAbortChatInternal(this as unknown as Parameters<typeof handleAbortChatInternal>[0]);
+  }
+
+  async loadWorkspaceFiles(path?: string) {
+    await loadWorkspaceFiles(this as unknown as Parameters<typeof loadWorkspaceFiles>[0], path);
+  }
+
+  async openWorkspaceFilePreview(relativePath: string) {
+    await openWorkspaceFilePreview(
+      this as unknown as Parameters<typeof openWorkspaceFilePreview>[0],
+      relativePath,
+    );
+  }
+
+  closeWorkspaceFilePreview() {
+    closeWorkspaceFilePreview(
+      this as unknown as Parameters<typeof closeWorkspaceFilePreview>[0],
+    );
+  }
+
+  toggleWorkspaceFileSelection(relativePath: string, selected: boolean) {
+    toggleWorkspaceFileSelection(
+      this as unknown as Parameters<typeof toggleWorkspaceFileSelection>[0],
+      relativePath,
+      selected,
+    );
+  }
+
+  setAllWorkspaceFileSelections(relativePaths: string[], selected: boolean) {
+    setAllWorkspaceFileSelections(
+      this as unknown as Parameters<typeof setAllWorkspaceFileSelections>[0],
+      relativePaths,
+      selected,
+    );
+  }
+
+  downloadWorkspaceFiles(relativePaths: string[]) {
+    downloadWorkspaceFiles(relativePaths);
+  }
+
+  async createWorkspaceFolder(name: string) {
+    await createWorkspaceFolderAction(
+      this as unknown as Parameters<typeof createWorkspaceFolderAction>[0],
+      name,
+    );
+  }
+
+  async renameWorkspaceEntry(relativePath: string, nextName: string) {
+    await renameWorkspaceEntryAction(
+      this as unknown as Parameters<typeof renameWorkspaceEntryAction>[0],
+      relativePath,
+      nextName,
+    );
+  }
+
+  async deleteWorkspaceEntries(relativePaths: string[]) {
+    await deleteWorkspaceEntriesAction(
+      this as unknown as Parameters<typeof deleteWorkspaceEntriesAction>[0],
+      relativePaths,
+    );
+  }
+
+  async uploadWorkspaceFiles(files: File[]) {
+    await uploadWorkspaceFilesAction(
+      this as unknown as Parameters<typeof uploadWorkspaceFilesAction>[0],
+      files,
+      (fileName) => window.confirm(`'${fileName}' already exists. Overwrite it?`),
+    );
   }
 
   removeQueuedMessage(id: string) {

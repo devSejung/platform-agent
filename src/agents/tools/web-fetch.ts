@@ -23,7 +23,7 @@ import {
   truncateText,
   type ExtractMode,
 } from "./web-fetch-utils.js";
-import { fetchWithWebToolsNetworkGuard } from "./web-guarded-fetch.js";
+import { fetchWithWebToolsNetworkGuard, withTrustedWebToolsEndpoint } from "./web-guarded-fetch.js";
 import {
   CacheEntry,
   DEFAULT_CACHE_TTL_MINUTES,
@@ -251,6 +251,14 @@ type WebFetchRuntimeParams = {
   resolveProviderFallback: () => ReturnType<typeof resolveWebFetchDefinition>;
 };
 
+type RelayWebFetchPayload = {
+  status?: unknown;
+  url?: unknown;
+  content_type?: unknown;
+  text?: unknown;
+  truncated?: unknown;
+};
+
 function normalizeProviderFinalUrl(value: unknown): string | undefined {
   const trimmed = normalizeOptionalString(value);
   if (!trimmed) {
@@ -359,6 +367,170 @@ async function maybeFetchProviderWebFetchPayload(
   return payload;
 }
 
+async function fetchViaRelay(
+  relayUrl: string,
+  params: WebFetchRuntimeParams & { cacheKey: string },
+): Promise<Record<string, unknown>> {
+  let parsedRelayUrl: URL;
+  try {
+    parsedRelayUrl = new URL(relayUrl);
+  } catch {
+    throw new Error("Invalid WEB_FETCH_RELAY_URL: must be http or https");
+  }
+  if (!["http:", "https:"].includes(parsedRelayUrl.protocol)) {
+    throw new Error("Invalid WEB_FETCH_RELAY_URL: must be http or https");
+  }
+
+  let parsedRequestedUrl: URL;
+  try {
+    parsedRequestedUrl = new URL(params.url);
+  } catch {
+    throw new Error("Invalid URL: must be http or https");
+  }
+  if (!["http:", "https:"].includes(parsedRequestedUrl.protocol)) {
+    throw new Error("Invalid URL: must be http or https");
+  }
+
+  parsedRelayUrl.searchParams.set("url", params.url);
+  parsedRelayUrl.searchParams.set("timeout", String(params.timeoutSeconds));
+  parsedRelayUrl.searchParams.set("wait_for", "domcontentloaded");
+
+  const relayToken = normalizeOptionalString(process.env.WEB_FETCH_RELAY_TOKEN);
+  const start = Date.now();
+  const relayResponse = await withTrustedWebToolsEndpoint(
+    {
+      url: parsedRelayUrl.toString(),
+      timeoutSeconds: params.timeoutSeconds,
+      init: {
+        headers: {
+          Accept: "application/json",
+          ...(relayToken ? { "x-token": relayToken } : {}),
+        },
+      },
+    },
+    async ({ response }) => {
+      const bodyResult = await readResponseText(response, {
+        maxBytes: Math.max(DEFAULT_ERROR_MAX_BYTES, params.maxResponseBytes * 2),
+      });
+      return { response, bodyResult };
+    },
+  );
+
+  const relayBody = relayResponse.bodyResult.text;
+  if (!relayResponse.response.ok) {
+    let detail = relayBody.trim();
+    try {
+      const parsed = JSON.parse(relayBody) as RelayWebFetchPayload;
+      if (typeof parsed.text === "string" && parsed.text.trim()) {
+        detail = parsed.text;
+      }
+    } catch {
+      // Use the raw relay response body when JSON parsing fails.
+    }
+    const formattedDetail = formatWebFetchErrorDetail({
+      detail,
+      contentType: relayResponse.response.headers.get("content-type"),
+      maxChars: DEFAULT_ERROR_MAX_CHARS,
+    });
+    const wrappedDetail = wrapWebFetchContent(
+      formattedDetail || relayResponse.response.statusText,
+      DEFAULT_ERROR_MAX_CHARS,
+    );
+    throw new Error(
+      `Web fetch relay failed (${relayResponse.response.status}): ${wrappedDetail.text}`,
+    );
+  }
+
+  let relayPayload: RelayWebFetchPayload;
+  try {
+    relayPayload = JSON.parse(relayBody) as RelayWebFetchPayload;
+  } catch {
+    throw new Error("Web fetch relay returned invalid JSON.");
+  }
+
+  const status =
+    typeof relayPayload.status === "number" && Number.isFinite(relayPayload.status)
+      ? Math.max(0, Math.floor(relayPayload.status))
+      : 200;
+  const finalUrl = normalizeProviderFinalUrl(relayPayload.url) ?? params.url;
+  const contentType = normalizeContentType(
+    typeof relayPayload.content_type === "string" ? relayPayload.content_type : undefined,
+  );
+  const body = typeof relayPayload.text === "string" ? relayPayload.text : "";
+  const relayTruncated = relayPayload.truncated === true;
+
+  let title: string | undefined;
+  let extractor = "relay";
+  let text = body;
+  if ((contentType ?? "").includes("text/markdown")) {
+    extractor = "relay-markdown";
+    if (params.extractMode === "text") {
+      text = markdownToText(body);
+    }
+  } else if ((contentType ?? "").includes("text/html") || looksLikeHtml(body)) {
+    const readable = params.readabilityEnabled
+      ? await extractReadableContent({
+          html: body,
+          url: finalUrl,
+          extractMode: params.extractMode,
+        })
+      : null;
+    if (readable?.text) {
+      text = readable.text;
+      title = readable.title;
+      extractor = "relay-readability";
+    } else {
+      const basic = await extractBasicHtmlContent({
+        html: body,
+        extractMode: params.extractMode,
+      });
+      if (!basic?.text) {
+        throw new Error("Web fetch relay extraction failed: HTML cleanup returned no content.");
+      }
+      text = basic.text;
+      title = basic.title;
+      extractor = "relay-raw-html";
+    }
+  } else if ((contentType ?? "").includes("application/json")) {
+    try {
+      text = JSON.stringify(JSON.parse(body), null, 2);
+      extractor = "relay-json";
+    } catch {
+      text = body;
+    }
+  }
+
+  const wrapped = wrapWebFetchContent(text, params.maxChars);
+  const wrappedTitle = title ? wrapWebFetchField(title) : undefined;
+  const relayWarning = relayTruncated ? "Relay response body was truncated upstream." : undefined;
+  const wrappedWarning = relayWarning ? wrapWebFetchField(relayWarning) : undefined;
+  const payload = {
+    url: params.url,
+    finalUrl,
+    status,
+    ...(contentType ? { contentType } : {}),
+    ...(wrappedTitle ? { title: wrappedTitle } : {}),
+    extractMode: params.extractMode,
+    extractor,
+    externalContent: {
+      untrusted: true,
+      source: "web_fetch",
+      wrapped: true,
+      provider: "relay",
+    },
+    truncated: wrapped.truncated,
+    length: wrapped.wrappedLength,
+    rawLength: wrapped.rawLength,
+    wrappedLength: wrapped.wrappedLength,
+    fetchedAt: new Date().toISOString(),
+    tookMs: Date.now() - start,
+    text: wrapped.text,
+    ...(wrappedWarning ? { warning: wrappedWarning } : {}),
+  };
+  writeCache(FETCH_CACHE, params.cacheKey, payload, params.cacheTtlMs);
+  return payload;
+}
+
 async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string, unknown>> {
   const cacheKey = normalizeCacheKey(
     `fetch:${params.url}:${params.extractMode}:${params.maxChars}`,
@@ -366,6 +538,11 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
   const cached = readCache(FETCH_CACHE, cacheKey);
   if (cached) {
     return { ...cached.value, cached: true };
+  }
+
+  const relayUrl = normalizeOptionalString(process.env.WEB_FETCH_RELAY_URL);
+  if (relayUrl) {
+    return fetchViaRelay(relayUrl, { ...params, cacheKey });
   }
 
   let parsedUrl: URL;

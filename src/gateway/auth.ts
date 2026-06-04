@@ -39,7 +39,7 @@ export type ResolvedGatewayAuth = {
   modeSource?: ResolvedGatewayAuthModeSource;
   token?: string;
   password?: string;
-  allowSharedOperatorScopesWithoutDeviceIdentity: boolean;
+  allowSharedOperatorScopesWithoutDeviceIdentity?: boolean;
   allowTailscale: boolean;
   trustedProxy?: GatewayTrustedProxyConfig;
 };

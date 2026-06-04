@@ -51,6 +51,7 @@ type LifecycleHost = {
   chatHasAutoScrolled: boolean;
   chatManualRefreshInFlight: boolean;
   chatLoading: boolean;
+  chatSending: boolean;
   chatMessages: unknown[];
   chatToolMessages: unknown[];
   chatStream: string | null;

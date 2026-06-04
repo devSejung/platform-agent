@@ -388,6 +388,10 @@ export const SkillHubListResultSchema = Type.Object(
           uploadedByYou: Type.Boolean(),
           likedByYou: Type.Boolean(),
           installed: Type.Boolean(),
+          canEditMetadata: Type.Boolean(),
+          canManageVisibility: Type.Boolean(),
+          canAdminManage: Type.Boolean(),
+          canTransferOwnership: Type.Boolean(),
           installedVersion: Type.Optional(NonEmptyString),
           updateAvailable: Type.Boolean(),
           flags: SkillHubWarningFlagsSchema,
@@ -426,6 +430,10 @@ export const SkillHubDetailResultSchema = Type.Object(
           uploadedByYou: Type.Boolean(),
           likedByYou: Type.Boolean(),
           installed: Type.Boolean(),
+          canEditMetadata: Type.Boolean(),
+          canManageVisibility: Type.Boolean(),
+          canAdminManage: Type.Boolean(),
+          canTransferOwnership: Type.Boolean(),
           installedVersion: Type.Optional(NonEmptyString),
           updateAvailable: Type.Boolean(),
           flags: SkillHubWarningFlagsSchema,
@@ -476,6 +484,7 @@ export const SkillHubUploadParamsSchema = Type.Object(
 export const SkillHubHideParamsSchema = Type.Object(
   {
     slug: NonEmptyString,
+    hidden: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );
@@ -517,6 +526,15 @@ export const SkillHubLikeParamsSchema = Type.Object(
 export const SkillHubExamplePromptsUpdateParamsSchema = Type.Object(
   {
     slug: NonEmptyString,
+    examplePrompts: SkillHubExamplePromptsSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubMetadataUpdateParamsSchema = Type.Object(
+  {
+    slug: NonEmptyString,
+    summary: Type.String({ maxLength: 220 }),
     examplePrompts: SkillHubExamplePromptsSchema,
   },
   { additionalProperties: false },

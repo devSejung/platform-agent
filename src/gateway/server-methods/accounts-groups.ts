@@ -13,6 +13,8 @@ import {
   listGroupEntries,
   listGroupScopeOptions,
   removeGroupMembership,
+  updateGroup,
+  updatePart,
 } from "../../accounts/group-store.js";
 import { requireAdminAccount, requireRequesterAccountId } from "../../accounts/permissions.js";
 import { formatErrorMessage } from "../../infra/errors.js";
@@ -30,6 +32,8 @@ import {
   validateGroupMembershipAddParams,
   validateGroupMembershipRemoveParams,
   validateGroupPartCreateParams,
+  validateGroupPartUpdateParams,
+  validateGroupUpdateParams,
   validateGroupsListParams,
   validateGroupScopesListParams,
 } from "../protocol/index.js";
@@ -151,6 +155,56 @@ export const accountGroupHandlers: GatewayRequestHandlers = {
       };
       const created = createPart({ actorAccountId, groupId, name, description });
       respond(true, { ok: true, message: `Created part ${created.name}` }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
+    }
+  },
+  "groups.update": ({ params, respond, client }) => {
+    if (!validateGroupUpdateParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid groups.update params: ${formatValidationErrors(validateGroupUpdateParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const actorAccountId = requireAdminAccount(client);
+      const { groupId, name, description } = params as {
+        groupId: string;
+        name: string;
+        description?: string;
+      };
+      const updated = updateGroup({ actorAccountId, groupId, name, description });
+      respond(true, { ok: true, message: `Updated group ${updated.name}` }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
+    }
+  },
+  "groups.part.update": ({ params, respond, client }) => {
+    if (!validateGroupPartUpdateParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid groups.part.update params: ${formatValidationErrors(validateGroupPartUpdateParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const actorAccountId = requireAdminAccount(client);
+      const { partId, name, description } = params as {
+        partId: string;
+        name: string;
+        description?: string;
+      };
+      const updated = updatePart({ actorAccountId, partId, name, description });
+      respond(true, { ok: true, message: `Updated part ${updated.name}` }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
     }

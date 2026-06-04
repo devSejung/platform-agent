@@ -244,7 +244,7 @@ function parseCookies(req: IncomingMessage): Record<string, string> {
   return cookies;
 }
 
-function readEmployeeSession(req: IncomingMessage) {
+export function readEmployeeSession(req: IncomingMessage) {
   const token = parseCookies(req)[EMPLOYEE_SESSION_COOKIE];
   return verifyEmployeeSessionToken(token);
 }

@@ -130,6 +130,7 @@ describe("employee mode", () => {
         memberCount: 2,
         leaderCount: 1,
         canManageMembers: true,
+        canEditMetadata: false,
         canCreatePart: false,
         canArchive: false,
       },

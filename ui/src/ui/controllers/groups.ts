@@ -28,6 +28,7 @@ export type GroupEntry = {
   memberCount: number;
   leaderCount: number;
   canManageMembers: boolean;
+  canEditMetadata: boolean;
   canCreatePart: boolean;
   canArchive: boolean;
 };
@@ -159,6 +160,46 @@ export async function createPartAction(
   state.groupsMessage = null;
   try {
     const result = await state.client.request<{ message: string }>("groups.part.create", params);
+    state.groupsMessage = { kind: "success", text: result.message };
+    await afterMutation(state, params.groupId);
+  } catch (err) {
+    state.groupsMessage = { kind: "error", text: getErrorMessage(err) };
+    throw err;
+  }
+}
+
+export async function updateGroupAction(
+  state: GroupsState,
+  params: { groupId: string; name: string; description?: string },
+) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  state.groupsMessage = null;
+  try {
+    const result = await state.client.request<{ message: string }>("groups.update", params);
+    state.groupsMessage = { kind: "success", text: result.message };
+    await afterMutation(state, params.groupId);
+  } catch (err) {
+    state.groupsMessage = { kind: "error", text: getErrorMessage(err) };
+    throw err;
+  }
+}
+
+export async function updatePartAction(
+  state: GroupsState,
+  params: { groupId: string; partId: string; name: string; description?: string },
+) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  state.groupsMessage = null;
+  try {
+    const result = await state.client.request<{ message: string }>("groups.part.update", {
+      partId: params.partId,
+      name: params.name,
+      description: params.description,
+    });
     state.groupsMessage = { kind: "success", text: result.message };
     await afterMutation(state, params.groupId);
   } catch (err) {

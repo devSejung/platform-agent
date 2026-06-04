@@ -17,7 +17,7 @@ function installDialogMethod(name: "showModal" | "close", impl: (this: HTMLDialo
     if (original) {
       Object.defineProperty(HTMLDialogElement.prototype, name, original);
     } else {
-      delete (HTMLDialogElement.prototype as Record<string, unknown>)[name];
+      delete (HTMLDialogElement.prototype as unknown as Record<string, unknown>)[name];
     }
   });
 }

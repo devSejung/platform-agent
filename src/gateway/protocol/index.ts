@@ -248,6 +248,7 @@ import {
   SkillHubLikeParamsSchema,
   SkillHubListParamsSchema,
   SkillHubListResultSchema,
+  SkillHubMetadataUpdateParamsSchema,
   SkillHubMutationResultSchema,
   SkillHubPublishParamsSchema,
   SkillHubUploadParamsSchema,
@@ -319,8 +320,12 @@ import {
   GroupMembershipRemoveParamsSchema,
   GroupMutationResultSchema,
   GroupPartCreateParamsSchema,
+  type GroupPartUpdateParams,
+  GroupPartUpdateParamsSchema,
   type GroupsListParams,
   GroupsListParamsSchema,
+  type GroupUpdateParams,
+  GroupUpdateParamsSchema,
   GroupScopesListParamsSchema,
   type SkillHubTransferOwnershipParams,
   SkillHubTransferOwnershipParamsSchema,
@@ -484,6 +489,7 @@ export const validateSkillHubLikeParams = ajv.compile(SkillHubLikeParamsSchema);
 export const validateSkillHubExamplePromptsUpdateParams = ajv.compile(
   SkillHubExamplePromptsUpdateParamsSchema,
 );
+export const validateSkillHubMetadataUpdateParams = ajv.compile(SkillHubMetadataUpdateParamsSchema);
 export const validateSkillHubTransferOwnershipParams = ajv.compile<SkillHubTransferOwnershipParams>(
   SkillHubTransferOwnershipParamsSchema,
 );
@@ -501,6 +507,8 @@ export const validateGroupsListParams = ajv.compile<GroupsListParams>(GroupsList
 export const validateGroupDetailParams = ajv.compile<GroupDetailParams>(GroupDetailParamsSchema);
 export const validateGroupCreateParams = ajv.compile(GroupCreateParamsSchema);
 export const validateGroupPartCreateParams = ajv.compile(GroupPartCreateParamsSchema);
+export const validateGroupUpdateParams = ajv.compile<GroupUpdateParams>(GroupUpdateParamsSchema);
+export const validateGroupPartUpdateParams = ajv.compile<GroupPartUpdateParams>(GroupPartUpdateParamsSchema);
 export const validateGroupScopesListParams = ajv.compile(GroupScopesListParamsSchema);
 export const validateGroupMembershipAddParams = ajv.compile(GroupMembershipAddParamsSchema);
 export const validateGroupMembershipRemoveParams = ajv.compile(GroupMembershipRemoveParamsSchema);
@@ -708,6 +716,7 @@ export {
   SkillHubDetailParamsSchema,
   SkillHubDetailResultSchema,
   SkillHubExamplePromptsUpdateParamsSchema,
+  SkillHubMetadataUpdateParamsSchema,
   SkillHubPublishParamsSchema,
   SkillHubUploadParamsSchema,
   SkillHubHideParamsSchema,

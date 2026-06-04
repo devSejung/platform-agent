@@ -56,6 +56,7 @@ function createProps(overrides: Partial<SkillHubProps> = {}): SkillHubProps {
     editorTitle: null,
     editorSkillName: null,
     editorFile: null,
+    editorDescription: "",
     editorPrompts: ["", "", ""],
     editorError: null,
     editorLoading: false,
@@ -76,14 +77,15 @@ function createProps(overrides: Partial<SkillHubProps> = {}): SkillHubProps {
     onInstall: () => undefined,
     onUpdate: () => undefined,
     onDelete: () => undefined,
-    onHide: () => undefined,
+    onSetVisibility: () => undefined,
     onLike: () => undefined,
     onCopy: () => undefined,
     onOpenPublishEditor: () => undefined,
     onOpenUploadEditor: () => undefined,
     onToggleWorkspacePanel: () => undefined,
-    onOpenEditPromptsEditor: () => undefined,
+    onOpenEditMetadataEditor: () => undefined,
     onEditorClose: () => undefined,
+    onEditorDescriptionChange: () => undefined,
     onEditorPromptChange: () => undefined,
     onEditorFileChange: () => undefined,
     onEditorSubmit: () => undefined,
@@ -107,7 +109,7 @@ function installDialogMethod(name: "showModal" | "close", impl: (this: HTMLDialo
     if (original) {
       Object.defineProperty(HTMLDialogElement.prototype, name, original);
     } else {
-      delete (HTMLDialogElement.prototype as Record<string, unknown>)[name];
+      delete (HTMLDialogElement.prototype as unknown as Record<string, unknown>)[name];
     }
   });
 }

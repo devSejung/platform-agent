@@ -28,10 +28,11 @@ export type SkillHubProps = {
   workspacePanelOpen: boolean;
   workspaceSkillsReport: SkillStatusReport | null;
   editorOpen: boolean;
-  editorMode: "publish" | "upload" | "edit-prompts" | null;
+  editorMode: "publish" | "upload" | "edit-metadata" | null;
   editorTitle: string | null;
   editorSkillName: string | null;
   editorFile: File | null;
+  editorDescription: string;
   editorPrompts: string[];
   editorError: string | null;
   editorLoading: boolean;
@@ -52,14 +53,15 @@ export type SkillHubProps = {
   onInstall: (slug: string) => void;
   onUpdate: (slug: string) => void;
   onDelete: (slug: string) => void;
-  onHide: (slug: string) => void;
+  onSetVisibility: (slug: string, hidden: boolean) => void;
   onLike: (slug: string) => void;
   onCopy: (text: string, successText: string) => void;
   onOpenPublishEditor: (skillName: string, title: string) => void;
   onOpenUploadEditor: () => void;
   onToggleWorkspacePanel: () => void;
-  onOpenEditPromptsEditor: (slug: string, title: string, prompts: string[]) => void;
+  onOpenEditMetadataEditor: (slug: string, title: string, summary: string, prompts: string[]) => void;
   onEditorClose: () => void;
+  onEditorDescriptionChange: (value: string) => void;
   onEditorPromptChange: (index: number, value: string) => void;
   onEditorFileChange: (file: File | null) => void;
   onEditorSubmit: () => void;
@@ -202,14 +204,14 @@ function renderEntryCard(entry: SkillHubEntry, props: SkillHubProps) {
                   ${busy ? t("skillHub.actions.installing") : t("skillHub.actions.install")}
                 </button>
               `}
-          ${entry.uploadedByYou
+          ${entry.canManageVisibility
             ? html`
                 <button
                   class="btn btn--sm"
-                  ?disabled=${busy || entry.hidden}
-                  @click=${() => props.onHide(entry.slug)}
+                  ?disabled=${busy}
+                  @click=${() => props.onSetVisibility(entry.slug, !entry.hidden)}
                 >
-                  ${t("skillHub.actions.hide")}
+                  ${entry.hidden ? t("skillHub.actions.unhide") : t("skillHub.actions.hide")}
                 </button>
               `
             : nothing}
@@ -226,18 +228,19 @@ function renderExamplePrompts(detail: SkillHubDetail, props: SkillHubProps) {
         style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:10px;"
       >
         <div class="card-title" style="margin:0;">${t("skillHub.detail.examplePrompts")}</div>
-        ${detail.uploadedByYou
+        ${detail.canEditMetadata
           ? html`
               <button
                 class="btn btn--sm"
                 @click=${() =>
-                  props.onOpenEditPromptsEditor(
+                  props.onOpenEditMetadataEditor(
                     detail.slug,
                     detail.displayName,
+                    detail.summary,
                     detail.examplePrompts,
                   )}
               >
-                ${t("skillHub.actions.editPrompts")}
+                ${t("skillHub.actions.edit")}
               </button>
             `
           : nothing}
@@ -402,14 +405,29 @@ function renderDetailDialog(props: SkillHubProps) {
                       >
                         ${t("skillHub.actions.copyKnox")}
                       </button>
-                      ${detail.uploadedByYou
+                      ${detail.canEditMetadata
                         ? html`
                             <button
                               class="btn"
-                              ?disabled=${detail.hidden}
-                              @click=${() => props.onHide(detail.slug)}
+                              @click=${() =>
+                                props.onOpenEditMetadataEditor(
+                                  detail.slug,
+                                  detail.displayName,
+                                  detail.summary,
+                                  detail.examplePrompts,
+                                )}
                             >
-                              ${t("skillHub.actions.hide")}
+                              ${t("skillHub.actions.edit")}
+                            </button>
+                          `
+                        : nothing}
+                      ${detail.canManageVisibility
+                        ? html`
+                            <button
+                              class="btn"
+                              @click=${() => props.onSetVisibility(detail.slug, !detail.hidden)}
+                            >
+                              ${detail.hidden ? t("skillHub.actions.unhide") : t("skillHub.actions.hide")}
                             </button>
                           `
                         : nothing}
@@ -434,6 +452,14 @@ function renderDetailDialog(props: SkillHubProps) {
                       <div><span>${t("skillHub.detail.knoxDelete")}</span><code>/skillhub delete ${detail.slug}</code></div>
                     </div>
                     ${renderExamplePrompts(detail, props)}
+                    ${detail.canAdminManage && !detail.uploadedByYou
+                      ? html`
+                          <section class="card" style="padding:16px; border-style:dashed; background:var(--surface-muted);">
+                            <div class="card-title" style="margin:0;">${t("skillHub.detail.adminControls")}</div>
+                            <div class="card-sub" style="margin-top:6px;">${t("skillHub.detail.adminControlsHelp")}</div>
+                          </section>
+                        `
+                      : nothing}
                     <div>
                       <div class="card-title" style="margin-bottom:10px;">${t("skillHub.detail.versionHistory")}</div>
                       <div class="list">
@@ -494,7 +520,7 @@ function renderEditorDialog(props: SkillHubProps) {
               ? t("skillHub.editor.publishTitle")
               : props.editorMode === "upload"
                 ? t("skillHub.editor.uploadTitle")
-                : t("skillHub.editor.editPromptsTitle")}
+                : t("skillHub.editor.editMetadataTitle")}
             ${props.editorTitle ? ` · ${props.editorTitle}` : ""}
           </div>
           <button
@@ -530,6 +556,24 @@ function renderEditorDialog(props: SkillHubProps) {
                 </div>
               `
             : nothing}
+          ${props.editorMode === "edit-metadata"
+            ? html`
+                <label class="field">
+                  <div class="field__label">
+                    ${t("skillHub.editor.descriptionLabel")}
+                    <span class="muted" style="margin-left:8px;">${props.editorDescription.length}/220</span>
+                  </div>
+                  <textarea
+                    rows="4"
+                    maxlength="220"
+                    .value=${props.editorDescription}
+                    placeholder=${t("skillHub.editor.descriptionPlaceholder")}
+                    @input=${(e: Event) =>
+                      props.onEditorDescriptionChange((e.target as HTMLTextAreaElement).value)}
+                  ></textarea>
+                </label>
+              `
+            : nothing}
           <div style="display:grid; gap:12px;">
             ${props.editorPrompts.map(
               (value, index) => html`
@@ -556,11 +600,16 @@ function renderEditorDialog(props: SkillHubProps) {
             <button class="btn" @click=${props.onEditorClose}>${t("cron.form.cancel")}</button>
             <button
               class="btn primary"
-              ?disabled=${props.editorLoading || (props.editorMode === "upload" ? props.uploading : props.workspacePublishing)}
+              ?disabled=${props.editorLoading ||
+              (props.editorMode === "upload"
+                ? props.uploading
+                : props.editorMode === "publish"
+                  ? props.workspacePublishing
+                  : false)}
               @click=${props.onEditorSubmit}
             >
-              ${props.editorMode === "edit-prompts"
-                ? t("skillHub.actions.savePrompts")
+              ${props.editorMode === "edit-metadata"
+                ? t("skillHub.actions.save")
                 : props.editorMode === "upload"
                   ? props.uploading
                     ? t("skillHub.upload.uploading")

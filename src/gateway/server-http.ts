@@ -74,6 +74,7 @@ import {
   handleEmployeeLoginRequest,
   handleEmployeeLogoutRequest,
 } from "./employee-web-auth.js";
+import { handleEmployeeWorkspaceFilesHttpRequest } from "./employee-workspace-files.js";
 import { handleKnoxFileLinksHttpRequest } from "../../extensions/knox/src/file-links.js";
 import { DEDUPE_MAX, DEDUPE_TTL_MS } from "./server-constants.js";
 import { authorizeCanvasRequest, isCanvasPath } from "./server/http-auth.js";
@@ -1031,6 +1032,17 @@ export function createGatewayHttpServer(opts: {
             configSnapshot,
             resolveGatewayWebsocketUrl(req),
           ),
+      });
+
+      requestStages.push({
+        name: "employee-workspace-files",
+        run: () =>
+          handleEmployeeWorkspaceFilesHttpRequest({
+            req,
+            res,
+            config: configSnapshot,
+            readJsonBody,
+          }),
       });
 
       if (controlUiEnabled) {

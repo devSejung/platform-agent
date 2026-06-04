@@ -23,6 +23,12 @@ export type GroupsViewProps = {
   partCreateName: string;
   partCreateDescription: string;
   partCreateSubmitting: boolean;
+  editOpen: boolean;
+  editScopeType: "group" | "part";
+  editTitle: string | null;
+  editName: string;
+  editDescription: string;
+  editSubmitting: boolean;
   memberModalOpen: boolean;
   memberModalScopeType: "group" | "part";
   memberModalScopeLabel: string | null;
@@ -46,6 +52,11 @@ export type GroupsViewProps = {
   onPartNameChange: (value: string) => void;
   onPartDescriptionChange: (value: string) => void;
   onSubmitCreatePart: () => void;
+  onOpenEdit: (scopeType: "group" | "part", entry: GroupEntry) => void;
+  onCloseEdit: () => void;
+  onEditNameChange: (value: string) => void;
+  onEditDescriptionChange: (value: string) => void;
+  onSubmitEdit: () => void;
   onOpenAddMember: (scopeType: "group" | "part", scopeId: string, label: string) => void;
   onCloseAddMember: () => void;
   onMemberQueryChange: (value: string) => void;
@@ -161,6 +172,13 @@ function renderScopePanel(
           </div>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          ${entry.canEditMetadata
+            ? html`
+                <button class="btn btn--sm" @click=${() => props.onOpenEdit(entry.scopeType, entry)}>
+                  ${t("groups.actions.edit")}
+                </button>
+              `
+            : nothing}
           ${entry.canManageMembers
             ? html`
                 <button
@@ -194,7 +212,8 @@ function renderScopePanel(
 }
 
 function renderSelectedGroupDetail(props: GroupsViewProps) {
-  if (!props.detail) {
+  const detail = props.detail;
+  if (!detail) {
     return nothing;
   }
   return html`
@@ -203,38 +222,45 @@ function renderSelectedGroupDetail(props: GroupsViewProps) {
         <div>
           <div class="groups-scope-eyebrow">${t("groups.selectedGroup")}</div>
           <div class="groups-selected-title-row">
-            <h3 class="groups-selected-title">${props.detail.group.name}</h3>
+            <h3 class="groups-selected-title">${detail.group.name}</h3>
             <span class="chip groups-selected-chip">${t("groups.scope.group")}</span>
           </div>
           <div class="groups-selected-subtitle">
-            ${props.detail.group.description ?? t("groups.noDescription")}
+            ${detail.group.description ?? t("groups.noDescription")}
           </div>
           <div class="muted groups-selected-meta">
-            ${props.detail.group.partCount} parts · ${props.detail.group.memberCount} members · ✦ ${props.detail.group.leaderCount} leaders
-            ${props.detail.group.archivedAt ? `· Archived ${formatDate(props.detail.group.archivedAt)}` : ""}
+            ${detail.group.partCount} parts · ${detail.group.memberCount} members · ✦ ${detail.group.leaderCount} leaders
+            ${detail.group.archivedAt ? `· Archived ${formatDate(detail.group.archivedAt)}` : ""}
           </div>
         </div>
         <div class="groups-selected-actions">
-          ${props.detail.group.canManageMembers
+          ${detail.group.canEditMetadata
+            ? html`
+                <button class="btn btn--sm" @click=${() => props.onOpenEdit("group", detail.group)}>
+                  ${t("groups.actions.edit")}
+                </button>
+              `
+            : nothing}
+          ${detail.group.canManageMembers
             ? html`
                 <button
                   class="btn btn--sm primary"
-                  @click=${() => props.onOpenAddMember(props.detail.group.scopeType, props.detail.group.id, props.detail.group.name)}
+                  @click=${() => props.onOpenAddMember(detail.group.scopeType, detail.group.id, detail.group.name)}
                 >
                   ${t("groups.actions.addMember")}
                 </button>
               `
             : nothing}
-          ${props.detail.group.canCreatePart
+          ${detail.group.canCreatePart
             ? html`
-                <button class="btn btn--sm" @click=${() => props.onOpenCreatePart(props.detail.group.id)}>
+                <button class="btn btn--sm" @click=${() => props.onOpenCreatePart(detail.group.id)}>
                   ${t("groups.actions.createPart")}
                 </button>
               `
             : nothing}
-          ${props.detail.group.canArchive && !props.detail.group.archivedAt
+          ${detail.group.canArchive && !detail.group.archivedAt
             ? html`
-                <button class="btn btn--sm" @click=${() => props.onArchiveScope(props.detail.group.id, props.detail.group.name)}>
+                <button class="btn btn--sm" @click=${() => props.onArchiveScope(detail.group.id, detail.group.name)}>
                   ${t("groups.actions.archive")}
                 </button>
               `
@@ -246,22 +272,22 @@ function renderSelectedGroupDetail(props: GroupsViewProps) {
         <div class="groups-section-block__header">
           <div class="groups-scope-eyebrow">${t("groups.membersSection")}</div>
         </div>
-        ${renderMemberRows(props.detail.group.scopeType, props.detail.group.id, props.detail.members, props.detail.group.canManageMembers, props)}
+        ${renderMemberRows(detail.group.scopeType, detail.group.id, detail.members, detail.group.canManageMembers, props)}
       </section>
 
       <section class="groups-section-block groups-section-block--parts">
         <div class="groups-section-block__header">
           <div>
             <div class="groups-scope-eyebrow">${t("groups.scope.part")}</div>
-            <div class="card-title">${t("groups.partsTitle", { groupName: props.detail.group.name })}</div>
+            <div class="card-title">${t("groups.partsTitle", { groupName: detail.group.name })}</div>
           </div>
         </div>
         <div class="groups-parts-grid">
-          ${props.detail.parts.length > 0
-            ? props.detail.parts.map((part) =>
+          ${detail.parts.length > 0
+            ? detail.parts.map((part) =>
                 renderScopePanel(part, part.members, props, {
                   nested: true,
-                  scopeLabel: `${props.detail.group.name} / ${t("groups.scope.part")}`,
+                  scopeLabel: `${detail.group.name} / ${t("groups.scope.part")}`,
                 }),
               )
             : html`<div class="groups-part-empty">${t("groups.partsEmpty")}</div>`}
@@ -334,6 +360,43 @@ function renderCreatePartDialog(props: GroupsViewProps) {
           <button class="btn" @click=${props.onCloseCreatePart}>${t("common.cancel")}</button>
           <button class="btn primary" ?disabled=${props.partCreateSubmitting || !props.partCreateName.trim()} @click=${props.onSubmitCreatePart}>
             ${props.partCreateSubmitting ? t("groups.actions.creating") : t("groups.actions.createPart")}
+          </button>
+        </div>
+      </div>
+    </dialog>
+  `;
+}
+
+function renderEditScopeDialog(props: GroupsViewProps) {
+  if (!props.editOpen) {
+    return nothing;
+  }
+  return html`
+    <dialog class="md-preview-dialog" open ${ref(ensureOpen)} @close=${props.onCloseEdit}>
+      <div class="md-preview-dialog__panel">
+        <div class="md-preview-dialog__header">
+          <div>
+            <div class="md-preview-dialog__title">
+              ${props.editScopeType === "group" ? t("groups.edit.groupTitle") : t("groups.edit.partTitle")}
+            </div>
+            <div class="md-preview-dialog__subtitle">${props.editTitle ?? ""}</div>
+          </div>
+          <button class="btn btn--sm" @click=${props.onCloseEdit}>${t("common.close")}</button>
+        </div>
+        <div class="md-preview-dialog__body" style="display:grid; gap:12px;">
+          <label class="field">
+            <span class="field__label">${t("groups.fields.name")}</span>
+            <input class="input" .value=${props.editName} @input=${(e: Event) => props.onEditNameChange((e.target as HTMLInputElement).value)} />
+          </label>
+          <label class="field">
+            <span class="field__label">${t("groups.fields.description")}</span>
+            <textarea class="input" rows="4" .value=${props.editDescription} @input=${(e: Event) => props.onEditDescriptionChange((e.target as HTMLTextAreaElement).value)}></textarea>
+          </label>
+        </div>
+        <div class="md-preview-dialog__footer">
+          <button class="btn" @click=${props.onCloseEdit}>${t("common.cancel")}</button>
+          <button class="btn primary" ?disabled=${props.editSubmitting || !props.editName.trim()} @click=${props.onSubmitEdit}>
+            ${props.editSubmitting ? t("groups.actions.saving") : t("groups.actions.save")}
           </button>
         </div>
       </div>
@@ -488,6 +551,7 @@ export function renderGroups(props: GroupsViewProps) {
       </div>
       ${renderCreateGroupDialog(props)}
       ${renderCreatePartDialog(props)}
+      ${renderEditScopeDialog(props)}
       ${renderAddMemberDialog(props)}
     </section>
   `;

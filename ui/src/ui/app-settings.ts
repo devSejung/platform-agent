@@ -22,6 +22,7 @@ import { loadDebug } from "./controllers/debug.ts";
 import { loadDevices } from "./controllers/devices.ts";
 import { loadDreamDiary, loadDreamingStatus } from "./controllers/dreaming.ts";
 import { loadEmployeeHeartbeat } from "./controllers/heartbeat.ts";
+import { loadWorkspaceFiles } from "./controllers/workspace-files.ts";
 import { loadAdminAccounts } from "./controllers/admin-accounts.ts";
 import { loadExecApprovals } from "./controllers/exec-approvals.ts";
 import { loadGroups, loadGroupDetail, loadGroupScopeOptions } from "./controllers/groups.ts";
@@ -259,6 +260,7 @@ export async function refreshActiveTab(host: SettingsHost) {
   if (host.employeeMode) {
     if (
       host.tab !== "chat" &&
+      host.tab !== "files" &&
       host.tab !== "cron" &&
       host.tab !== "heartbeat" &&
       host.tab !== "skills" &&
@@ -277,6 +279,9 @@ export async function refreshActiveTab(host: SettingsHost) {
         host as unknown as Parameters<typeof scheduleChatScroll>[0],
         !host.chatHasAutoScrolled,
       );
+    }
+    if (host.tab === "files") {
+      await loadWorkspaceFiles(host as unknown as OpenClawApp);
     }
     if (host.tab === "cron") {
       await loadCron(host);

@@ -20,6 +20,9 @@ export type SkillHubEntry = {
   uploadedByYou: boolean;
   likedByYou: boolean;
   installed: boolean;
+  canEditMetadata: boolean;
+  canManageVisibility: boolean;
+  canAdminManage: boolean;
   canTransferOwnership: boolean;
   installedVersion?: string;
   updateAvailable: boolean;
@@ -60,11 +63,12 @@ export type SkillHubState = {
   skillHubWorkspacePublishing: boolean;
   skillHubUploading: boolean;
   skillHubEditorOpen: boolean;
-  skillHubEditorMode: "publish" | "upload" | "edit-prompts" | null;
+  skillHubEditorMode: "publish" | "upload" | "edit-metadata" | null;
   skillHubEditorSlug: string | null;
   skillHubEditorTitle: string | null;
   skillHubEditorSkillName: string | null;
   skillHubEditorFile: File | null;
+  skillHubEditorDescription: string;
   skillHubEditorPrompts: string[];
   skillHubEditorError: string | null;
   skillHubEditorLoading: boolean;
@@ -256,11 +260,15 @@ export async function deleteSkillHubSkill(state: SkillHubState, slug: string) {
   await runMutation(state, slug, state.client.request("skillhub.delete", { slug }));
 }
 
-export async function hideSkillHubSkill(state: SkillHubState, slug: string) {
+export async function hideSkillHubSkill(state: SkillHubState, slug: string, hidden = true) {
   if (!state.client || !state.connected) {
     return;
   }
-  await runMutation(state, slug, state.client.request("skillhub.hide", { slug }));
+  await runMutation(
+    state,
+    slug,
+    state.client.request("skillhub.visibility.update", { slug, hidden }),
+  );
 }
 
 export async function toggleLikeSkillHubSkill(state: SkillHubState, slug: string) {
@@ -396,6 +404,24 @@ export async function updateSkillHubExamplePromptsAction(
     state.client.request("skillhub.examplePrompts.update", {
       slug,
       examplePrompts,
+    }),
+  );
+}
+
+export async function updateSkillHubMetadataAction(
+  state: SkillHubState,
+  params: { slug: string; summary: string; examplePrompts: string[] },
+) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  await runMutation(
+    state,
+    params.slug,
+    state.client.request("skillhub.metadata.update", {
+      slug: params.slug,
+      summary: params.summary,
+      examplePrompts: params.examplePrompts,
     }),
   );
 }

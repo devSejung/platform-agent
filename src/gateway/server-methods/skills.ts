@@ -17,6 +17,7 @@ import {
   transferSkillHubOwnership,
   updateSkillFromHub,
   updateSkillHubExamplePrompts,
+  updateSkillHubMetadata,
   uploadSkillPackageToHub,
 } from "../../agents/skill-hub.js";
 import {
@@ -49,6 +50,7 @@ import {
   validateSkillHubInstallParams,
   validateSkillHubLikeParams,
   validateSkillHubListParams,
+  validateSkillHubMetadataUpdateParams,
   validateSkillHubPublishParams,
   validateSkillHubTransferOwnershipParams,
   validateSkillHubUploadParams,
@@ -58,11 +60,11 @@ import {
   validateSkillsStatusParams,
   validateSkillsUpdateParams,
 } from "../protocol/index.js";
-import type { GatewayRequestHandlers } from "./types.js";
+import type { GatewayRequestHandlers, GatewayClient } from "./types.js";
 
 function resolveSkillsWorkspace(params: {
   cfg: OpenClawConfig;
-  client?: { internal?: { employee?: { agentId?: string; employeeId?: string; name?: string | null } } };
+  client?: GatewayClient | null;
   agentIdRaw?: string;
 }) {
   const employeeAgentId = getEmployeeAgentId(params.client);
@@ -650,6 +652,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
       await hideSkillFromHub({
         slug: (params as { slug: string }).slug,
         actor,
+        hidden: true,
       });
       respond(
         true,
@@ -657,6 +660,40 @@ export const skillsHandlers: GatewayRequestHandlers = {
           ok: true,
           slug: (params as { slug: string }).slug,
           message: `Hidden from Skill Hub: ${(params as { slug: string }).slug}`,
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.visibility.update": async ({ params, respond, client }) => {
+    if (!validateSkillHubHideParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.visibility.update params: ${formatValidationErrors(validateSkillHubHideParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const { slug, hidden } = params as { slug: string; hidden?: boolean };
+      await hideSkillFromHub({
+        slug,
+        actor,
+        hidden: typeof hidden === "boolean" ? hidden : true,
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          slug,
+          message: hidden ? `Hidden from Skill Hub: ${slug}` : `Visible in Skill Hub: ${slug}`,
         },
         undefined,
       );
@@ -725,6 +762,41 @@ export const skillsHandlers: GatewayRequestHandlers = {
           slug: result.slug,
           examplePrompts: result.examplePrompts,
           message: "Example prompts updated.",
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.metadata.update": async ({ params, respond, client }) => {
+    if (!validateSkillHubMetadataUpdateParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.metadata.update params: ${formatValidationErrors(validateSkillHubMetadataUpdateParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const result = await updateSkillHubMetadata({
+        slug: (params as { slug: string }).slug,
+        actor,
+        summary: (params as { summary: string }).summary,
+        examplePrompts: (params as { examplePrompts: string[] }).examplePrompts,
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          slug: result.slug,
+          examplePrompts: result.examplePrompts,
+          message: "Skill metadata updated.",
         },
         undefined,
       );

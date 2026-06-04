@@ -1415,6 +1415,7 @@ export const chatHandlers: GatewayRequestHandlers = {
     const p = params as {
       sessionKey: string;
       message: string;
+      commandBody?: string;
       thinking?: string;
       deliver?: boolean;
       originatingChannel?: string;

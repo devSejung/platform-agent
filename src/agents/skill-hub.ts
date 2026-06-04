@@ -6,12 +6,12 @@ import { getPlatformClawDatabase } from "../accounts/db.js";
 import { extractArchive } from "./skills-install-extract.js";
 import {
   loadWorkspaceSkillEntries,
-  type ParsedSkillFrontmatter,
   type SkillEntry,
 } from "./skills.js";
 import { bumpSkillsSnapshotVersion } from "./skills/refresh.js";
 import { readSkillFrontmatterSafe } from "./skills/local-loader.js";
 import { resolveSkillSource } from "./skills/source.js";
+import type { ParsedSkillFrontmatter } from "./skills/types.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { safeParseJson } from "../utils.js";
@@ -129,6 +129,9 @@ export type SkillHubListEntry = {
   uploadedByYou: boolean;
   likedByYou: boolean;
   installed: boolean;
+  canEditMetadata: boolean;
+  canManageVisibility: boolean;
+  canAdminManage: boolean;
   canTransferOwnership: boolean;
   installedVersion?: string;
   updateAvailable: boolean;
@@ -742,6 +745,8 @@ async function mapMetadataToListEntry(params: {
 }): Promise<SkillHubListEntry> {
   const installed = params.installState.skills[params.metadata.slug];
   const likesState = await readLikesState(params.metadata.slug);
+  const actorIsOwner = params.metadata.owner.accountId === params.actor.employeeId;
+  const actorIsAdmin = params.actor.globalRole === "admin";
   return {
     slug: params.metadata.slug,
     displayName: params.metadata.displayName,
@@ -759,11 +764,13 @@ async function mapMetadataToListEntry(params: {
     installerCount: params.metadata.stats.installerCount,
     likeCount: params.metadata.engagement.likeCount,
     hidden: params.metadata.hidden,
-    uploadedByYou: params.metadata.owner.accountId === params.actor.employeeId,
+    uploadedByYou: actorIsOwner,
     likedByYou: hasActorLiked(likesState, params.actor),
     installed: Boolean(installed),
-    canTransferOwnership:
-      params.metadata.owner.accountId === params.actor.employeeId || params.actor.globalRole === "admin",
+    canEditMetadata: actorIsOwner || actorIsAdmin,
+    canManageVisibility: actorIsOwner || actorIsAdmin,
+    canAdminManage: actorIsAdmin,
+    canTransferOwnership: actorIsOwner || actorIsAdmin,
     ...(installed ? { installedVersion: installed.installedVersion } : {}),
     updateAvailable: Boolean(
       installed && compareSemver(params.metadata.latestVersion, installed.installedVersion) > 0,
@@ -992,21 +999,33 @@ export async function updateSkillFromHub(params: {
 export async function hideSkillFromHub(params: {
   slug: string;
   actor: SkillHubActor;
+  hidden?: boolean;
 }) {
   const metadata = await readSkillHubMetadata(params.slug);
   if (!metadata) {
     throw new Error(`skill not found: ${params.slug}`);
   }
-  if (metadata.owner.accountId !== params.actor.employeeId) {
-    throw new Error("only the skill owner can hide this skill");
+  const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
+  const actorIsAdmin = params.actor.globalRole === "admin";
+  if (!actorIsOwner && !actorIsAdmin) {
+    throw new Error("only the skill owner or an admin can manage visibility for this skill");
   }
-  metadata.hidden = true;
+  metadata.hidden = typeof params.hidden === "boolean" ? params.hidden : true;
   metadata.updatedAt = new Date().toISOString();
   await writeSkillHubMetadata(metadata);
   await appendEventLog("hides.ndjson", {
     ts: metadata.updatedAt,
     slug: params.slug,
     actor: params.actor,
+    hidden: metadata.hidden,
+  });
+  appendSkillOwnershipEvent({
+    slug: params.slug,
+    actorAccountId: params.actor.employeeId,
+    eventType: metadata.hidden ? "skill.hidden" : "skill.unhidden",
+    payload: {
+      by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
+    },
   });
 }
 
@@ -1053,8 +1072,10 @@ export async function updateSkillHubExamplePrompts(params: {
   if (!metadata) {
     throw new Error(`skill not found: ${params.slug}`);
   }
-  if (metadata.owner.accountId !== params.actor.employeeId) {
-    throw new Error("only the skill owner can edit example prompts");
+  const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
+  const actorIsAdmin = params.actor.globalRole === "admin";
+  if (!actorIsOwner && !actorIsAdmin) {
+    throw new Error("only the skill owner or an admin can edit example prompts");
   }
   metadata.presentation.examplePrompts = sanitizeExamplePrompts(params.examplePrompts);
   metadata.updatedAt = new Date().toISOString();
@@ -1064,9 +1085,50 @@ export async function updateSkillHubExamplePrompts(params: {
     slug: params.slug,
     actor: params.actor,
     count: metadata.presentation.examplePrompts.length,
+    by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
   });
   return {
     slug: params.slug,
+    examplePrompts: metadata.presentation.examplePrompts,
+  };
+}
+
+export async function updateSkillHubMetadata(params: {
+  slug: string;
+  actor: SkillHubActor;
+  summary: string;
+  examplePrompts: string[];
+}): Promise<{ slug: string; summary: string; examplePrompts: string[] }> {
+  const metadata = await readSkillHubMetadata(params.slug);
+  if (!metadata) {
+    throw new Error(`skill not found: ${params.slug}`);
+  }
+  const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
+  const actorIsAdmin = params.actor.globalRole === "admin";
+  if (!actorIsOwner && !actorIsAdmin) {
+    throw new Error("only the skill owner or an admin can edit this skill");
+  }
+  metadata.summary = trimSummary(params.summary);
+  metadata.presentation.examplePrompts = sanitizeExamplePrompts(params.examplePrompts);
+  metadata.updatedAt = new Date().toISOString();
+  await writeSkillHubMetadata(metadata);
+  await appendEventLog("skill-metadata.ndjson", {
+    ts: metadata.updatedAt,
+    slug: params.slug,
+    actor: params.actor,
+    by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
+  });
+  appendSkillOwnershipEvent({
+    slug: params.slug,
+    actorAccountId: params.actor.employeeId,
+    eventType: "skill.metadata.updated",
+    payload: {
+      by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
+    },
+  });
+  return {
+    slug: params.slug,
+    summary: metadata.summary,
     examplePrompts: metadata.presentation.examplePrompts,
   };
 }

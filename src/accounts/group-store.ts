@@ -33,6 +33,7 @@ export type GroupListEntry = GroupScopeRecord & {
   memberCount: number;
   leaderCount: number;
   canManageMembers: boolean;
+  canEditMetadata: boolean;
   canCreatePart: boolean;
   canArchive: boolean;
 };
@@ -271,6 +272,59 @@ function countMembers(scopeType: GroupScopeType, scopeId: string, env: NodeJS.Pr
   };
 }
 
+function assertGroupNameAvailable(params: {
+  name: string;
+  excludeId?: string | null;
+  env?: NodeJS.ProcessEnv;
+}) {
+  const env = params.env ?? process.env;
+  const { db } = getPlatformClawDatabase(env);
+  const row = db
+    .prepare(
+      `SELECT id
+         FROM groups
+        WHERE group_level = 1
+          AND lower(name) = lower(@name)
+          AND (@exclude_id IS NULL OR id != @exclude_id)
+        LIMIT 1`,
+    )
+    .get({
+      name: params.name,
+      exclude_id: trimOrNull(params.excludeId),
+    }) as { id?: string } | undefined;
+  if (row?.id) {
+    throw new Error("group name already exists");
+  }
+}
+
+function assertPartNameAvailable(params: {
+  groupId: string;
+  name: string;
+  excludeId?: string | null;
+  env?: NodeJS.ProcessEnv;
+}) {
+  const env = params.env ?? process.env;
+  const { db } = getPlatformClawDatabase(env);
+  const row = db
+    .prepare(
+      `SELECT id
+         FROM groups
+        WHERE group_level = 2
+          AND parent_group_id = @group_id
+          AND lower(name) = lower(@name)
+          AND (@exclude_id IS NULL OR id != @exclude_id)
+        LIMIT 1`,
+    )
+    .get({
+      group_id: params.groupId,
+      name: params.name,
+      exclude_id: trimOrNull(params.excludeId),
+    }) as { id?: string } | undefined;
+  if (row?.id) {
+    throw new Error("part name already exists in this group");
+  }
+}
+
 function toGroupListEntry(
   row: GroupRow,
   actorAccountId: string,
@@ -289,6 +343,7 @@ function toGroupListEntry(
       scopeId: scope.id,
       env,
     }),
+    canEditMetadata: isAdminAccount(actorAccountId, env),
     canCreatePart: scope.scopeType === "group" && isAdminAccount(actorAccountId, env),
     canArchive: isAdminAccount(actorAccountId, env),
   };
@@ -431,6 +486,7 @@ export function createGroup(params: {
   if (!name) {
     throw new Error("group name is required");
   }
+  assertGroupNameAvailable({ name, env });
   const now = new Date().toISOString();
   const id = randomUUID();
   const { db } = getPlatformClawDatabase(env);
@@ -481,6 +537,7 @@ export function createPart(params: {
   if (!name) {
     throw new Error("part name is required");
   }
+  assertPartNameAvailable({ groupId: parent.id, name, env });
   const now = new Date().toISOString();
   const id = randomUUID();
   const { db } = getPlatformClawDatabase(env);
@@ -511,6 +568,114 @@ export function createPart(params: {
     env,
   });
   return getGroupScopeById(id, env)!;
+}
+
+export function updateGroup(params: {
+  actorAccountId: string;
+  groupId: string;
+  name: string;
+  description?: string | null;
+  env?: NodeJS.ProcessEnv;
+}): GroupScopeRecord {
+  const env = params.env ?? process.env;
+  if (!isAdminAccount(params.actorAccountId, env)) {
+    throw new Error("only admins can edit groups");
+  }
+  const scope = getGroupScopeById(params.groupId, env);
+  if (!scope || scope.scopeType !== "group") {
+    throw new Error("group not found");
+  }
+  const name = trimOrNull(params.name);
+  if (!name) {
+    throw new Error("group name is required");
+  }
+  assertGroupNameAvailable({ name, excludeId: scope.id, env });
+  const description = trimOrNull(params.description);
+  const now = new Date().toISOString();
+  const { db } = getPlatformClawDatabase(env);
+  db.prepare(
+    `UPDATE groups
+        SET name = @name,
+            description = @description,
+            updated_at = @updated_at
+      WHERE id = @id`,
+  ).run({
+    id: scope.id,
+    name,
+    description,
+    updated_at: now,
+  });
+  appendAuditEvent({
+    actorAccountId: params.actorAccountId,
+    eventType: "group.updated",
+    targetType: "group",
+    targetId: scope.id,
+    payload: {
+      previousName: scope.name,
+      nextName: name,
+      previousDescription: scope.description,
+      nextDescription: description,
+    },
+    env,
+  });
+  return getGroupScopeById(scope.id, env)!;
+}
+
+export function updatePart(params: {
+  actorAccountId: string;
+  partId: string;
+  name: string;
+  description?: string | null;
+  env?: NodeJS.ProcessEnv;
+}): GroupScopeRecord {
+  const env = params.env ?? process.env;
+  if (!isAdminAccount(params.actorAccountId, env)) {
+    throw new Error("only admins can edit parts");
+  }
+  const scope = getGroupScopeById(params.partId, env);
+  if (!scope || scope.scopeType !== "part" || !scope.parentGroupId) {
+    throw new Error("part not found");
+  }
+  const name = trimOrNull(params.name);
+  if (!name) {
+    throw new Error("part name is required");
+  }
+  assertPartNameAvailable({
+    groupId: scope.parentGroupId,
+    name,
+    excludeId: scope.id,
+    env,
+  });
+  const description = trimOrNull(params.description);
+  const now = new Date().toISOString();
+  const { db } = getPlatformClawDatabase(env);
+  db.prepare(
+    `UPDATE groups
+        SET name = @name,
+            description = @description,
+            updated_at = @updated_at
+      WHERE id = @id`,
+  ).run({
+    id: scope.id,
+    name,
+    description,
+    updated_at: now,
+  });
+  appendAuditEvent({
+    actorAccountId: params.actorAccountId,
+    eventType: "part.updated",
+    targetType: "part",
+    targetId: scope.id,
+    payload: {
+      groupId: scope.parentGroupId,
+      previousName: scope.name,
+      nextName: name,
+      previousDescription: scope.description,
+      nextDescription: description,
+    },
+    env,
+  });
+  return getGroupScopeById(scope.id, env)!;
 }
 
 export function addGroupMembership(params: {

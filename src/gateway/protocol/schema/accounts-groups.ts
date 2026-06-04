@@ -141,6 +141,7 @@ export const GroupListEntrySchema = Type.Composite([
       memberCount: Type.Integer({ minimum: 0 }),
       leaderCount: Type.Integer({ minimum: 0 }),
       canManageMembers: Type.Boolean(),
+      canEditMetadata: Type.Boolean(),
       canCreatePart: Type.Boolean(),
       canArchive: Type.Boolean(),
     },
@@ -203,6 +204,24 @@ export const GroupCreateParamsSchema = Type.Object(
 export const GroupPartCreateParamsSchema = Type.Object(
   {
     groupId: NonEmptyString,
+    name: NonEmptyString,
+    description: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+export const GroupUpdateParamsSchema = Type.Object(
+  {
+    groupId: NonEmptyString,
+    name: NonEmptyString,
+    description: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+export const GroupPartUpdateParamsSchema = Type.Object(
+  {
+    partId: NonEmptyString,
     name: NonEmptyString,
     description: Type.Optional(Type.String()),
   },
@@ -284,6 +303,8 @@ export type GroupsListParams = Static<typeof GroupsListParamsSchema>;
 export type GroupDetailParams = Static<typeof GroupDetailParamsSchema>;
 export type GroupCreateParams = Static<typeof GroupCreateParamsSchema>;
 export type GroupPartCreateParams = Static<typeof GroupPartCreateParamsSchema>;
+export type GroupUpdateParams = Static<typeof GroupUpdateParamsSchema>;
+export type GroupPartUpdateParams = Static<typeof GroupPartUpdateParamsSchema>;
 export type GroupScopesListParams = Static<typeof GroupScopesListParamsSchema>;
 export type GroupMembershipAddParams = Static<typeof GroupMembershipAddParamsSchema>;
 export type GroupMembershipRemoveParams = Static<typeof GroupMembershipRemoveParamsSchema>;

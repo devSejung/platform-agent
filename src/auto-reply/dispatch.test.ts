@@ -42,8 +42,8 @@ vi.mock("./reply/reply-dispatcher.js", async () => {
 });
 
 vi.mock("../agents/agent-scope.js", () => ({
-  resolveSessionAgentId: (...args: unknown[]) => hoisted.resolveSessionAgentIdMock(...args),
-  resolveAgentWorkspaceDir: (...args: unknown[]) => hoisted.resolveAgentWorkspaceDirMock(...args),
+  resolveSessionAgentId: () => hoisted.resolveSessionAgentIdMock(),
+  resolveAgentWorkspaceDir: () => hoisted.resolveAgentWorkspaceDirMock(),
 }));
 
 vi.mock("../agents/skill-hub.js", () => ({

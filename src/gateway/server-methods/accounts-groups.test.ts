@@ -117,6 +117,30 @@ describe("accounts/groups gateway handlers", () => {
     expect(partScope?.label).toContain("Platform / Agents");
 
     respond = createRespond();
+    await accountGroupHandlers["groups.update"]({
+      params: { groupId, name: "Platform Core", description: "Core platform group" },
+      respond,
+      client: adminClient,
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ ok: true, message: "Updated group Platform Core" }),
+      undefined,
+    );
+
+    respond = createRespond();
+    await accountGroupHandlers["groups.part.update"]({
+      params: { partId: partScope!.scopeId, name: "Automation", description: "Automation part" },
+      respond,
+      client: adminClient,
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ ok: true, message: "Updated part Automation" }),
+      undefined,
+    );
+
+    respond = createRespond();
     await accountGroupHandlers["groups.members.add"]({
       params: { scopeType: "group", scopeId: groupId, accountId: "leader", groupRole: "leader" },
       respond,
@@ -148,11 +172,14 @@ describe("accounts/groups gateway handlers", () => {
     } as never);
     const detailPayload = respond.mock.calls[0]?.[1] as {
       detail: {
+        group: { name: string };
         members: Array<{ accountId: string }>;
-        parts: Array<{ id: string; members: Array<{ accountId: string }> }>;
+        parts: Array<{ id: string; name: string; members: Array<{ accountId: string }> }>;
       };
     };
+    expect(detailPayload.detail.group.name).toBe("Platform Core");
     expect(detailPayload.detail.members.map((entry) => entry.accountId)).toEqual(["leader"]);
+    expect(detailPayload.detail.parts[0]?.name).toBe("Automation");
     expect(detailPayload.detail.parts[0]?.members.map((entry) => entry.accountId)).toEqual(["member"]);
 
     respond = createRespond();
@@ -175,7 +202,7 @@ describe("accounts/groups gateway handlers", () => {
     } as never);
     expect(respond).toHaveBeenCalledWith(
       true,
-      expect.objectContaining({ ok: true, message: expect.stringContaining("Archived Agents") }),
+      expect.objectContaining({ ok: true, message: expect.stringContaining("Archived Automation") }),
       undefined,
     );
 

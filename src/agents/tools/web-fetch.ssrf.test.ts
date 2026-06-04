@@ -147,4 +147,43 @@ describe("web_fetch SSRF protection", () => {
       extractor: "raw",
     });
   });
+
+  it("routes through the trusted relay when WEB_FETCH_RELAY_URL is set", async () => {
+    const fetchSpy = setMockFetch().mockResolvedValue(
+      textResponse(
+        JSON.stringify({
+          status: 200,
+          url: "https://www.google.com/",
+          content_type: "text/html; charset=UTF-8",
+          text: "<html><head><title>Relay</title></head><body>Content here.</body></html>",
+          truncated: false,
+        }),
+      ),
+    );
+    const tool = await createWebFetchToolForTest();
+
+    vi.stubEnv("WEB_FETCH_RELAY_URL", "http://127.0.0.1:8765/fetch");
+    vi.stubEnv("WEB_FETCH_RELAY_TOKEN", "relay-secret");
+
+    const result = await tool?.execute?.("call", { url: "https://example.com" });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [input, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(String(input)).toContain("http://127.0.0.1:8765/fetch?");
+    expect(String(input)).toContain("url=https%3A%2F%2Fexample.com");
+    expect(String(input)).toContain("wait_for=domcontentloaded");
+    expect(String(input)).toContain("timeout=30");
+    expect(init).toMatchObject({
+      headers: {
+        Accept: "application/json",
+        "x-token": "relay-secret",
+      },
+    });
+    expect(result?.details).toMatchObject({
+      status: 200,
+      finalUrl: "https://www.google.com/",
+      contentType: "text/html",
+      extractor: "relay-readability",
+    });
+  });
 });

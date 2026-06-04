@@ -241,6 +241,16 @@ export function resetToolStream(host: ToolStreamHost) {
   host.toolStreamOrder = [];
   host.chatToolMessages = [];
   host.chatStreamSegments = [];
+  const maybeStatusHost = host as ToolStreamHost & {
+    compactionStatus?: CompactionStatus | null;
+    runPhaseStatus?: RunPhaseStatus | null;
+  };
+  if ("compactionStatus" in maybeStatusHost) {
+    maybeStatusHost.compactionStatus = null;
+  }
+  if ("runPhaseStatus" in maybeStatusHost) {
+    maybeStatusHost.runPhaseStatus = null;
+  }
 }
 
 export type CompactionStatus = {
@@ -248,6 +258,25 @@ export type CompactionStatus = {
   runId: string | null;
   startedAt: number | null;
   completedAt: number | null;
+  tokensBefore?: number;
+  tokensAfter?: number;
+};
+
+export type RunPhaseStatus = {
+  phase:
+    | "queued"
+    | "preflight_compacting"
+    | "memory_flushing"
+    | "running"
+    | "completed"
+    | "failed"
+    | "aborted";
+  runId: string | null;
+  startedAt: number | null;
+  endedAt: number | null;
+  elapsedMs?: number;
+  failedCode?: string;
+  abortedCode?: string;
 };
 
 export type FallbackStatus = {
@@ -262,6 +291,7 @@ export type FallbackStatus = {
 
 type CompactionHost = ToolStreamHost & {
   compactionStatus?: CompactionStatus | null;
+  runPhaseStatus?: RunPhaseStatus | null;
   compactionClearTimer?: number | null;
   compactionRefreshTimer?: number | null;
   fallbackStatus?: FallbackStatus | null;
@@ -311,6 +341,8 @@ function setCompactionComplete(host: CompactionHost, runId: string) {
     runId,
     startedAt: host.compactionStatus?.startedAt ?? null,
     completedAt: Date.now(),
+    tokensBefore: host.compactionStatus?.tokensBefore,
+    tokensAfter: host.compactionStatus?.tokensAfter,
   };
   scheduleCompactionClear(host);
 }
@@ -345,16 +377,84 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
         runId: payload.runId,
         startedAt: host.compactionStatus?.startedAt ?? Date.now(),
         completedAt: null,
+        tokensBefore:
+          typeof data.tokensBefore === "number" && Number.isFinite(data.tokensBefore)
+            ? data.tokensBefore
+            : host.compactionStatus?.tokensBefore,
+        tokensAfter:
+          typeof data.tokensAfter === "number" && Number.isFinite(data.tokensAfter)
+            ? data.tokensAfter
+            : host.compactionStatus?.tokensAfter,
       };
       ensureCompactionRefreshTimer(host);
       return;
     }
     if (completed) {
+      host.compactionStatus = {
+        phase: "complete",
+        runId: payload.runId,
+        startedAt: host.compactionStatus?.startedAt ?? null,
+        completedAt: Date.now(),
+        tokensBefore:
+          typeof data.tokensBefore === "number" && Number.isFinite(data.tokensBefore)
+            ? data.tokensBefore
+            : host.compactionStatus?.tokensBefore,
+        tokensAfter:
+          typeof data.tokensAfter === "number" && Number.isFinite(data.tokensAfter)
+            ? data.tokensAfter
+            : host.compactionStatus?.tokensAfter,
+      };
       setCompactionComplete(host, payload.runId);
       return;
     }
     host.compactionStatus = null;
     clearCompactionRefreshTimer(host);
+  }
+}
+
+function handleRunPhaseEvent(host: CompactionHost, payload: AgentEventPayload) {
+  const accepted = resolveAcceptedSession(host, payload, { allowSessionScopedWhenIdle: true });
+  if (!accepted.accepted) {
+    return;
+  }
+  const data = payload.data ?? {};
+  const phase = toTrimmedString(data.phase);
+  if (
+    phase !== "queued" &&
+    phase !== "preflight_compacting" &&
+    phase !== "memory_flushing" &&
+    phase !== "running" &&
+    phase !== "completed" &&
+    phase !== "failed" &&
+    phase !== "aborted"
+  ) {
+    return;
+  }
+  const startedAt =
+    typeof data.startedAt === "number" && Number.isFinite(data.startedAt) ? data.startedAt : Date.now();
+  const endedAt =
+    typeof data.endedAt === "number" && Number.isFinite(data.endedAt) ? data.endedAt : null;
+  host.runPhaseStatus = {
+    phase,
+    runId: payload.runId,
+    startedAt,
+    endedAt,
+    elapsedMs:
+      typeof data.elapsedMs === "number" && Number.isFinite(data.elapsedMs)
+        ? data.elapsedMs
+        : endedAt != null
+          ? Math.max(0, endedAt - startedAt)
+          : undefined,
+    failedCode: toTrimmedString(data.failedCode) ?? undefined,
+    abortedCode: toTrimmedString(data.abortedCode) ?? undefined,
+  };
+  if (phase === "completed" || phase === "failed" || phase === "aborted") {
+    window.setTimeout(() => {
+      if (host.runPhaseStatus?.runId === payload.runId && host.runPhaseStatus.phase === phase) {
+        host.runPhaseStatus = null;
+        host.requestUpdate?.();
+      }
+    }, 2500);
   }
 }
 
@@ -472,6 +572,11 @@ function handleLifecycleFallbackEvent(host: CompactionHost, payload: AgentEventP
 
 export function handleAgentEvent(host: ToolStreamHost, payload?: AgentEventPayload) {
   if (!payload) {
+    return;
+  }
+
+  if (payload.stream === "run_phase") {
+    handleRunPhaseEvent(host as CompactionHost, payload);
     return;
   }
 

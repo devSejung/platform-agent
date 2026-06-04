@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { emitAgentEvent } from "../../infra/agent-events.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
 
@@ -41,6 +43,15 @@ export type ReplyOperationResult =
   | { kind: "completed" }
   | { kind: "failed"; code: ReplyOperationFailureCode; cause?: unknown }
   | { kind: "aborted"; code: ReplyOperationAbortCode };
+
+export type ReplyOperationVisiblePhase =
+  | "queued"
+  | "preflight_compacting"
+  | "memory_flushing"
+  | "running"
+  | "completed"
+  | "failed"
+  | "aborted";
 
 export type ReplyOperation = {
   readonly key: ReplyRunKey;
@@ -108,6 +119,34 @@ function createUserAbortError(): Error {
   const err = new Error("Reply operation aborted by user");
   err.name = "AbortError";
   return err;
+}
+
+function emitReplyOperationPhaseEvent(params: {
+  runId: string;
+  sessionKey: string;
+  phase: ReplyOperationVisiblePhase;
+  startedAt: number;
+  endedAt?: number;
+  completed?: boolean;
+  failedCode?: ReplyOperationFailureCode;
+  abortedCode?: ReplyOperationAbortCode;
+}) {
+  emitAgentEvent({
+    runId: params.runId,
+    stream: "run_phase",
+    sessionKey: params.sessionKey,
+    data: {
+      phase: params.phase,
+      startedAt: params.startedAt,
+      ...(typeof params.endedAt === "number" ? { endedAt: params.endedAt } : {}),
+      ...(typeof params.endedAt === "number"
+        ? { elapsedMs: Math.max(0, params.endedAt - params.startedAt) }
+        : {}),
+      ...(params.completed !== undefined ? { completed: params.completed } : {}),
+      ...(params.failedCode ? { failedCode: params.failedCode } : {}),
+      ...(params.abortedCode ? { abortedCode: params.abortedCode } : {}),
+    },
+  });
 }
 
 function registerWaitSessionId(sessionKey: string, sessionId: string): void {
@@ -211,6 +250,8 @@ export function createReplyOperation(params: {
   let phase: ReplyOperationPhase = "queued";
   let result: ReplyOperationResult | null = null;
   let stateCleared = false;
+  const eventRunId = `reply-phase-${randomUUID()}`;
+  let phaseStartedAt = Date.now();
 
   const clearState = () => {
     if (stateCleared) {
@@ -279,7 +320,17 @@ export function createReplyOperation(params: {
       if (result) {
         return;
       }
+      if (phase === next) {
+        return;
+      }
       phase = next;
+      phaseStartedAt = Date.now();
+      emitReplyOperationPhaseEvent({
+        runId: eventRunId,
+        sessionKey,
+        phase: next,
+        startedAt: phaseStartedAt,
+      });
     },
     updateSessionId(nextSessionId) {
       if (result) {
@@ -329,6 +380,14 @@ export function createReplyOperation(params: {
       if (!result) {
         result = { kind: "completed" };
         phase = "completed";
+        emitReplyOperationPhaseEvent({
+          runId: eventRunId,
+          sessionKey,
+          phase: "completed",
+          startedAt: phaseStartedAt,
+          endedAt: Date.now(),
+          completed: true,
+        });
       }
       clearState();
     },
@@ -336,12 +395,30 @@ export function createReplyOperation(params: {
       if (!result) {
         result = { kind: "failed", code, cause };
         phase = "failed";
+        emitReplyOperationPhaseEvent({
+          runId: eventRunId,
+          sessionKey,
+          phase: "failed",
+          startedAt: phaseStartedAt,
+          endedAt: Date.now(),
+          completed: false,
+          failedCode: code,
+        });
       }
       clearState();
     },
     abortByUser() {
       const phaseBeforeAbort = phase;
       abortWithReason("user_abort", createUserAbortError(), {
+        abortedCode: "aborted_by_user",
+      });
+      emitReplyOperationPhaseEvent({
+        runId: eventRunId,
+        sessionKey,
+        phase: "aborted",
+        startedAt: phaseStartedAt,
+        endedAt: Date.now(),
+        completed: false,
         abortedCode: "aborted_by_user",
       });
       if (phaseBeforeAbort === "queued") {
@@ -351,6 +428,15 @@ export function createReplyOperation(params: {
     abortForRestart() {
       const phaseBeforeAbort = phase;
       abortWithReason("restart", new Error("Reply operation aborted for restart"), {
+        abortedCode: "aborted_for_restart",
+      });
+      emitReplyOperationPhaseEvent({
+        runId: eventRunId,
+        sessionKey,
+        phase: "aborted",
+        startedAt: phaseStartedAt,
+        endedAt: Date.now(),
+        completed: false,
         abortedCode: "aborted_for_restart",
       });
       if (phaseBeforeAbort === "queued") {
@@ -363,6 +449,12 @@ export function createReplyOperation(params: {
   replyRunState.activeSessionIdsByKey.set(sessionKey, currentSessionId);
   replyRunState.activeKeysBySessionId.set(currentSessionId, sessionKey);
   registerWaitSessionId(sessionKey, currentSessionId);
+  emitReplyOperationPhaseEvent({
+    runId: eventRunId,
+    sessionKey,
+    phase: "queued",
+    startedAt: phaseStartedAt,
+  });
 
   return operation;
 }

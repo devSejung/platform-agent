@@ -4,10 +4,12 @@ import { handleAgentEvent, type FallbackStatus, type ToolStreamEntry } from "./a
 type ToolStreamHost = Parameters<typeof handleAgentEvent>[0];
 type MutableHost = ToolStreamHost & {
   compactionStatus?: unknown;
+  runPhaseStatus?: unknown;
   compactionClearTimer?: number | null;
   compactionRefreshTimer?: number | null;
   fallbackStatus?: FallbackStatus | null;
   fallbackClearTimer?: number | null;
+  requestUpdate?: () => void;
 };
 
 function createHost(overrides?: Partial<MutableHost>): MutableHost {

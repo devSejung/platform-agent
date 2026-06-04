@@ -4,6 +4,7 @@ import { repeat } from "lit/directives/repeat.js";
 import type {
   CompactionStatus as CompactionIndicatorStatus,
   FallbackStatus as FallbackIndicatorStatus,
+  RunPhaseStatus,
 } from "../app-tool-stream.ts";
 import {
   CHAT_ATTACHMENT_ACCEPT,
@@ -51,6 +52,7 @@ export type ChatProps = {
   sending: boolean;
   canAbort?: boolean;
   compactionStatus?: CompactionIndicatorStatus | null;
+  runPhaseStatus?: RunPhaseStatus | null;
   fallbackStatus?: FallbackIndicatorStatus | null;
   messages: unknown[];
   toolMessages: unknown[];
@@ -195,6 +197,33 @@ function formatCompactionElapsed(startedAt: number | null | undefined) {
     return `${minutes}m ${seconds}s`;
   }
   return `${seconds}s`;
+}
+
+function isKoreanLocale(): boolean {
+  const lang =
+    document.documentElement.lang?.trim() ||
+    (typeof navigator.language === "string" ? navigator.language : "");
+  return /^ko\b/i.test(lang);
+}
+
+function formatTokenDeltaCompact(before?: number, after?: number): string | null {
+  if (
+    typeof before !== "number" ||
+    !Number.isFinite(before) ||
+    before <= 0 ||
+    typeof after !== "number" ||
+    !Number.isFinite(after) ||
+    after < 0
+  ) {
+    return null;
+  }
+  const clampedAfter = Math.min(before, after);
+  const ratio = Math.max(0, Math.min(1, (before - clampedAfter) / before));
+  const reducedPercent = Math.round(ratio * 100);
+  if (isKoreanLocale()) {
+    return `${formatTokensCompact(before)} -> ${formatTokensCompact(clampedAfter)} · ${reducedPercent}% 감소`;
+  }
+  return `${formatTokensCompact(before)} -> ${formatTokensCompact(clampedAfter)} · ${reducedPercent}% reduced`;
 }
 
 function renderCompactionIndicator(status: CompactionIndicatorStatus | null | undefined) {
@@ -370,24 +399,105 @@ function waitCopy(elapsedMs: number) {
 function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
   const compaction = props.compactionStatus;
   const compactionActive = compaction?.phase === "active" || compaction?.phase === "retrying";
-  const startedAt = compactionActive
-    ? (compaction.startedAt ?? props.streamStartedAt)
-    : props.streamStartedAt;
+  const localizedKo = isKoreanLocale();
+  const runPhase = props.runPhaseStatus;
+  const startedAt =
+    runPhase?.startedAt ??
+    (compactionActive ? (compaction.startedAt ?? props.streamStartedAt) : props.streamStartedAt);
   const elapsedMs =
     startedAt && Number.isFinite(startedAt) ? Math.max(0, Date.now() - startedAt) : 0;
   const elapsed = formatRunElapsed(startedAt);
   const queueDepth = props.queue.length;
 
+  if (runPhase) {
+    const tokenDelta = formatTokenDeltaCompact(compaction?.tokensBefore, compaction?.tokensAfter);
+    if (runPhase.phase === "preflight_compacting") {
+      return {
+        phase: "compacting",
+        tone: "compaction",
+        title: localizedKo ? "대화 정리 중" : "Compacting conversation",
+        body: localizedKo
+          ? "응답을 이어가기 전에 이전 대화를 정리하고 있습니다."
+          : "Compressing earlier conversation before the response continues.",
+        meta: tokenDelta ?? `${elapsed} elapsed`,
+        icon: icons.loader,
+        mascotPhase: "compacting",
+        startedAt,
+        elapsedMs,
+        queueDepth,
+      };
+    }
+    if (runPhase.phase === "memory_flushing") {
+      return {
+        phase: "waiting",
+        tone: "normal",
+        title: localizedKo ? "기억 정리 중" : "Organizing memory",
+        body: localizedKo
+          ? "응답 전에 대화 기억을 정리하고 있습니다."
+          : "Organizing conversation memory before resuming the response.",
+        meta: `${elapsed} elapsed`,
+        icon: icons.brain,
+        mascotPhase: "waiting",
+        startedAt,
+        elapsedMs,
+        queueDepth,
+      };
+    }
+    if (runPhase.phase === "queued" && queueDepth > 0) {
+      return {
+        phase: "queued",
+        tone: "normal",
+        title: localizedKo ? "후속 요청 대기 중" : "Pending follow-up",
+        body: localizedKo
+          ? "현재 실행이 끝나면 후속 요청을 이어서 처리합니다."
+          : "This follow-up request will start after the current run completes.",
+        meta: localizedKo ? `${queueDepth}건 대기` : `${queueDepth} queued`,
+        icon: icons.loader,
+        mascotPhase: "queued",
+        startedAt: null,
+        elapsedMs: 0,
+        queueDepth,
+      };
+    }
+    if (runPhase.phase === "running" && props.stream === null && props.toolMessages.length === 0) {
+      return {
+        phase: "waiting",
+        tone: "normal",
+        title: localizedKo ? "응답 준비 중" : "Preparing response",
+        body: localizedKo
+          ? "assistant가 답변을 준비하고 있습니다."
+          : "The assistant is preparing the response.",
+        meta: `${elapsed} elapsed`,
+        icon: icons.brain,
+        mascotPhase: "waiting",
+        startedAt,
+        elapsedMs,
+        queueDepth,
+      };
+    }
+  }
+
   if (compactionActive) {
     const retrying = compaction?.phase === "retrying";
+    const tokenDelta = formatTokenDeltaCompact(compaction?.tokensBefore, compaction?.tokensAfter);
     return {
       phase: retrying ? "retrying" : "compacting",
       tone: "compaction",
-      title: retrying ? "Continuing after compaction" : "Compacting context",
+      title: retrying
+        ? localizedKo
+          ? "응답 이어가는 중"
+          : "Resuming response"
+        : localizedKo
+          ? "긴 대화 정리 중"
+          : "Compacting context",
       body: retrying
-        ? "Context was compressed successfully. The assistant is resuming the response."
-        : "Long conversation context is being compressed before the answer continues.",
-      meta: `${elapsed} elapsed`,
+        ? localizedKo
+          ? "대화 정리가 끝나서 응답을 다시 이어가고 있습니다."
+          : "Compaction finished successfully. The assistant is resuming the response."
+        : localizedKo
+          ? "긴 대화를 압축한 뒤 응답을 이어갑니다."
+          : "Long conversation context is being compressed before the answer continues.",
+      meta: tokenDelta ?? `${elapsed} elapsed`,
       icon: retrying ? icons.check : icons.loader,
       mascotPhase: retrying ? "retrying" : "compacting",
       startedAt,
@@ -400,8 +510,10 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
     return {
       phase: "tool",
       tone: "tool",
-      title: "Running tools",
-      body: "Tool activity is streaming into the conversation. Results will be folded into the final answer.",
+      title: localizedKo ? "도구 실행 중" : "Running tools",
+      body: localizedKo
+        ? "도구 결과를 바탕으로 답변을 정리하고 있습니다."
+        : "Tool activity is streaming into the conversation. Results will be folded into the final answer.",
       meta: `${elapsed} elapsed`,
       icon: icons.terminal,
       mascotPhase: "tool",
@@ -415,8 +527,10 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
     return {
       phase: "streaming",
       tone: "normal",
-      title: "Writing response",
-      body: "Assistant output is arriving. The final message will settle when the run completes.",
+      title: localizedKo ? "응답 작성 중" : "Writing response",
+      body: localizedKo
+        ? "assistant 답변이 생성되고 있습니다."
+        : "Assistant output is arriving. The final message will settle when the run completes.",
       meta: `${elapsed} elapsed`,
       icon: icons.spark,
       mascotPhase: "streaming",
@@ -430,8 +544,10 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
     return {
       phase: "sending",
       tone: "normal",
-      title: "Sending request",
-      body: "The browser is handing this message to the gateway.",
+      title: localizedKo ? "요청 전송 중" : "Sending request",
+      body: localizedKo
+        ? "브라우저가 메시지를 gateway로 전달하고 있습니다."
+        : "The browser is handing this message to the gateway.",
       meta: `${elapsed} elapsed`,
       icon: icons.loader,
       mascotPhase: "sending",
@@ -461,9 +577,11 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
     return {
       phase: "queued",
       tone: "normal",
-      title: "Queued for next run",
-      body: "This message will start after the current request completes.",
-      meta: `${queueDepth} queued`,
+      title: localizedKo ? "후속 요청 대기 중" : "Pending follow-up",
+      body: localizedKo
+        ? "현재 실행이 끝나면 후속 요청을 이어서 처리합니다."
+        : "This follow-up request will start after the current run completes.",
+      meta: localizedKo ? `${queueDepth}건 대기` : `${queueDepth} queued`,
       icon: icons.loader,
       mascotPhase: "queued",
       startedAt: null,
@@ -1514,7 +1632,6 @@ export function renderChat(props: ChatProps) {
           `
         : nothing}
       ${renderFallbackIndicator(props.fallbackStatus)}
-      ${renderCompactionIndicator(props.compactionStatus)}
       ${renderContextNotice(activeSession, props.sessions?.defaults?.contextTokens ?? null)}
       ${props.showNewMessages
         ? html`

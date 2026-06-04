@@ -196,6 +196,16 @@ function flushTasks() {
   return new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
+function withDocumentLang<T>(lang: string, run: () => T): T {
+  const previous = document.documentElement.lang;
+  document.documentElement.lang = lang;
+  try {
+    return run();
+  } finally {
+    document.documentElement.lang = previous;
+  }
+}
+
 function createProps(overrides: Partial<ChatProps> = {}): ChatProps {
   return {
     sessionKey: "main",
@@ -291,6 +301,121 @@ function createOverviewProps(overrides: Partial<OverviewProps> = {}): OverviewPr
 }
 
 describe("chat view", () => {
+  it("renders queued follow-up status through the live run status bar", () => {
+    withDocumentLang("en", () => {
+      const container = document.createElement("div");
+      render(
+        renderChat(
+          createProps({
+            queue: [{ id: "q1", text: "follow up", createdAt: 1 }],
+            runPhaseStatus: {
+              phase: "queued",
+              runId: "run-phase-1",
+              startedAt: 1_000,
+              endedAt: null,
+            },
+          }),
+        ),
+        container,
+      );
+
+      const status = container.querySelector(".live-run-status[data-phase='queued']");
+      expect(status).not.toBeNull();
+      expect(status?.textContent).toContain("Pending follow-up");
+      expect(status?.textContent).toContain(
+        "This follow-up request will start after the current run completes.",
+      );
+      expect(status?.textContent).toContain("1 queued");
+    });
+  });
+
+  it("renders memory flushing status in Korean through the live run status bar", () => {
+    withDocumentLang("ko-KR", () => {
+      const container = document.createElement("div");
+      const nowSpy = vi.spyOn(Date, "now").mockReturnValue(12_000);
+      render(
+        renderChat(
+          createProps({
+            runPhaseStatus: {
+              phase: "memory_flushing",
+              runId: "run-phase-2",
+              startedAt: 8_000,
+              endedAt: null,
+            },
+          }),
+        ),
+        container,
+      );
+
+      const status = container.querySelector(".live-run-status[data-phase='waiting']");
+      expect(status).not.toBeNull();
+      expect(status?.textContent).toContain("기억 정리 중");
+      expect(status?.textContent).toContain("응답 전에 대화 기억을 정리하고 있습니다.");
+      expect(status?.textContent).toContain("00:04 elapsed");
+      nowSpy.mockRestore();
+    });
+  });
+
+  it("renders preflight compaction token reduction metadata in Korean", () => {
+    withDocumentLang("ko-KR", () => {
+      const container = document.createElement("div");
+      render(
+        renderChat(
+          createProps({
+            compactionStatus: {
+              phase: "complete",
+              runId: "run-phase-3",
+              startedAt: 1_000,
+              completedAt: 2_000,
+              tokensBefore: 120_000,
+              tokensAfter: 45_000,
+            },
+            runPhaseStatus: {
+              phase: "preflight_compacting",
+              runId: "run-phase-3",
+              startedAt: 1_000,
+              endedAt: null,
+            },
+          }),
+        ),
+        container,
+      );
+
+      const status = container.querySelector(".live-run-status[data-phase='compacting']");
+      expect(status).not.toBeNull();
+      expect(status?.textContent).toContain("대화 정리 중");
+      expect(status?.textContent).toContain("120k -> 45k");
+      expect(status?.textContent).toContain("63% 감소");
+    });
+  });
+
+  it("renders running-prep status before the first stream chunk arrives", () => {
+    withDocumentLang("en", () => {
+      const container = document.createElement("div");
+      const nowSpy = vi.spyOn(Date, "now").mockReturnValue(25_000);
+      render(
+        renderChat(
+          createProps({
+            runPhaseStatus: {
+              phase: "running",
+              runId: "run-phase-4",
+              startedAt: 20_000,
+              endedAt: null,
+            },
+          }),
+        ),
+        container,
+      );
+
+      const status = container.querySelector(".live-run-status[data-phase='waiting']");
+      expect(status).not.toBeNull();
+      expect(status?.textContent).toContain("Preparing response");
+      expect(status?.textContent).toContain("The assistant is preparing the response.");
+      expect(status?.textContent).toContain("00:05 elapsed");
+      nowSpy.mockRestore();
+    });
+  });
+
   it("hides the context notice when only cumulative inputTokens exceed the limit", () => {
     const container = document.createElement("div");
     render(
@@ -530,7 +655,7 @@ describe("chat view", () => {
     await i18n.setLocale("en");
   });
 
-  it("renders compacting indicator as a persistent status banner", () => {
+  it("renders compacting state through the live run status bar", () => {
     const container = document.createElement("div");
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(10_000);
     render(
@@ -547,14 +672,13 @@ describe("chat view", () => {
       container,
     );
 
-    const indicator = container.querySelector(".compaction-indicator--active");
-    expect(indicator).not.toBeNull();
-    expect(indicator?.textContent).toContain("Context compaction in progress");
-    expect(indicator?.textContent).toContain("Elapsed 2s");
+    const status = container.querySelector(".live-run-status[data-phase='compacting']");
+    expect(status).not.toBeNull();
+    expect(status?.textContent).toContain("Compacting context");
     nowSpy.mockRestore();
   });
 
-  it("renders retry-pending compaction indicator as a persistent status banner", () => {
+  it("renders retry-pending compaction state through the live run status bar", () => {
     const container = document.createElement("div");
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(125_000);
     render(
@@ -571,14 +695,13 @@ describe("chat view", () => {
       container,
     );
 
-    const indicator = container.querySelector(".compaction-indicator--active");
-    expect(indicator).not.toBeNull();
-    expect(indicator?.textContent).toContain("Continuing after compaction");
-    expect(indicator?.textContent).toContain("Elapsed 2m 0s");
+    const status = container.querySelector(".live-run-status[data-phase='retrying']");
+    expect(status).not.toBeNull();
+    expect(status?.textContent).toContain("Resuming response");
     nowSpy.mockRestore();
   });
 
-  it("renders completion indicator shortly after compaction", () => {
+  it("does not render a separate completion indicator after compaction", () => {
     const container = document.createElement("div");
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_000);
     render(
@@ -596,8 +719,7 @@ describe("chat view", () => {
     );
 
     const indicator = container.querySelector(".compaction-indicator--complete");
-    expect(indicator).not.toBeNull();
-    expect(indicator?.textContent).toContain("Context compaction complete");
+    expect(indicator).toBeNull();
     nowSpy.mockRestore();
   });
 

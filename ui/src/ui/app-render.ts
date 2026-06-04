@@ -850,6 +850,7 @@ export function renderApp(state: AppViewState) {
           loading: state.chatLoading,
           sending: state.chatSending,
           compactionStatus: state.compactionStatus,
+          runPhaseStatus: state.runPhaseStatus,
           fallbackStatus: state.fallbackStatus,
           assistantAvatarUrl: chatAvatarUrl,
           messages: state.chatMessages,

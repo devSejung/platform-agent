@@ -2,10 +2,20 @@ import {
   EMPLOYEE_ADSSO_PATH,
   EMPLOYEE_LOGIN_PATH,
   EMPLOYEE_LOGOUT_PATH,
+  type EmployeeTimezoneBody,
   type EmployeeUiLoginNotice,
 } from "../../../../src/gateway/employee-ui-contract.js";
 import { clearStoredAuthState } from "../storage.ts";
 import { loadEmployeeBootstrap } from "./employee-bootstrap.ts";
+
+function resolveBrowserTimezone(): string | undefined {
+  try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof timezone === "string" && timezone.trim() ? timezone.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export type EmployeeLoginState = {
   employeeMode: boolean;
@@ -50,6 +60,7 @@ export async function submitEmployeeLogin(state: EmployeeLoginState) {
       body: JSON.stringify({
         identifier,
         password,
+        timezone: resolveBrowserTimezone(),
       }),
     });
     let payload: unknown = null;
@@ -104,8 +115,12 @@ export async function submitEmployeeAdSso(state: EmployeeLoginState) {
       method: "POST",
       headers: {
         Accept: "application/json",
+        "Content-Type": "application/json",
       },
       credentials: "include",
+      body: JSON.stringify({
+        timezone: resolveBrowserTimezone(),
+      } satisfies EmployeeTimezoneBody),
     });
     let payload: unknown = null;
     try {

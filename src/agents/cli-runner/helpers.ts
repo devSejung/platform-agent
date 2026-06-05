@@ -80,21 +80,22 @@ export function buildSystemPrompt(params: {
     agentId: params.agentId,
   });
   const defaultModelLabel = `${defaultModelRef.provider}/${defaultModelRef.model}`;
-  const { runtimeInfo, userTimezone, userTime, userTimeFormat } = buildSystemPromptParams({
-    config: params.config,
-    agentId: params.agentId,
-    workspaceDir: params.workspaceDir,
-    cwd: process.cwd(),
-    runtime: {
-      host: "openclaw",
-      os: `${os.type()} ${os.release()}`,
-      arch: os.arch(),
-      node: process.version,
-      model: params.modelDisplay,
-      defaultModel: defaultModelLabel,
-      shell: detectRuntimeShell(),
-    },
-  });
+  const { runtimeInfo, userTimezone, userTime, userUtcTime, userTimeFormat } =
+    buildSystemPromptParams({
+      config: params.config,
+      agentId: params.agentId,
+      workspaceDir: params.workspaceDir,
+      cwd: process.cwd(),
+      runtime: {
+        host: "openclaw",
+        os: `${os.type()} ${os.release()}`,
+        arch: os.arch(),
+        node: process.version,
+        model: params.modelDisplay,
+        defaultModel: defaultModelLabel,
+        shell: detectRuntimeShell(),
+      },
+    });
   const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
   const ownerDisplay = resolveOwnerDisplaySetting(params.config);
   return buildAgentSystemPrompt({
@@ -113,6 +114,7 @@ export function buildSystemPrompt(params: {
     modelAliasLines: buildModelAliasLines(params.config),
     userTimezone,
     userTime,
+    userUtcTime,
     userTimeFormat,
     contextFiles: params.contextFiles,
     ttsHint,

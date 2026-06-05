@@ -49,6 +49,7 @@ export function buildEmbeddedSystemPrompt(params: {
   modelAliasLines: string[];
   userTimezone: string;
   userTime?: string;
+  userUtcTime?: string;
   userTimeFormat?: ResolvedTimeFormat;
   contextFiles?: EmbeddedContextFile[];
   includeMemorySection?: boolean;
@@ -79,6 +80,7 @@ export function buildEmbeddedSystemPrompt(params: {
     modelAliasLines: params.modelAliasLines,
     userTimezone: params.userTimezone,
     userTime: params.userTime,
+    userUtcTime: params.userUtcTime,
     userTimeFormat: params.userTimeFormat,
     contextFiles: params.contextFiles,
     includeMemorySection: params.includeMemorySection,

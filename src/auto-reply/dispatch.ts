@@ -129,6 +129,7 @@ export async function dispatchInboundMessage(params: {
   dispatcher: ReplyDispatcher;
   replyOptions?: Omit<GetReplyOptions, "onToolResult" | "onBlockReply">;
   replyResolver?: typeof import("./reply.js").getReplyFromConfig;
+  configOverride?: OpenClawConfig;
 }): Promise<DispatchInboundResult> {
   const finalized = finalizeInboundContext(params.ctx);
   const skillHubHandled = await tryHandleSkillHubCommand({
@@ -151,6 +152,7 @@ export async function dispatchInboundMessage(params: {
         dispatcher: params.dispatcher,
         replyOptions: params.replyOptions,
         replyResolver: params.replyResolver,
+        configOverride: params.configOverride,
       }),
   });
 }
@@ -161,6 +163,7 @@ export async function dispatchInboundMessageWithBufferedDispatcher(params: {
   dispatcherOptions: ReplyDispatcherWithTypingOptions;
   replyOptions?: Omit<GetReplyOptions, "onToolResult" | "onBlockReply">;
   replyResolver?: typeof import("./reply.js").getReplyFromConfig;
+  configOverride?: OpenClawConfig;
 }): Promise<DispatchInboundResult> {
   const { dispatcher, replyOptions, markDispatchIdle, markRunComplete } =
     createReplyDispatcherWithTyping(params.dispatcherOptions);
@@ -170,6 +173,7 @@ export async function dispatchInboundMessageWithBufferedDispatcher(params: {
       cfg: params.cfg,
       dispatcher,
       replyResolver: params.replyResolver,
+      configOverride: params.configOverride,
       replyOptions: {
         ...params.replyOptions,
         ...replyOptions,
@@ -187,6 +191,7 @@ export async function dispatchInboundMessageWithDispatcher(params: {
   dispatcherOptions: ReplyDispatcherOptions;
   replyOptions?: Omit<GetReplyOptions, "onToolResult" | "onBlockReply">;
   replyResolver?: typeof import("./reply.js").getReplyFromConfig;
+  configOverride?: OpenClawConfig;
 }): Promise<DispatchInboundResult> {
   const dispatcher = createReplyDispatcher(params.dispatcherOptions);
   return await dispatchInboundMessage({
@@ -194,6 +199,7 @@ export async function dispatchInboundMessageWithDispatcher(params: {
     cfg: params.cfg,
     dispatcher,
     replyResolver: params.replyResolver,
+    configOverride: params.configOverride,
     replyOptions: params.replyOptions,
   });
 }

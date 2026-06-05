@@ -58,3 +58,7 @@ export type EmployeeUiLoginSuccessResponse = {
   authenticated: true;
   notice?: EmployeeUiLoginNotice;
 };
+
+export type EmployeeTimezoneBody = {
+  timezone?: string;
+};

@@ -59,6 +59,7 @@ function ensureSchema(db: DatabaseSync) {
       email TEXT,
       display_name TEXT,
       department TEXT,
+      timezone TEXT,
       status TEXT NOT NULL DEFAULT 'active',
       global_role TEXT NOT NULL DEFAULT 'member',
       created_at TEXT NOT NULL,
@@ -152,6 +153,18 @@ function ensureSchema(db: DatabaseSync) {
       ON groups(parent_group_id, name)
       WHERE group_level = 2;
   `);
+
+  const accountColumns = db
+    .prepare(`PRAGMA table_info(accounts)`)
+    .all() as Array<{ name?: string }>;
+  const accountColumnNames = new Set(
+    accountColumns
+      .map((column) => (typeof column.name === "string" ? column.name.trim() : ""))
+      .filter(Boolean),
+  );
+  if (!accountColumnNames.has("timezone")) {
+    db.exec(`ALTER TABLE accounts ADD COLUMN timezone TEXT`);
+  }
 }
 
 export function getPlatformClawDatabase(

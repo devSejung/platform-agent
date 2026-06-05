@@ -1,6 +1,8 @@
 import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
 import { isParentOwnedBackgroundAcpSession } from "../../acp/session-interaction-mode.js";
+import { resolveAccountTimezone } from "../../accounts/account-store.js";
 import { resolveAgentConfig, resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { DEFAULT_PLATFORMCLAW_TIMEZONE } from "../../agents/date-time.js";
 import {
   resolveConversationBindingRecord,
   touchConversationBindingRecord,
@@ -68,6 +70,27 @@ let routeReplyRuntimePromise: Promise<typeof import("./route-reply.runtime.js")>
 let getReplyFromConfigRuntimePromise: Promise<
   typeof import("./get-reply-from-config.runtime.js")
 > | null = null;
+
+function buildTimezoneConfigOverride(
+  configOverride: OpenClawConfig | undefined,
+  senderId: string | undefined,
+): OpenClawConfig {
+  const existingTimezone = configOverride?.agents?.defaults?.userTimezone?.trim();
+  const resolvedTimezone =
+    (senderId ? resolveAccountTimezone(senderId) : null) ??
+    (existingTimezone || undefined) ??
+    DEFAULT_PLATFORMCLAW_TIMEZONE;
+  return {
+    ...(configOverride ?? {}),
+    agents: {
+      ...(configOverride?.agents ?? {}),
+      defaults: {
+        ...(configOverride?.agents?.defaults ?? {}),
+        userTimezone: resolvedTimezone,
+      },
+    },
+  };
+}
 let abortRuntimePromise: Promise<typeof import("./abort.runtime.js")> | null = null;
 let ttsRuntimePromise: Promise<typeof import("../../tts/tts.runtime.js")> | null = null;
 
@@ -205,6 +228,10 @@ export async function dispatchReplyFromConfig(params: {
   configOverride?: OpenClawConfig;
 }): Promise<DispatchFromConfigResult> {
   const { ctx, cfg, dispatcher } = params;
+  const effectiveConfigOverride = buildTimezoneConfigOverride(
+    params.configOverride,
+    normalizeOptionalString(ctx.SenderId) ?? undefined,
+  );
   const diagnosticsEnabled = isDiagnosticsEnabled(cfg);
   const channel = normalizeLowercaseStringOrEmpty(String(ctx.Surface ?? ctx.Provider ?? "unknown"));
   const chatId = ctx.To ?? ctx.From;
@@ -923,7 +950,7 @@ export async function dispatchReplyFromConfig(params: {
           return run();
         },
       },
-      params.configOverride,
+      effectiveConfigOverride,
     );
 
     if (ctx.AcpDispatchTailAfterReset === true) {

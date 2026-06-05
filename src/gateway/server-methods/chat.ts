@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
+import { resolveAccountTimezone } from "../../accounts/account-store.js";
+import { DEFAULT_PLATFORMCLAW_TIMEZONE } from "../../agents/date-time.js";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { resolveThinkingDefault } from "../../agents/model-selection.js";
 import { rewriteTranscriptEntriesInSessionFile } from "../../agents/pi-embedded-runner/transcript-rewrite.js";
@@ -1778,10 +1780,22 @@ export const chatHandlers: GatewayRequestHandlers = {
       });
 
       let agentRunStarted = false;
+      const employeeTimezoneConfigOverride = {
+        agents: {
+          defaults: {
+            userTimezone:
+              (typeof client?.internal?.employee?.employeeId === "string" &&
+              client.internal.employee.employeeId.trim()
+                ? resolveAccountTimezone(client.internal.employee.employeeId.trim())
+                : null) ?? DEFAULT_PLATFORMCLAW_TIMEZONE,
+          },
+        },
+      };
       void dispatchInboundMessage({
         ctx,
         cfg,
         dispatcher,
+        configOverride: employeeTimezoneConfigOverride,
         replyOptions: {
           runId: clientRunId,
           abortSignal: abortController.signal,

@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { ensureAgentWorkspace, upsertWorkspaceUserProfile } from "../agents/workspace.js";
 import type { OpenClawConfig } from "../config/config.js";
+import { resolveTimezone } from "../infra/format-time/format-datetime.js";
 import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-key.js";
 import {
   provisionEmployeeAccount,
@@ -21,6 +22,7 @@ import {
   EMPLOYEE_ADSSO_PATH,
   EMPLOYEE_LOGIN_PATH,
   EMPLOYEE_LOGOUT_PATH,
+  type EmployeeTimezoneBody,
   type EmployeeUiLoginNotice,
   type EmployeeUiLoginSuccessResponse,
   type EmployeeUiBootstrapAuthenticatedResponse,
@@ -70,7 +72,16 @@ type EmployeeLoginBody = {
   username?: unknown;
   email?: unknown;
   password?: unknown;
+  timezone?: unknown;
 };
+
+function resolveSubmittedTimezone(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? resolveTimezone(trimmed) : undefined;
+}
 
 function parseEmployeeExternalAuthResponse(
   parsed: unknown,
@@ -586,8 +597,10 @@ export async function handleEmployeeLoginRequest(params: {
     });
     return true;
   }
+  const loginBody = parsedBody.value as EmployeeLoginBody;
+  const submittedTimezone = resolveSubmittedTimezone(loginBody.timezone);
   const authResult = await authenticateViaExternalService({
-    body: parsedBody.value as EmployeeLoginBody,
+    body: loginBody,
     context: params.context,
   });
   if (!authResult.authenticated) {
@@ -609,6 +622,7 @@ export async function handleEmployeeLoginRequest(params: {
       email: authResult.email,
       name: authResult.name,
       department: authResult.department,
+      timezone: submittedTimezone,
       agentId: sessionPayload.agentId,
       sessionExpiresAt: resolveSessionExpiryIso(sessionPayload.exp),
     });
@@ -645,6 +659,10 @@ export async function handleEmployeeAdSsoRequest(params: {
   req: IncomingMessage;
   res: ServerResponse;
   config: OpenClawConfig;
+  readJsonBody: (
+    req: IncomingMessage,
+    maxBytes: number,
+  ) => Promise<{ ok: true; value: unknown } | { ok: false; error: string }>;
   context: EmployeeAuthRequestContext;
   rateLimiter?: AuthRateLimiter;
 }): Promise<boolean> {
@@ -667,6 +685,18 @@ export async function handleEmployeeAdSsoRequest(params: {
     sendEmployeeRateLimited(params.res, rateLimitState.retryAfterMs);
     return true;
   }
+  const parsedBody = await params.readJsonBody(params.req, 16 * 1024);
+  if (!parsedBody.ok) {
+    sendJson(params.res, 400, {
+      authenticated: false,
+      message: parsedBody.error,
+    });
+    return true;
+  }
+  const submittedTimezone =
+    parsedBody.value && typeof parsedBody.value === "object"
+      ? resolveSubmittedTimezone((parsedBody.value as EmployeeTimezoneBody).timezone)
+      : undefined;
 
   const authResult = await authenticateViaExternalAdSso({
     context: params.context,
@@ -693,6 +723,7 @@ export async function handleEmployeeAdSsoRequest(params: {
       email: authResult.email,
       name: authResult.name,
       department: authResult.department,
+      timezone: submittedTimezone,
       agentId: sessionPayload.agentId,
       sessionExpiresAt: resolveSessionExpiryIso(sessionPayload.exp),
     });

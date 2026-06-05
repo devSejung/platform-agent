@@ -12,6 +12,7 @@ export type AccountRecord = {
   email: string | null;
   displayName: string | null;
   department: string | null;
+  timezone: string | null;
   status: AccountStatus;
   globalRole: AccountGlobalRole;
   createdAt: string;
@@ -66,6 +67,7 @@ type AccountRow = {
   email: string | null;
   display_name: string | null;
   department: string | null;
+  timezone: string | null;
   status: AccountStatus;
   global_role: AccountGlobalRole;
   created_at: string;
@@ -90,6 +92,7 @@ function rowToAccount(row: AccountRow): AccountRecord {
     email: row.email,
     displayName: row.display_name,
     department: row.department,
+    timezone: row.timezone,
     status: row.status,
     globalRole: row.global_role,
     createdAt: row.created_at,
@@ -138,7 +141,7 @@ export function getAccountById(
   const row = db
     .prepare(
       `SELECT id, external_provider, external_subject, employee_id, email, display_name, department,
-              status, global_role, created_at, updated_at, last_login_at
+              timezone, status, global_role, created_at, updated_at, last_login_at
          FROM accounts
         WHERE id = ?`,
     )
@@ -159,6 +162,7 @@ export function upsertAccount(params: {
   email?: string | null;
   displayName?: string | null;
   department?: string | null;
+  timezone?: string | null;
   externalProvider?: string;
   externalSubject?: string;
   env?: NodeJS.ProcessEnv;
@@ -171,6 +175,7 @@ export function upsertAccount(params: {
   const email = trimOrNull(params.email);
   const displayName = trimOrNull(params.displayName);
   const department = trimOrNull(params.department);
+  const timezone = trimOrNull(params.timezone);
   const externalProvider = trimOrNull(params.externalProvider) ?? "ldap";
   const externalSubject = trimOrNull(params.externalSubject) ?? employeeId;
   const now = new Date().toISOString();
@@ -183,10 +188,10 @@ export function upsertAccount(params: {
   if (!existing) {
     db.prepare(
       `INSERT INTO accounts (
-         id, external_provider, external_subject, employee_id, email, display_name, department,
+         id, external_provider, external_subject, employee_id, email, display_name, department, timezone,
          status, global_role, created_at, updated_at, last_login_at
        ) VALUES (
-         @id, @external_provider, @external_subject, @employee_id, @email, @display_name, @department,
+         @id, @external_provider, @external_subject, @employee_id, @email, @display_name, @department, @timezone,
          'active', @global_role, @created_at, @updated_at, @last_login_at
        )`,
     ).run({
@@ -197,6 +202,7 @@ export function upsertAccount(params: {
       email,
       display_name: displayName,
       department,
+      timezone,
       global_role: initialRole,
       created_at: now,
       updated_at: now,
@@ -210,6 +216,7 @@ export function upsertAccount(params: {
               email = COALESCE(@email, email),
               display_name = COALESCE(@display_name, display_name),
               department = COALESCE(@department, department),
+              timezone = COALESCE(@timezone, timezone),
               updated_at = @updated_at,
               last_login_at = @last_login_at
         WHERE id = @id`,
@@ -220,6 +227,7 @@ export function upsertAccount(params: {
       email,
       display_name: displayName,
       department,
+      timezone,
       updated_at: now,
       last_login_at: now,
     });
@@ -411,6 +419,13 @@ export function buildAccountSummary(
   };
 }
 
+export function resolveAccountTimezone(
+  accountId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  return trimOrNull(getAccountById(accountId, env)?.timezone) ?? null;
+}
+
 export function listAccountMembershipSummaries(
   accountId: string,
   env: NodeJS.ProcessEnv = process.env,
@@ -470,7 +485,7 @@ export function searchAccounts(params: {
     ? (db
         .prepare(
           `SELECT id, external_provider, external_subject, employee_id, email, display_name, department,
-                  status, global_role, created_at, updated_at, last_login_at
+                  timezone, status, global_role, created_at, updated_at, last_login_at
              FROM accounts
             WHERE status = 'active'
               AND (
@@ -488,7 +503,7 @@ export function searchAccounts(params: {
     : (db
         .prepare(
           `SELECT id, external_provider, external_subject, employee_id, email, display_name, department,
-                  status, global_role, created_at, updated_at, last_login_at
+                  timezone, status, global_role, created_at, updated_at, last_login_at
              FROM accounts
             WHERE status = 'active'
             ORDER BY COALESCE(display_name, employee_id) COLLATE NOCASE ASC
@@ -509,7 +524,7 @@ export function listAdminAccounts(params: {
     ? (db
         .prepare(
           `SELECT id, external_provider, external_subject, employee_id, email, display_name, department,
-                  status, global_role, created_at, updated_at, last_login_at
+                  timezone, status, global_role, created_at, updated_at, last_login_at
              FROM accounts
             WHERE employee_id LIKE @query
                OR COALESCE(display_name, '') LIKE @query
@@ -520,7 +535,7 @@ export function listAdminAccounts(params: {
     : (db
         .prepare(
           `SELECT id, external_provider, external_subject, employee_id, email, display_name, department,
-                  status, global_role, created_at, updated_at, last_login_at
+                  timezone, status, global_role, created_at, updated_at, last_login_at
              FROM accounts
             ORDER BY COALESCE(last_login_at, created_at) DESC, employee_id COLLATE NOCASE ASC`,
         )

@@ -19,6 +19,7 @@ export function provisionEmployeeAccount(params: {
   email?: string | null;
   name?: string | null;
   department?: string | null;
+  timezone?: string | null;
   agentId: string;
   sessionId?: string;
   sessionExpiresAt?: string | null;
@@ -31,6 +32,7 @@ export function provisionEmployeeAccount(params: {
     email: params.email,
     displayName: params.name,
     department: params.department,
+    timezone: params.timezone,
     externalProvider: "ldap",
     externalSubject: params.employeeId,
     env,

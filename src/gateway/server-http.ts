@@ -992,6 +992,7 @@ export function createGatewayHttpServer(opts: {
             req,
             res,
             config: configSnapshot,
+            readJsonBody,
             context: {
               clientIp: resolveRequestClientIp(req, trustedProxies, allowRealIpFallback),
               gatewayUrl: resolveGatewayWebsocketUrl(req),

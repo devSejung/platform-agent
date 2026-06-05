@@ -1,22 +1,21 @@
 import { execFileSync } from "node:child_process";
+import { resolveTimezone } from "../infra/format-time/format-datetime.js";
 
 export type TimeFormatPreference = "auto" | "12" | "24";
 export type ResolvedTimeFormat = "12" | "24";
+export const DEFAULT_PLATFORMCLAW_TIMEZONE = "Asia/Seoul";
 
 let cachedTimeFormat: ResolvedTimeFormat | undefined;
 
 export function resolveUserTimezone(configured?: string): string {
   const trimmed = configured?.trim();
   if (trimmed) {
-    try {
-      new Intl.DateTimeFormat("en-US", { timeZone: trimmed }).format(new Date());
-      return trimmed;
-    } catch {
-      // ignore invalid timezone
+    const resolved = resolveTimezone(trimmed);
+    if (resolved) {
+      return resolved;
     }
   }
-  const host = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return host?.trim() || "UTC";
+  return DEFAULT_PLATFORMCLAW_TIMEZONE;
 }
 
 export function resolveUserTimeFormat(preference?: TimeFormatPreference): ResolvedTimeFormat {

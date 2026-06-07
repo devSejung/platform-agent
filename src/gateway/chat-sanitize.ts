@@ -3,6 +3,7 @@ import {
   stripInboundMetadata,
 } from "../auto-reply/reply/strip-inbound-meta.js";
 import { stripEnvelope, stripMessageIdHints } from "../shared/chat-envelope.js";
+import { isTextLikeContentBlock, toChatMessageContentBlocks } from "../shared/chat-message-content.js";
 import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 
 export { stripEnvelope };
@@ -15,15 +16,11 @@ function extractMessageSenderLabel(entry: Record<string, unknown>): string | nul
     return extractInboundSenderLabel(entry.content);
   }
   if (Array.isArray(entry.content)) {
-    for (const item of entry.content) {
-      if (!item || typeof item !== "object") {
+    for (const item of toChatMessageContentBlocks(entry.content)) {
+      if (!isTextLikeContentBlock(item)) {
         continue;
       }
-      const text = (item as { text?: unknown }).text;
-      if (typeof text !== "string") {
-        continue;
-      }
-      const senderLabel = extractInboundSenderLabel(text);
+      const senderLabel = extractInboundSenderLabel(item.text);
       if (senderLabel) {
         return senderLabel;
       }
@@ -41,23 +38,19 @@ function stripEnvelopeFromContentWithRole(
 ): { content: unknown[]; changed: boolean } {
   let changed = false;
   const next = content.map((item) => {
-    if (!item || typeof item !== "object") {
+    if (!isTextLikeContentBlock(item)) {
       return item;
     }
-    const entry = item as Record<string, unknown>;
-    if (entry.type !== "text" || typeof entry.text !== "string") {
-      return item;
-    }
-    const inboundStripped = stripInboundMetadata(entry.text);
+    const inboundStripped = stripInboundMetadata(item.text);
     const stripped = stripUserEnvelope
       ? stripMessageIdHints(stripEnvelope(inboundStripped))
       : inboundStripped;
-    if (stripped === entry.text) {
+    if (stripped === item.text) {
       return item;
     }
     changed = true;
     return {
-      ...entry,
+      ...item,
       text: stripped,
     };
   });

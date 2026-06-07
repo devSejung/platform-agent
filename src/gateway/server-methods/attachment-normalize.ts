@@ -5,6 +5,13 @@ export type RpcAttachmentInput = {
   mimeType?: unknown;
   fileName?: unknown;
   content?: unknown;
+  workspacePath?: unknown;
+  originalFileName?: unknown;
+  storedFileName?: unknown;
+  sizeBytes?: unknown;
+  promptMode?: unknown;
+  inlineContent?: unknown;
+  inlineTruncated?: unknown;
   source?: unknown;
 };
 
@@ -42,8 +49,21 @@ export function normalizeRpcAttachmentsToChatAttachments(
           mimeType: typeof a?.mimeType === "string" ? a.mimeType : sourceMimeType,
           fileName: typeof a?.fileName === "string" ? a.fileName : undefined,
           content: normalizeAttachmentContent(a?.content) ?? sourceContent,
+          workspacePath: typeof a?.workspacePath === "string" ? a.workspacePath : undefined,
+          originalFileName:
+            typeof a?.originalFileName === "string" ? a.originalFileName : undefined,
+          storedFileName: typeof a?.storedFileName === "string" ? a.storedFileName : undefined,
+          sizeBytes: typeof a?.sizeBytes === "number" ? a.sizeBytes : undefined,
+          promptMode: typeof a?.promptMode === "string" ? a.promptMode : undefined,
+          inlineContent: typeof a?.inlineContent === "string" ? a.inlineContent : undefined,
+          inlineTruncated: a?.inlineTruncated === true,
         };
       })
-      .filter((a) => a.content) ?? []
+      .filter(
+        (a) =>
+          typeof a.content === "string" ||
+          typeof a.workspacePath === "string" ||
+          typeof a.inlineContent === "string",
+      ) ?? []
   );
 }

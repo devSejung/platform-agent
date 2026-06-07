@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { deriveSessionTotalTokens, hasNonzeroUsage, normalizeUsage } from "../agents/usage.js";
 import { jsonUtf8Bytes } from "../infra/json-utf8-bytes.js";
 import { hasInterSessionUserProvenance } from "../sessions/input-provenance.js";
-import { extractAssistantVisibleText } from "../shared/chat-message-content.js";
+import { extractAssistantVisibleText, isTextLikeContentBlock } from "../shared/chat-message-content.js";
 import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
 import { extractToolCallNames, hasToolCall } from "../utils/transcript-tools.js";
@@ -175,7 +175,7 @@ const MAX_LINES_TO_SCAN = 10;
 
 type TranscriptMessage = {
   role?: string;
-  content?: string | Array<{ type: string; text?: string }>;
+  content?: string | Array<Record<string, unknown>>;
   provenance?: unknown;
 };
 
@@ -260,14 +260,12 @@ function extractTextFromContent(content: TranscriptMessage["content"]): string |
     return null;
   }
   for (const part of content) {
-    if (!part || typeof part.text !== "string") {
+    if (!isTextLikeContentBlock(part)) {
       continue;
     }
-    if (part.type === "text" || part.type === "output_text" || part.type === "input_text") {
-      const normalized = stripInlineDirectiveTagsForDisplay(part.text).text.trim();
-      if (normalized) {
-        return normalized;
-      }
+    const normalized = stripInlineDirectiveTagsForDisplay(part.text).text.trim();
+    if (normalized) {
+      return normalized;
     }
   }
   return null;

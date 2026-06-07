@@ -49,3 +49,21 @@ export function canonicalizeBase64(base64: string): string | undefined {
   }
   return cleaned;
 }
+
+const IMAGE_DATA_URL_RE = /^data:(image\/[a-z0-9.+-]+)(?:;[^,]*)?;base64,(.*)$/i;
+
+/**
+ * Normalize image payloads that may arrive either as raw base64 or as a full
+ * `data:image/...;base64,...` URL.
+ */
+export function canonicalizeImageBase64(base64OrDataUrl: string): string | undefined {
+  const trimmed = base64OrDataUrl.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const dataUrlMatch = trimmed.match(IMAGE_DATA_URL_RE);
+  if (dataUrlMatch?.[2]) {
+    return canonicalizeBase64(dataUrlMatch[2]);
+  }
+  return canonicalizeBase64(trimmed);
+}

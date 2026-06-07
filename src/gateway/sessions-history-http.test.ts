@@ -5,6 +5,7 @@ import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   appendAssistantMessageToSessionTranscript,
+  appendExactMessageToSessionTranscript,
   appendExactAssistantMessageToSessionTranscript,
 } from "../config/sessions/transcript.js";
 import { testState } from "./test-helpers.runtime-state.js";
@@ -217,6 +218,49 @@ describe("session history HTTP endpoints", () => {
       ).toMatchObject({
         seq: 1,
       });
+    });
+  });
+
+  test("retains user attachment blocks in direct REST history responses", async () => {
+    const { storePath } = await seedSession();
+    const appended = await appendExactMessageToSessionTranscript({
+      sessionKey: "agent:main:main",
+      storePath,
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "see attached" },
+          {
+            type: "attachment",
+            attachmentType: "file",
+            fileName: "notes.txt",
+            workspacePath: "inbox/chat-attachments/2026-06-06/notes.txt",
+            mimeType: "text/plain",
+            sizeBytes: 42,
+          },
+        ],
+        timestamp: Date.now(),
+      },
+    });
+    expect(appended.ok).toBe(true);
+
+    await withGatewayHarness(async (harness) => {
+      const res = await fetchSessionHistory(harness.port, "agent:main:main");
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        messages?: Array<{ content?: Array<Record<string, unknown>> }>;
+      };
+      expect(body.messages?.[0]?.content).toEqual([
+        { type: "text", text: "see attached" },
+        {
+          type: "attachment",
+          attachmentType: "file",
+          fileName: "notes.txt",
+          workspacePath: "inbox/chat-attachments/2026-06-06/notes.txt",
+          mimeType: "text/plain",
+          sizeBytes: 42,
+        },
+      ]);
     });
   });
 

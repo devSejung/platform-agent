@@ -74,6 +74,7 @@ import {
   handleEmployeeLoginRequest,
   handleEmployeeLogoutRequest,
 } from "./employee-web-auth.js";
+import { handleEmployeeChatAttachmentsHttpRequest } from "./employee-chat-attachments.js";
 import { handleEmployeeWorkspaceFilesHttpRequest } from "./employee-workspace-files.js";
 import { handleKnoxFileLinksHttpRequest } from "../../extensions/knox/src/file-links.js";
 import { DEDUPE_MAX, DEDUPE_TTL_MS } from "./server-constants.js";
@@ -1033,6 +1034,17 @@ export function createGatewayHttpServer(opts: {
             configSnapshot,
             resolveGatewayWebsocketUrl(req),
           ),
+      });
+
+      requestStages.push({
+        name: "employee-chat-attachments",
+        run: () =>
+          handleEmployeeChatAttachmentsHttpRequest({
+            req,
+            res,
+            config: configSnapshot,
+            readJsonBody,
+          }),
       });
 
       requestStages.push({

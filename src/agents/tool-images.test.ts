@@ -108,6 +108,67 @@ describe("tool image sanitizing", () => {
     expect(image.mimeType).toBe("image/jpeg");
   });
 
+  it("accepts image data URLs and preserves the decoded payload", async () => {
+    const png = await sharp({
+      create: {
+        width: 8,
+        height: 8,
+        channels: 4,
+        background: { r: 0, g: 128, b: 255, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+
+    const blocks = [
+      {
+        type: "image" as const,
+        data: `data:image/png;base64,${png.toString("base64")}`,
+        mimeType: "image/png",
+      },
+    ];
+
+    const out = await sanitizeContentBlocksImages(blocks, "test");
+    const image = getImageBlock(out);
+    expect(Buffer.from(image.data, "base64").byteLength).toBeGreaterThan(0);
+    expect(image.data.startsWith("data:image/")).toBe(false);
+  });
+
+  it("drops non-image mime blocks even when the payload is valid base64", async () => {
+    const pdfLike = Buffer.from("%PDF-1.7\nfake-pdf").toString("base64");
+    const out = await sanitizeContentBlocksImages(
+      [{ type: "image" as const, data: pdfLike, mimeType: "application/pdf" }],
+      "history",
+    );
+
+    expect(out).toEqual([
+      {
+        type: "text",
+        text: "[history] omitted image payload: unsupported mime type application/pdf",
+      },
+    ]);
+  });
+
+  it("preserves real images even when the stored mime type is wrong", async () => {
+    const png = await sharp({
+      create: {
+        width: 6,
+        height: 6,
+        channels: 4,
+        background: { r: 255, g: 255, b: 255, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+
+    const out = await sanitizeContentBlocksImages(
+      [{ type: "image" as const, data: png.toString("base64"), mimeType: "application/pdf" }],
+      "history",
+    );
+    const image = getImageBlock(out);
+    expect(image.mimeType).toBe("image/png");
+  });
+
   it("drops malformed image base64 payloads", async () => {
     const blocks = [
       {

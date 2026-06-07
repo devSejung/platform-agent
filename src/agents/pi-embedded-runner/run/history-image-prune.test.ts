@@ -50,6 +50,70 @@ describe("pruneProcessedHistoryImages", () => {
     expect(content[0]?.type).toBe("text");
   });
 
+  it("prunes image attachment blocks from user messages older than 3 assistant turns", () => {
+    const messages: AgentMessage[] = [
+      castAgentMessage({
+        role: "user",
+        content: [
+          { type: "text", text: "See attached screenshot" },
+          {
+            type: "attachment",
+            attachmentType: "image",
+            fileName: "capture.png",
+            mimeType: "image/png",
+            workspacePath: "inbox/chat-attachments/2026-06-06/capture.png",
+            promptMode: "image",
+          },
+        ],
+      } as AgentMessage),
+      assistantTurn(),
+      userText(),
+      assistantTurn(),
+      userText(),
+      assistantTurn(),
+      userText(),
+      assistantTurn(),
+    ];
+
+    const content = expectPrunedImageMessage(messages, "expected user array content");
+    expect(content[0]?.type).toBe("text");
+  });
+
+  it("does not prune non-image attachment blocks", () => {
+    const messages: AgentMessage[] = [
+      castAgentMessage({
+        role: "user",
+        content: [
+          { type: "text", text: "See attached PDF" },
+          {
+            type: "attachment",
+            attachmentType: "file",
+            fileName: "report.pdf",
+            mimeType: "application/pdf",
+            workspacePath: "inbox/chat-attachments/2026-06-06/report.pdf",
+            promptMode: "workspace",
+          },
+        ],
+      } as AgentMessage),
+      assistantTurn(),
+      userText(),
+      assistantTurn(),
+      userText(),
+      assistantTurn(),
+      userText(),
+      assistantTurn(),
+    ];
+
+    const didMutate = pruneProcessedHistoryImages(messages);
+
+    expect(didMutate).toBe(false);
+    const content = expectArrayMessageContent(messages[0], "expected user array content");
+    expect(content[1]).toMatchObject({
+      type: "attachment",
+      mimeType: "application/pdf",
+    });
+  });
+
   it("keeps image blocks that belong to the third-most-recent assistant turn", () => {
     const messages: AgentMessage[] = [
       castAgentMessage({

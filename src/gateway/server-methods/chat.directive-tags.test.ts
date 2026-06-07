@@ -19,6 +19,7 @@ const mockState = vi.hoisted(() => ({
   mainSessionKey: "main",
   finalText: "[[reply_to_current]]",
   dispatchError: null as Error | null,
+  dispatchWait: null as Promise<void> | null,
   triggerAgentRunStart: false,
   agentRunId: "run-agent-1",
   sessionEntry: {} as Record<string, unknown>,
@@ -93,6 +94,9 @@ vi.mock("../../auto-reply/dispatch.js", () => ({
       if (mockState.dispatchError) {
         throw mockState.dispatchError;
       }
+      if (mockState.dispatchWait) {
+        await mockState.dispatchWait;
+      }
       if (mockState.triggerAgentRunStart) {
         params.replyOptions?.onAgentRunStart?.(mockState.agentRunId);
       }
@@ -116,6 +120,22 @@ vi.mock("../../sessions/transcript-events.js", () => ({
     },
   ),
 }));
+
+vi.mock("../../config/sessions/transcript.js", async () => {
+  const { emitSessionTranscriptUpdate } = await import("../../sessions/transcript-events.js");
+  return {
+    appendExactMessageToSessionTranscript: vi.fn(
+      async (params: { sessionKey?: string; message?: unknown }) => {
+        emitSessionTranscriptUpdate({
+          sessionFile: mockState.transcriptPath,
+          sessionKey: params.sessionKey,
+          message: params.message,
+        });
+        return { ok: true as const };
+      },
+    ),
+  };
+});
 
 vi.mock("../../media/store.js", async () => {
   const original =
@@ -352,6 +372,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
   afterEach(() => {
     mockState.finalText = "[[reply_to_current]]";
     mockState.dispatchError = null;
+    mockState.dispatchWait = null;
     mockState.mainSessionKey = "main";
     mockState.triggerAgentRunStart = false;
     mockState.agentRunId = "run-agent-1";
@@ -1551,7 +1572,11 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
           }
         | undefined;
       expect(message).toBeDefined();
-      expect(message?.content).toBe("edit these");
+      expect(message?.content).toEqual([
+        { type: "text", text: "edit these" },
+        expect.objectContaining({ type: "attachment", attachmentType: "image" }),
+        expect.objectContaining({ type: "attachment", attachmentType: "image" }),
+      ]);
       expect(message?.MediaPath).toBe("/tmp/chat-send-image-a.png");
       expect(message?.MediaPaths).toEqual([
         "/tmp/chat-send-image-a.png",
@@ -1562,6 +1587,58 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       expect(mockState.lastDispatchCtx?.MediaPath).toBeUndefined();
       expect(mockState.lastDispatchCtx?.MediaPaths).toBeUndefined();
       expect(mockState.lastDispatchImages).toHaveLength(2);
+    });
+  });
+
+  it("does not eagerly append image turns before the agent run starts", async () => {
+    createTranscriptFixture("openclaw-chat-send-image-no-eager-transcript-");
+    mockState.finalText = "ok";
+    let releaseDispatch = () => {};
+    mockState.dispatchWait = new Promise<void>((resolve) => {
+      releaseDispatch = resolve;
+    });
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    const pending = runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-image-no-eager-transcript",
+      message: "is this visible?",
+      requestParams: {
+        attachments: [
+          {
+            mimeType: "image/png",
+            content:
+              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aYoYAAAAASUVORK5CYII=",
+          },
+        ],
+      },
+      expectBroadcast: false,
+      waitForCompletion: false,
+    });
+
+    await Promise.resolve();
+    expect(mockState.emittedTranscriptUpdates).toHaveLength(0);
+
+    releaseDispatch();
+    await pending;
+
+    await waitForAssertion(() => {
+      const userUpdate = mockState.emittedTranscriptUpdates.find(
+        (update) =>
+          typeof update.message === "object" &&
+          update.message !== null &&
+          (update.message as { role?: unknown }).role === "user",
+      );
+      expect(userUpdate).toMatchObject({
+        sessionFile: expect.stringMatching(/sess\.jsonl$/),
+        sessionKey: "main",
+        message: {
+          role: "user",
+          timestamp: expect.any(Number),
+        },
+      });
     });
   });
 
@@ -1613,7 +1690,10 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       expect(userUpdate).toMatchObject({
         message: {
           role: "user",
-          content: "bridge image",
+          content: [
+            { type: "text", text: "bridge image" },
+            expect.objectContaining({ type: "attachment", attachmentType: "image" }),
+          ],
         },
       });
     });

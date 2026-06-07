@@ -861,7 +861,9 @@ export function renderApp(state: AppViewState) {
           draft: state.chatMessage,
           queue: state.chatQueue,
           connected: state.connected,
-          canSend: state.connected,
+          canSend:
+            state.connected &&
+            !state.chatAttachments.some((attachment) => attachment.status === "uploading"),
           disabledReason: chatDisabledReason,
           error: state.lastError,
           sessions: state.sessionsResult,
@@ -884,6 +886,7 @@ export function renderApp(state: AppViewState) {
           onDraftChange: (next) => (state.chatMessage = next),
           onRequestUpdate: requestHostUpdate,
           attachments: state.chatAttachments,
+          getAttachments: () => state.chatAttachments,
           onAttachmentsChange: (next) => (state.chatAttachments = next),
           onSend: () => state.handleSendChat(),
           canAbort: Boolean(state.chatRunId),

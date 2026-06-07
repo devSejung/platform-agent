@@ -1,7 +1,18 @@
 export type ChatAttachment = {
   id: string;
-  dataUrl: string;
+  kind: "image" | "file";
+  fileName: string;
   mimeType: string;
+  sizeBytes: number;
+  status: "uploading" | "image" | "inline" | "workspace" | "failed";
+  progress: number;
+  workspacePath?: string;
+  storedFileName?: string;
+  inlineContent?: string | null;
+  inlineTruncated?: boolean;
+  error?: string | null;
+  previewUrl?: string | null;
+  file?: File;
 };
 
 export type ChatQueueItem = {

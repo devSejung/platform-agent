@@ -474,6 +474,135 @@ describe("gateway server chat", () => {
     });
   });
 
+  test("chat.history hides internal attachment metadata prompt duplicates", async () => {
+    await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
+      await connectOk(ws);
+
+      const sessionDir = await createSessionDir();
+      await writeMainSessionStore();
+
+      const timestamp = Date.now();
+      await writeMainSessionTranscript(sessionDir, [
+        JSON.stringify({
+          message: {
+            role: "user",
+            content: [
+              { type: "text", text: "이거 PDF보여?" },
+              {
+                type: "attachment",
+                attachmentType: "file",
+                fileName: "2025세금.pdf",
+                storedFileName: "2025_5.pdf",
+                workspacePath: "inbox/chat-attachments/2026-06-06/2025_5.pdf",
+                mimeType: "application/pdf",
+                sizeBytes: 237568,
+                promptMode: "workspace",
+              },
+            ],
+            timestamp,
+          },
+        }),
+        JSON.stringify({
+          message: {
+            role: "user",
+            content:
+              "[Attached files metadata]\n" +
+              "The user uploaded files into the workspace before sending this message.\n" +
+              "Use the metadata below. Open workspace files when deeper inspection is needed.\n\n" +
+              "```yaml\n" +
+              "attachments:\n" +
+              "- name: 2025세금.pdf\n" +
+              "  type: file\n" +
+              "  mime: application/pdf\n" +
+              "  size: 232 KB\n" +
+              "  workspace_path: inbox/chat-attachments/2026-06-06/2025_5.pdf\n" +
+              "  stored_name: 2025_5.pdf\n" +
+              "  handling: workspace\n" +
+              "```\n\n" +
+              "이거 PDF보여?",
+            timestamp: timestamp + 1,
+          },
+        }),
+        JSON.stringify({
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "보입니다." }],
+            timestamp: timestamp + 2,
+          },
+        }),
+      ]);
+
+      const messages = await fetchHistoryMessages(ws);
+      expect(messages).toHaveLength(2);
+      expect(JSON.stringify(messages)).not.toContain("[Attached files metadata]");
+      expect(JSON.stringify(messages)).toContain("2025세금.pdf");
+      expect(JSON.stringify(messages)).toContain("이거 PDF보여?");
+    });
+  });
+
+  test("chat.history hides internal recent image attachment prompt duplicates", async () => {
+    await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
+      await connectOk(ws);
+
+      const sessionDir = await createSessionDir();
+      await writeMainSessionStore();
+
+      const timestamp = Date.now();
+      await writeMainSessionTranscript(sessionDir, [
+        JSON.stringify({
+          message: {
+            role: "user",
+            content: [
+              { type: "text", text: "이거 보여?" },
+              {
+                type: "attachment",
+                attachmentType: "image",
+                fileName: "capture.png",
+                workspacePath: "inbox/chat-attachments/2026-06-06/capture.png",
+                mimeType: "image/png",
+                sizeBytes: 12000,
+                promptMode: "image",
+              },
+            ],
+            timestamp,
+          },
+        }),
+        JSON.stringify({
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "보입니다." }],
+            timestamp: timestamp + 1,
+          },
+        }),
+        JSON.stringify({
+          message: {
+            role: "user",
+            content: "거기서 내용 수정하려면 어떻게 해야해?",
+            timestamp: timestamp + 2,
+          },
+        }),
+        JSON.stringify({
+          message: {
+            role: "user",
+            content:
+              "[Recent image attachment context]\n" +
+              "The user may refer to recently uploaded image files in follow-up turns.\n" +
+              "Re-open these workspace images if the current message refers to them.\n" +
+              "[media attached 1/1: inbox/chat-attachments/2026-06-06/capture.png (image/png)]\n\n" +
+              "거기서 내용 수정하려면 어떻게 해야해?",
+            timestamp: timestamp + 3,
+          },
+        }),
+      ]);
+
+      const messages = await fetchHistoryMessages(ws);
+      expect(messages).toHaveLength(3);
+      expect(JSON.stringify(messages)).not.toContain("[Recent image attachment context]");
+      expect(JSON.stringify(messages)).toContain("capture.png");
+      expect(JSON.stringify(messages)).toContain("거기서 내용 수정하려면 어떻게 해야해?");
+    });
+  });
+
   test("chat.history applies gateway.webchat.chatHistoryMaxChars from config", async () => {
     await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
       await writeGatewayConfig({

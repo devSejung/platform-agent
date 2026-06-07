@@ -1,5 +1,81 @@
 import { readStringValue } from "./string-coerce.js";
 
+export type ChatMessageTextContentBlock = Record<string, unknown> & {
+  type: "text" | "input_text" | "output_text";
+  text: string;
+};
+
+export type ChatMessageAttachmentKind = "image" | "file";
+
+export type ChatMessageAttachmentContentBlock = Record<string, unknown> & {
+  type: "attachment";
+  attachmentType: ChatMessageAttachmentKind;
+  fileName: string;
+  storedFileName?: string;
+  workspacePath?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  promptMode?: string;
+  inlineTruncated?: boolean;
+};
+
+export type ChatMessageContentBlock = Record<string, unknown> & {
+  type?: unknown;
+};
+
+export function toChatMessageContentBlocks(content: unknown): ChatMessageContentBlock[] {
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content.filter(
+    (block): block is ChatMessageContentBlock =>
+      Boolean(block) && typeof block === "object" && !Array.isArray(block),
+  );
+}
+
+export function isTextLikeContentBlock(
+  block: unknown,
+): block is ChatMessageTextContentBlock {
+  if (!block || typeof block !== "object" || Array.isArray(block)) {
+    return false;
+  }
+  const record = block as { type?: unknown; text?: unknown };
+  return (
+    (record.type === "text" ||
+      record.type === "input_text" ||
+      record.type === "output_text" ||
+      record.type === undefined) &&
+    typeof record.text === "string"
+  );
+}
+
+export function isAttachmentContentBlock(
+  block: unknown,
+): block is ChatMessageAttachmentContentBlock {
+  if (!block || typeof block !== "object" || Array.isArray(block)) {
+    return false;
+  }
+  const record = block as {
+    type?: unknown;
+    attachmentType?: unknown;
+    fileName?: unknown;
+  };
+  return (
+    record.type === "attachment" &&
+    (record.attachmentType === "image" || record.attachmentType === "file") &&
+    typeof record.fileName === "string" &&
+    record.fileName.trim().length > 0
+  );
+}
+
+export function extractAttachmentContentBlocks(message: unknown): ChatMessageAttachmentContentBlock[] {
+  if (!message || typeof message !== "object") {
+    return [];
+  }
+  const content = (message as { content?: unknown }).content;
+  return toChatMessageContentBlocks(content).filter(isAttachmentContentBlock);
+}
+
 export function extractFirstTextBlock(message: unknown): string | undefined {
   if (!message || typeof message !== "object") {
     return undefined;
@@ -13,10 +89,10 @@ export function extractFirstTextBlock(message: unknown): string | undefined {
     return undefined;
   }
   const first = content[0];
-  if (!first || typeof first !== "object") {
+  if (!isTextLikeContentBlock(first)) {
     return undefined;
   }
-  return readStringValue((first as { text?: unknown }).text);
+  return readStringValue(first.text);
 }
 
 export type AssistantPhase = "commentary" | "final_answer";
@@ -70,19 +146,16 @@ export function resolveAssistantMessagePhase(message: unknown): AssistantPhase |
   if (directPhase) {
     return directPhase;
   }
-  if (!Array.isArray(entry.content)) {
+  const contentBlocks = toChatMessageContentBlocks(entry.content);
+  if (contentBlocks.length === 0) {
     return undefined;
   }
   const explicitPhases = new Set<AssistantPhase>();
-  for (const block of entry.content) {
-    if (!block || typeof block !== "object") {
+  for (const block of contentBlocks) {
+    if (!isTextLikeContentBlock(block)) {
       continue;
     }
-    const record = block as { type?: unknown; textSignature?: unknown };
-    if (record.type !== "text") {
-      continue;
-    }
-    const phase = parseAssistantTextSignature(record.textSignature)?.phase;
+    const phase = parseAssistantTextSignature(block.textSignature)?.phase;
     if (phase) {
       explicitPhases.add(phase);
     }
@@ -132,20 +205,16 @@ export function extractAssistantTextForPhase(
     return normalizeJoinedText(sanitizeBlockText(entry.content));
   }
 
-  if (!Array.isArray(entry.content)) {
+  const contentBlocks = toChatMessageContentBlocks(entry.content);
+  if (contentBlocks.length === 0) {
     return undefined;
   }
 
-  const hasExplicitPhasedTextBlocks = entry.content.some((block) => {
-    if (!block || typeof block !== "object") {
-      return false;
-    }
-    const record = block as { type?: unknown; textSignature?: unknown };
-    if (record.type !== "text") {
-      return false;
-    }
-    return Boolean(parseAssistantTextSignature(record.textSignature)?.phase);
-  });
+  const hasExplicitPhasedTextBlocks = contentBlocks.some(
+    (block) =>
+      isTextLikeContentBlock(block) &&
+      Boolean(parseAssistantTextSignature(block.textSignature)?.phase),
+  );
 
   // Once explicit phased blocks exist, unphased extraction should not revive
   // legacy text from the same message.
@@ -153,22 +222,18 @@ export function extractAssistantTextForPhase(
     return undefined;
   }
 
-  const parts = entry.content
+  const parts = contentBlocks
     .map((block) => {
-      if (!block || typeof block !== "object") {
+      if (!isTextLikeContentBlock(block)) {
         return null;
       }
-      const record = block as { type?: unknown; text?: unknown; textSignature?: unknown };
-      if (record.type !== "text" || typeof record.text !== "string") {
-        return null;
-      }
-      const signature = parseAssistantTextSignature(record.textSignature);
+      const signature = parseAssistantTextSignature(block.textSignature);
       const resolvedPhase =
         signature?.phase ?? (hasExplicitPhasedTextBlocks ? undefined : messagePhase);
       if (!shouldIncludeContent(resolvedPhase)) {
         return null;
       }
-      const sanitized = sanitizeBlockText(record.text);
+      const sanitized = sanitizeBlockText(block.text);
       return sanitized.trim() ? sanitized : null;
     })
     .filter((value): value is string => typeof value === "string");

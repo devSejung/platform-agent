@@ -535,6 +535,57 @@ describe("readSessionMessages", () => {
       expect((out[0] as { __openclaw?: { seq?: number } }).__openclaw?.seq).toBe(1);
     },
   );
+
+  test("preserves attachment content blocks when reading transcript messages", () => {
+    const sessionId = "attachments-preserved";
+    const transcriptPath = path.join(tmpDir, `${sessionId}.jsonl`);
+    fs.writeFileSync(
+      transcriptPath,
+      [
+        JSON.stringify({ type: "session", version: 1, id: sessionId }),
+        JSON.stringify({
+          type: "message",
+          id: "msg-user-1",
+          message: {
+            role: "user",
+            content: [
+              { type: "text", text: "see attached" },
+              {
+                type: "attachment",
+                attachmentType: "image",
+                fileName: "capture.png",
+                workspacePath: "inbox/chat-attachments/2026-06-06/capture.png",
+                mimeType: "image/png",
+                sizeBytes: 1234,
+              },
+            ],
+          },
+        }),
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const out = readSessionMessages(sessionId, storePath);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      role: "user",
+      content: [
+        { type: "text", text: "see attached" },
+        {
+          type: "attachment",
+          attachmentType: "image",
+          fileName: "capture.png",
+          workspacePath: "inbox/chat-attachments/2026-06-06/capture.png",
+          mimeType: "image/png",
+          sizeBytes: 1234,
+        },
+      ],
+      __openclaw: {
+        id: "msg-user-1",
+        seq: 1,
+      },
+    });
+  });
 });
 
 describe("readSessionPreviewItemsFromTranscript", () => {

@@ -5,6 +5,7 @@ import { resolveSessionTranscriptPathInDir } from "./paths.js";
 import { useTempSessionsFixture } from "./test-helpers.js";
 import {
   appendAssistantMessageToSessionTranscript,
+  appendExactMessageToSessionTranscript,
   appendExactAssistantMessageToSessionTranscript,
 } from "./transcript.js";
 
@@ -284,5 +285,54 @@ describe("appendAssistantMessageToSessionTranscript", () => {
       expect(emitSpy).toHaveBeenCalledWith(result.sessionFile);
     }
     emitSpy.mockRestore();
+  });
+
+  it("appends exact user transcript messages with structured attachment metadata", async () => {
+    writeTranscriptStore();
+
+    const result = await appendExactMessageToSessionTranscript({
+      sessionKey,
+      storePath: fixture.storePath(),
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "see attached" },
+          {
+            type: "attachment",
+            attachmentType: "image",
+            fileName: "capture.png",
+            workspacePath: "inbox/chat-attachments/2026-06-06/capture.png",
+            mimeType: "image/png",
+            sizeBytes: 1234,
+          },
+        ],
+        timestamp: Date.now(),
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const entries = fs
+        .readFileSync(result.sessionFile, "utf-8")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const messageLine = entries
+        .map((line) => JSON.parse(line))
+        .find((entry) => entry?.type === "message" && entry?.message?.role === "user");
+      expect(messageLine).toBeTruthy();
+      expect(messageLine.message.role).toBe("user");
+      expect(messageLine.message.content).toEqual([
+        { type: "text", text: "see attached" },
+        {
+          type: "attachment",
+          attachmentType: "image",
+          fileName: "capture.png",
+          workspacePath: "inbox/chat-attachments/2026-06-06/capture.png",
+          mimeType: "image/png",
+          sizeBytes: 1234,
+        },
+      ]);
+    }
   });
 });

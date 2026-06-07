@@ -5,6 +5,7 @@ import { assertNoWindowsNetworkPath, safeFileURLToPath } from "../../../infra/lo
 import type { PromptImageOrderEntry } from "../../../media/prompt-image-order.js";
 import { resolveMediaBufferPath, getMediaDir } from "../../../media/store.js";
 import { loadWebMedia } from "../../../media/web-media.js";
+import { logImagePayloadDebug, summarizeImagePayload } from "../../../infra/image-payload-debug.js";
 import { normalizeLowercaseStringOrEmpty } from "../../../shared/string-coerce.js";
 import { resolveUserPath } from "../../../utils.js";
 import type { ImageSanitizationLimits } from "../../image-sanitization.js";
@@ -196,11 +197,31 @@ async function sanitizeImagesWithLog(
   label: string,
   imageSanitization?: ImageSanitizationLimits,
 ): Promise<ImageContent[]> {
+  logImagePayloadDebug({
+    stage: "agent.prompt-images.sanitize.before",
+    note: `label=${label} count=${images.length}`,
+    entries: images.map((image, index) => ({
+      index,
+      mimeType: image.mimeType,
+      summary: summarizeImagePayload(image.data),
+    })),
+    allowEmpty: true,
+  });
   const { images: sanitized, dropped } = await sanitizeImageBlocks(
     images,
     label,
     imageSanitization,
   );
+  logImagePayloadDebug({
+    stage: "agent.prompt-images.sanitize.after",
+    note: `label=${label} before=${images.length} after=${sanitized.length} dropped=${dropped}`,
+    entries: sanitized.map((image, index) => ({
+      index,
+      mimeType: image.mimeType,
+      summary: summarizeImagePayload(image.data),
+    })),
+    allowEmpty: true,
+  });
   if (dropped > 0) {
     log.warn(`Native image: dropped ${dropped} image(s) after sanitization (${label}).`);
   }
@@ -498,8 +519,13 @@ export async function detectAndLoadPromptImages(params: {
   const allRefs = detectImageReferences(params.prompt);
 
   if (allRefs.length === 0) {
+    const sanitizedExistingImages = await sanitizeImagesWithLog(
+      params.existingImages ?? [],
+      "prompt:images",
+      { maxDimensionPx: params.maxDimensionPx },
+    );
     return {
-      images: params.existingImages ?? [],
+      images: sanitizedExistingImages,
       detectedRefs: [],
       loadedCount: 0,
       skippedCount: 0,

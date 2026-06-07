@@ -1,5 +1,8 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage, UserMessage } from "@mariozechner/pi-ai";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   sanitizeGoogleTurnOrdering,
@@ -118,6 +121,124 @@ describe("sanitizeSessionMessagesImages", () => {
     const toolCall = assistant.content?.find((b) => b.type === "toolCall");
     expect(toolCall).toBeTruthy();
     expect("input" in (toolCall ?? {})).toBe(false);
+  });
+
+  it("downgrades persisted attachment blocks to text metadata for model replay", async () => {
+    const input = castAgentMessages([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "see attached" },
+          {
+            type: "attachment",
+            attachmentType: "image",
+            fileName: "old.pdf",
+            mimeType: "application/pdf",
+            workspacePath: "inbox/chat-attachments/2026-06-06/old.pdf",
+            promptMode: "workspace",
+            sizeBytes: 1234,
+          },
+        ],
+        timestamp: nextTimestamp(),
+      },
+    ]);
+
+    const out = await sanitizeSessionMessagesImages(input, "session:history");
+    const user = out[0] as { content?: Array<{ type?: string; text?: string }> };
+
+    expect(user.content).toHaveLength(2);
+    expect(user.content?.[1]?.type).toBe("text");
+    expect(user.content?.[1]?.text).toContain("attached file metadata");
+    expect(user.content?.[1]?.text).toContain("mime: application/pdf");
+    expect(user.content?.[1]?.text).toContain(
+      "workspace_path: inbox/chat-attachments/2026-06-06/old.pdf",
+    );
+  });
+
+  it("restores persisted image attachment blocks as image blocks for model replay", async () => {
+    const workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-image-attachment-"));
+    const relPath = "inbox/chat-attachments/2026-06-06/capture.png";
+    const absPath = path.join(workspaceDir, relPath);
+    await fs.mkdir(path.dirname(absPath), { recursive: true });
+    const pngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aYoYAAAAASUVORK5CYII=";
+    await fs.writeFile(absPath, Buffer.from(pngBase64, "base64"));
+
+    try {
+      const input = castAgentMessages([
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "see attached" },
+            {
+              type: "attachment",
+              attachmentType: "image",
+              fileName: "capture.png",
+              mimeType: "image/png",
+              workspacePath: relPath,
+              promptMode: "image",
+              sizeBytes: 68,
+            },
+          ],
+          timestamp: nextTimestamp(),
+        },
+      ]);
+
+      const out = await sanitizeSessionMessagesImages(input, "session:history", {
+        workspaceDir,
+      });
+      const user = out[0] as { content?: Array<{ type?: string; text?: string; data?: string; mimeType?: string }> };
+
+      expect(user.content).toHaveLength(2);
+      expect(user.content?.[0]).toMatchObject({ type: "text", text: "see attached" });
+      expect(user.content?.[1]?.type).toBe("image");
+      expect(user.content?.[1]?.mimeType).toMatch(/^image\//);
+      expect(typeof user.content?.[1]?.data).toBe("string");
+      expect(user.content?.[1]?.data?.length).toBeGreaterThan(0);
+    } finally {
+      await fs.rm(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("drops internal attachment prompt-only user messages from model replay", async () => {
+    const input = castAgentMessages([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              "[Recent image attachment context]\n" +
+              "The user may refer to recently uploaded image files in follow-up turns.\n" +
+              "[media attached 1/1: inbox/chat-attachments/2026-06-06/capture.png (image/png)]\n\n" +
+              "이거 다시 봐줘",
+          },
+        ],
+        timestamp: nextTimestamp(),
+      },
+      {
+        role: "user",
+        content:
+          "[Attached files metadata]\n" +
+          "The user uploaded files into the workspace before sending this message.\n\n" +
+          "```yaml\nattachments:\n- name: a.pdf\n```\n\n" +
+          "이거 PDF야",
+        timestamp: nextTimestamp(),
+      },
+      {
+        role: "user",
+        content: "normal user text",
+        timestamp: nextTimestamp(),
+      },
+    ]);
+
+    const out = await sanitizeSessionMessagesImages(input, "session:history");
+
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      role: "user",
+      content: "normal user text",
+    });
   });
 
   it("removes empty assistant text blocks but preserves tool calls", async () => {

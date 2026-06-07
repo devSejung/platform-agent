@@ -125,4 +125,44 @@ describe("chat context notice", () => {
     expect(icon.getAttribute("height")).toBe("16");
     expect(icon.querySelector("path")).not.toBeNull();
   });
+
+  it("renders persisted attachment cards from transcript-style user messages", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    render(
+      renderChat(
+        createProps({
+          messages: [
+            {
+              role: "user",
+              timestamp: Date.now(),
+              content: [
+                { type: "text", text: "see attached" },
+                {
+                  type: "attachment",
+                  attachmentType: "file",
+                  fileName: "notes.txt",
+                  workspacePath: "inbox/chat-attachments/2026-06-06/notes.txt",
+                  mimeType: "text/plain",
+                  sizeBytes: 42,
+                  promptMode: "workspace",
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    const attachmentLink = container.querySelector<HTMLAnchorElement>(
+      ".chat-message-attachments__item",
+    );
+    expect(attachmentLink).not.toBeNull();
+    expect(attachmentLink?.textContent).toContain("notes.txt");
+    expect(attachmentLink?.getAttribute("href")).toContain(
+      "path=inbox%2Fchat-attachments%2F2026-06-06%2Fnotes.txt",
+    );
+  });
 });

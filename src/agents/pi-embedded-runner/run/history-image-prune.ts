@@ -9,6 +9,20 @@ export const PRUNED_HISTORY_IMAGE_MARKER = "[image data removed - already proces
  */
 const PRESERVE_RECENT_COMPLETED_TURNS = 3;
 
+function isPrunableHistoryImageBlock(block: unknown): boolean {
+  if (!block || typeof block !== "object") {
+    return false;
+  }
+  const rec = block as { type?: unknown; attachmentType?: unknown; mimeType?: unknown };
+  if (rec.type === "image") {
+    return true;
+  }
+  if (rec.type !== "attachment" || rec.attachmentType !== "image") {
+    return false;
+  }
+  return typeof rec.mimeType === "string" && rec.mimeType.toLowerCase().startsWith("image/");
+}
+
 function resolvePruneBeforeIndex(messages: AgentMessage[]): number {
   const completedTurnStarts: number[] = [];
   let currentTurnStart = -1;
@@ -72,7 +86,7 @@ export function pruneProcessedHistoryImages(messages: AgentMessage[]): boolean {
       if (!block || typeof block !== "object") {
         continue;
       }
-      if ((block as { type?: string }).type !== "image") {
+      if (!isPrunableHistoryImageBlock(block)) {
         continue;
       }
       message.content[j] = {

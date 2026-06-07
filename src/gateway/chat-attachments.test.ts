@@ -91,6 +91,79 @@ describe("parseMessageWithAttachments", () => {
     expect(logs[0]).toMatch(/non-image/i);
   });
 
+  it("treats non-image file attachments as workspace/file metadata even when raw content exists", async () => {
+    const pdf = Buffer.from("%PDF-1.4\n").toString("base64");
+    const { parsed, logs } = await parseWithWarnings("inspect", [
+      {
+        type: "file",
+        mimeType: "application/pdf",
+        fileName: "spec.pdf",
+        content: pdf,
+        workspacePath: "inbox/chat-attachments/2026-06-06/spec.pdf",
+        promptMode: "workspace",
+      },
+    ]);
+    expect(parsed.images).toHaveLength(0);
+    expect(parsed.transcriptAttachments).toEqual([
+      expect.objectContaining({
+        type: "file",
+        fileName: "spec.pdf",
+        workspacePath: "inbox/chat-attachments/2026-06-06/spec.pdf",
+        mimeType: "application/pdf",
+        promptMode: "workspace",
+      }),
+    ]);
+    expect(logs).toHaveLength(0);
+  });
+
+  it("does not trust type=image when mimeType explicitly says pdf", async () => {
+    const pdf = Buffer.from("%PDF-1.4\n").toString("base64");
+    const { parsed, logs } = await parseWithWarnings("inspect", [
+      {
+        type: "image",
+        mimeType: "application/pdf",
+        fileName: "spec.pdf",
+        content: pdf,
+        workspacePath: "inbox/chat-attachments/2026-06-06/spec.pdf",
+        promptMode: "workspace",
+      },
+    ]);
+    expect(parsed.images).toHaveLength(0);
+    expect(parsed.transcriptAttachments).toEqual([
+      expect.objectContaining({
+        type: "image",
+        fileName: "spec.pdf",
+        mimeType: "application/pdf",
+      }),
+    ]);
+    expect(logs).toHaveLength(0);
+  });
+
+  it("does not trust image metadata when content is a pdf data URL", async () => {
+    const pdf = Buffer.from("%PDF-1.4\n").toString("base64");
+    const { parsed, logs } = await parseWithWarnings("inspect", [
+      {
+        type: "image",
+        mimeType: "image/png",
+        fileName: "spec.pdf",
+        content: `data:application/pdf;base64,${pdf}`,
+        workspacePath: "inbox/chat-attachments/2026-06-06/spec.pdf",
+        promptMode: "workspace",
+      },
+    ]);
+    expect(parsed.images).toHaveLength(0);
+    expect(parsed.imageOrder).toHaveLength(0);
+    expect(parsed.transcriptAttachments).toEqual([
+      expect.objectContaining({
+        type: "file",
+        fileName: "spec.pdf",
+        mimeType: "application/pdf",
+        promptMode: "workspace",
+      }),
+    ]);
+    expect(logs).toHaveLength(0);
+  });
+
   it("prefers sniffed mime type and logs mismatch", async () => {
     const { parsed, logs } = await parseWithWarnings("x", [
       {
@@ -112,8 +185,7 @@ describe("parseMessageWithAttachments", () => {
       { type: "file", fileName: "unknown.bin", content: unknown },
     ]);
     expect(parsed.images).toHaveLength(0);
-    expect(logs).toHaveLength(1);
-    expect(logs[0]).toMatch(/unable to detect image mime type/i);
+    expect(logs).toHaveLength(0);
   });
 
   it("keeps valid images and drops invalid ones", async () => {

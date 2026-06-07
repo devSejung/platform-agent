@@ -534,6 +534,83 @@ describe("openai transport stream", () => {
     expect(params.input?.[0]).toMatchObject({ role: "developer" });
   });
 
+  it("does not send non-image user blocks as OpenAI Responses images", () => {
+    const pdfLike = Buffer.from("%PDF-1.7\nfake-pdf").toString("base64");
+    const params = buildOpenAIResponsesParams(
+      {
+        id: "gpt-5.4",
+        name: "GPT-5.4",
+        api: "openai-responses",
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        reasoning: true,
+        input: ["text", "image"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 200000,
+        maxTokens: 8192,
+      } satisfies Model<"openai-responses">,
+      {
+        systemPrompt: "",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "look at this pdf" },
+              { type: "image", data: pdfLike, mimeType: "application/pdf" },
+            ],
+            timestamp: 1,
+          },
+        ],
+        tools: [],
+      } as never,
+      undefined,
+    ) as { input?: Array<{ role?: string; content?: Array<Record<string, unknown>> }> };
+
+    const user = params.input?.find((item) => item.role === "user");
+    expect(user?.content?.some((item) => item.type === "input_image")).toBe(false);
+    expect(user?.content?.[1]).toMatchObject({
+      type: "input_text",
+      text: "[OpenClaw omitted unsupported image payload: application/pdf]",
+    });
+  });
+
+  it("sanitizes non-image Chat Completions image_url payloads", () => {
+    const pdfLike = Buffer.from("%PDF-1.7\nfake-pdf").toString("base64");
+    const params = buildOpenAICompletionsParams(
+      {
+        id: "gpt-5.4",
+        name: "GPT-5.4",
+        api: "openai-completions",
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        reasoning: false,
+        input: ["text", "image"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 200000,
+        maxTokens: 8192,
+      } satisfies Model<"openai-completions">,
+      {
+        systemPrompt: "",
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "image", data: pdfLike, mimeType: "application/pdf" }],
+            timestamp: 1,
+          },
+        ],
+        tools: [],
+      } as never,
+      undefined,
+    ) as { messages?: Array<{ content?: Array<Record<string, unknown>> }> };
+
+    const content = params.messages?.[0]?.content;
+    expect(content?.some((item) => item.type === "image_url")).toBe(false);
+    expect(content?.[0]).toMatchObject({
+      type: "text",
+      text: "[OpenClaw omitted unsupported image payload: application/pdf]",
+    });
+  });
+
   it.each([
     {
       label: "openai",

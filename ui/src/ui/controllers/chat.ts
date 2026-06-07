@@ -1,3 +1,4 @@
+import { EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH } from "../../../../src/gateway/employee-workspace-files-contract.ts";
 import { resetToolStream } from "../app-tool-stream.ts";
 import { extractText } from "../chat/message-extract.ts";
 import { formatConnectError } from "../connect-error.ts";
@@ -10,6 +11,18 @@ import {
 } from "./scope-errors.ts";
 
 const SILENT_REPLY_PATTERN = /^\s*NO_REPLY\s*$/;
+
+function isImageMimeType(value: string | undefined): boolean {
+  return typeof value === "string" && value.toLowerCase().startsWith("image/");
+}
+
+function resolveOutboundAttachmentKind(att: ChatAttachment): "image" | "file" {
+  return isImageMimeType(att.mimeType) ? "image" : "file";
+}
+
+function shouldSendAttachmentAsImagePayload(att: ChatAttachment): att is ChatAttachment & { file: File } {
+  return att.status === "image" && isImageMimeType(att.mimeType) && att.file instanceof File;
+}
 
 function isSilentReplyStream(text: string): boolean {
   return SILENT_REPLY_PATTERN.test(text);
@@ -103,12 +116,33 @@ export async function loadChatHistory(state: ChatState) {
   }
 }
 
-function dataUrlToBase64(dataUrl: string): { content: string; mimeType: string } | null {
-  const match = /^data:([^;]+);base64,(.+)$/.exec(dataUrl);
-  if (!match) {
-    return null;
+function buildTranscriptAttachment(att: ChatAttachment) {
+  const kind = resolveOutboundAttachmentKind(att);
+  return {
+    type: kind,
+    fileName: att.fileName,
+    storedFileName: att.storedFileName,
+    workspacePath: att.workspacePath,
+    mimeType: att.mimeType,
+    sizeBytes: att.sizeBytes,
+    promptMode: att.status === "image" || att.status === "inline" || att.status === "workspace" ? att.status : undefined,
+    inlineTruncated: att.inlineTruncated === true,
+    downloadUrl:
+      att.workspacePath
+        ? `${EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH}?path=${encodeURIComponent(att.workspacePath)}`
+        : undefined,
+  };
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
   }
-  return { mimeType: match[1], content: match[2] };
+  return btoa(binary);
 }
 
 type AssistantMessageNormalizationOptions = {
@@ -184,10 +218,13 @@ export async function sendChatMessage(
   // Add image previews to the message for display
   if (hasAttachments) {
     for (const att of attachments) {
-      contentBlocks.push({
-        type: "image",
-        source: { type: "base64", media_type: att.mimeType, data: att.dataUrl },
-      });
+      if (att.kind === "image" && att.previewUrl) {
+        contentBlocks.push({
+          type: "image",
+          source: { type: "url", media_type: att.mimeType, data: att.previewUrl },
+          url: att.previewUrl,
+        });
+      }
     }
   }
 
@@ -196,6 +233,7 @@ export async function sendChatMessage(
     {
       role: "user",
       content: contentBlocks,
+      ...(hasAttachments ? { Attachments: attachments.map(buildTranscriptAttachment) } : {}),
       timestamp: now,
     },
   ];
@@ -209,19 +247,41 @@ export async function sendChatMessage(
 
   // Convert attachments to API format
   const apiAttachments = hasAttachments
-    ? attachments
-        .map((att) => {
-          const parsed = dataUrlToBase64(att.dataUrl);
-          if (!parsed) {
-            return null;
-          }
-          return {
-            type: "image",
-            mimeType: parsed.mimeType,
-            content: parsed.content,
-          };
-        })
-        .filter((a): a is NonNullable<typeof a> => a !== null)
+    ? (
+        await Promise.all(
+          attachments.map(async (att) => {
+            if (att.status === "uploading") {
+              return null;
+            }
+            if (shouldSendAttachmentAsImagePayload(att)) {
+              return {
+                type: "image",
+                fileName: att.fileName,
+                originalFileName: att.fileName,
+                storedFileName: att.storedFileName,
+                workspacePath: att.workspacePath,
+                mimeType: att.mimeType,
+                sizeBytes: att.sizeBytes,
+                promptMode: "image",
+                content: await fileToBase64(att.file),
+              };
+            }
+            const attachmentType = resolveOutboundAttachmentKind(att);
+            return {
+              type: attachmentType,
+              fileName: att.fileName,
+              originalFileName: att.fileName,
+              storedFileName: att.storedFileName,
+              workspacePath: att.workspacePath,
+              mimeType: att.mimeType,
+              sizeBytes: att.sizeBytes,
+              promptMode: att.status === "inline" || att.status === "workspace" ? att.status : "workspace",
+              inlineContent: att.inlineContent ?? undefined,
+              inlineTruncated: att.inlineTruncated === true,
+            };
+          }),
+        )
+      ).filter((a): a is NonNullable<typeof a> => a !== null)
     : undefined;
 
   try {

@@ -39,6 +39,11 @@ import type { ChatItem, MessageGroup } from "../types/chat-types.ts";
 import type { ChatAttachment, ChatQueueItem } from "../ui-types.ts";
 import { agentLogoUrl, employeeLogoUrl, resolveAgentAvatarUrl } from "./agents-utils.ts";
 import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
+import {
+  EMPLOYEE_CHAT_ATTACHMENTS_DELETE_PATH,
+  EMPLOYEE_CHAT_ATTACHMENTS_UPLOAD_PATH,
+  type EmployeeChatAttachmentUploadResponse,
+} from "../../../../src/gateway/employee-chat-attachments-contract.ts";
 import "../components/resizable-divider.ts";
 
 export type ChatProps = {
@@ -75,6 +80,7 @@ export type ChatProps = {
   assistantName: string;
   assistantAvatar: string | null;
   attachments?: ChatAttachment[];
+  getAttachments?: () => ChatAttachment[];
   onAttachmentsChange?: (attachments: ChatAttachment[]) => void;
   showNewMessages?: boolean;
   onScrollToBottom?: () => void;
@@ -735,6 +741,157 @@ function generateAttachmentId(): string {
   return `att-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+async function parseJsonOrThrow<T>(response: Response): Promise<T> {
+  const data = (await response.json().catch(() => null)) as { error?: unknown } | T | null;
+  if (!response.ok) {
+    throw new Error(
+      typeof (data as { error?: unknown } | null)?.error === "string"
+        ? (data as { error: string }).error
+        : `${response.status} ${response.statusText}`,
+    );
+  }
+  return data as T;
+}
+
+function formatAttachmentSize(sizeBytes: number): string {
+  if (sizeBytes >= 1024 * 1024) {
+    return `${(sizeBytes / (1024 * 1024)).toFixed(2).replace(/\.00$/, "")} MB`;
+  }
+  if (sizeBytes >= 1024) {
+    return `${(sizeBytes / 1024).toFixed(1).replace(/\.0$/, "")} KB`;
+  }
+  return `${sizeBytes} B`;
+}
+
+function attachmentStatusLabel(att: ChatAttachment): string {
+  switch (att.status) {
+    case "uploading":
+      return "Uploading";
+    case "image":
+      return "Image";
+    case "inline":
+      return "Inline";
+    case "workspace":
+      return "Workspace";
+    case "failed":
+      return "Failed";
+  }
+}
+
+function updateAttachment(
+  props: ChatProps,
+  attachmentId: string,
+  patch: Partial<ChatAttachment>,
+) {
+  const currentAttachments = props.getAttachments?.() ?? props.attachments ?? [];
+  props.onAttachmentsChange?.(
+    currentAttachments.map((entry) =>
+      entry.id === attachmentId ? { ...entry, ...patch } : entry,
+    ),
+  );
+}
+
+async function deletePendingAttachment(att: ChatAttachment) {
+  if (!att.workspacePath) {
+    return;
+  }
+  const response = await fetch(EMPLOYEE_CHAT_ATTACHMENTS_DELETE_PATH, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workspacePath: att.workspacePath }),
+  });
+  await parseJsonOrThrow<{ ok: true }>(response);
+}
+
+async function uploadChatAttachment(
+  props: ChatProps,
+  attachmentId: string,
+  file: File,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", EMPLOYEE_CHAT_ATTACHMENTS_UPLOAD_PATH);
+    xhr.withCredentials = true;
+    xhr.upload.addEventListener("progress", (event) => {
+      if (!event.lengthComputable || event.total <= 0) {
+        return;
+      }
+      updateAttachment(props, attachmentId, {
+        progress: Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100))),
+      });
+    });
+    xhr.addEventListener("load", () => {
+      let parsed: EmployeeChatAttachmentUploadResponse | { error?: string } | null = null;
+      try {
+        parsed = xhr.responseText
+          ? (JSON.parse(xhr.responseText) as EmployeeChatAttachmentUploadResponse)
+          : null;
+      } catch {
+        parsed = null;
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && parsed && "attachment" in parsed) {
+        const uploaded = parsed.attachment;
+        updateAttachment(props, attachmentId, {
+          kind: uploaded.type,
+          fileName: uploaded.originalFileName,
+          mimeType: uploaded.mimeType,
+          sizeBytes: uploaded.sizeBytes,
+          status: uploaded.promptMode,
+          progress: 100,
+          workspacePath: uploaded.workspacePath,
+          storedFileName: uploaded.storedFileName,
+          inlineContent: uploaded.inlineContent,
+          inlineTruncated: uploaded.inlineTruncated,
+          error: null,
+        });
+        resolve();
+        return;
+      }
+      reject(
+        new Error(
+          typeof (parsed as { error?: string } | null)?.error === "string"
+            ? (parsed as { error: string }).error
+            : `${xhr.status} ${xhr.statusText}`,
+        ),
+      );
+    });
+    xhr.addEventListener("error", () => reject(new Error("Upload failed.")));
+    const form = new FormData();
+    form.append("file", file);
+    xhr.send(form);
+  });
+}
+
+function enqueueAttachments(props: ChatProps, files: File[]) {
+  if (!props.onAttachmentsChange || files.length === 0) {
+    return;
+  }
+  const current = props.getAttachments?.() ?? props.attachments ?? [];
+  const additions = files.map((file) => ({
+    id: generateAttachmentId(),
+    kind: file.type.startsWith("image/") ? ("image" as const) : ("file" as const),
+    fileName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    sizeBytes: file.size,
+    status: "uploading" as const,
+    progress: 0,
+    error: null,
+    previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+    file,
+  }));
+  props.onAttachmentsChange([...current, ...additions]);
+  for (const [index, file] of files.entries()) {
+    const placeholder = additions[index];
+    void uploadChatAttachment(props, placeholder.id, file).catch((err) => {
+      updateAttachment(props, placeholder.id, {
+        status: "failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+}
+
 function handlePaste(e: ClipboardEvent, props: ChatProps) {
   const items = e.clipboardData?.items;
   if (!items || !props.onAttachmentsChange) {
@@ -751,24 +908,15 @@ function handlePaste(e: ClipboardEvent, props: ChatProps) {
     return;
   }
   e.preventDefault();
+  const files: File[] = [];
   for (const item of imageItems) {
     const file = item.getAsFile();
     if (!file) {
       continue;
     }
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      const dataUrl = reader.result as string;
-      const newAttachment: ChatAttachment = {
-        id: generateAttachmentId(),
-        dataUrl,
-        mimeType: file.type,
-      };
-      const current = props.attachments ?? [];
-      props.onAttachmentsChange?.([...current, newAttachment]);
-    });
-    reader.readAsDataURL(file);
+    files.push(file);
   }
+  enqueueAttachments(props, files);
 }
 
 function handleFileSelect(e: Event, props: ChatProps) {
@@ -776,28 +924,14 @@ function handleFileSelect(e: Event, props: ChatProps) {
   if (!input.files || !props.onAttachmentsChange) {
     return;
   }
-  const current = props.attachments ?? [];
-  const additions: ChatAttachment[] = [];
-  let pending = 0;
+  const files: File[] = [];
   for (const file of input.files) {
     if (!isSupportedChatAttachmentMimeType(file.type)) {
       continue;
     }
-    pending++;
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      additions.push({
-        id: generateAttachmentId(),
-        dataUrl: reader.result as string,
-        mimeType: file.type,
-      });
-      pending--;
-      if (pending === 0) {
-        props.onAttachmentsChange?.([...current, ...additions]);
-      }
-    });
-    reader.readAsDataURL(file);
+    files.push(file);
   }
+  enqueueAttachments(props, files);
   input.value = "";
 }
 
@@ -807,28 +941,14 @@ function handleDrop(e: DragEvent, props: ChatProps) {
   if (!files || !props.onAttachmentsChange) {
     return;
   }
-  const current = props.attachments ?? [];
-  const additions: ChatAttachment[] = [];
-  let pending = 0;
+  const additions: File[] = [];
   for (const file of files) {
     if (!isSupportedChatAttachmentMimeType(file.type)) {
       continue;
     }
-    pending++;
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      additions.push({
-        id: generateAttachmentId(),
-        dataUrl: reader.result as string,
-        mimeType: file.type,
-      });
-      pending--;
-      if (pending === 0) {
-        props.onAttachmentsChange?.([...current, ...additions]);
-      }
-    });
-    reader.readAsDataURL(file);
+    additions.push(file);
   }
+  enqueueAttachments(props, additions);
 }
 
 function renderAttachmentPreview(props: ChatProps): TemplateResult | typeof nothing {
@@ -840,15 +960,49 @@ function renderAttachmentPreview(props: ChatProps): TemplateResult | typeof noth
     <div class="chat-attachments-preview">
       ${attachments.map(
         (att) => html`
-          <div class="chat-attachment-thumb">
-            <img src=${att.dataUrl} alt="Attachment preview" />
+          <div class="chat-attachment-card ${att.status === "failed" ? "is-error" : ""}">
+            <div class="chat-attachment-card__icon">
+              ${att.kind === "image" && att.previewUrl
+                ? html`<img src=${att.previewUrl} alt=${att.fileName} />`
+                : icons.file}
+            </div>
+            <div class="chat-attachment-card__body">
+              <div class="chat-attachment-card__name" title=${att.fileName}>${att.fileName}</div>
+              <div class="chat-attachment-card__meta">
+                <span>${formatAttachmentSize(att.sizeBytes)}</span>
+                <span>${attachmentStatusLabel(att)}</span>
+                ${att.error ? html`<span>${att.error}</span>` : nothing}
+              </div>
+            </div>
+            ${att.status === "uploading"
+              ? html`
+                  <div
+                    class="chat-attachment-card__progress"
+                    style=${`--chat-attachment-progress:${att.progress}%`}
+                    aria-label=${`Uploading ${att.fileName}: ${att.progress}%`}
+                  >
+                    <span>${att.progress}</span>
+                  </div>
+                `
+              : nothing}
             <button
-              class="chat-attachment-remove"
+              class="chat-attachment-remove chat-attachment-remove--card"
               type="button"
               aria-label="Remove attachment"
-              @click=${() => {
-                const next = (props.attachments ?? []).filter((a) => a.id !== att.id);
-                props.onAttachmentsChange?.(next);
+              @click=${async () => {
+                try {
+                  if (att.status !== "uploading" && att.workspacePath) {
+                    await deletePendingAttachment(att);
+                  }
+                } catch {
+                  // Keep local removal responsive even if cleanup fails.
+                } finally {
+                  const next =
+                    (props.getAttachments?.() ?? props.attachments ?? []).filter(
+                      (a) => a.id !== att.id,
+                    );
+                  props.onAttachmentsChange?.(next);
+                }
               }}
             >
               &times;
@@ -1614,7 +1768,7 @@ export function renderChat(props: ChatProps) {
                     <div class="chat-queue__item">
                       <div class="chat-queue__text">
                         ${item.text ||
-                        (item.attachments?.length ? `Image (${item.attachments.length})` : "")}
+                        (item.attachments?.length ? `Attachment (${item.attachments.length})` : "")}
                       </div>
                       <button
                         class="btn chat-queue__remove"

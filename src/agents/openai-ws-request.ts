@@ -1,4 +1,5 @@
 import type { StreamFn } from "@mariozechner/pi-agent-core";
+import { logImagePayloadDebug, summarizeImagePayload } from "../infra/image-payload-debug.js";
 import { readStringValue } from "../shared/string-coerce.js";
 import type {
   FunctionToolDefinition,
@@ -26,6 +27,49 @@ type WsOptions = Parameters<StreamFn>[2] & {
 export interface PlannedWsTurnInput {
   inputItems: InputItem[];
   previousResponseId?: string;
+}
+
+function collectWsInputImageEntries(inputItems: InputItem[]): Array<{
+  inputIndex: number;
+  contentIndex: number;
+  role?: string;
+  summary: ReturnType<typeof summarizeImagePayload>;
+}> {
+  const entries: Array<{
+    inputIndex: number;
+    contentIndex: number;
+    role?: string;
+    summary: ReturnType<typeof summarizeImagePayload>;
+  }> = [];
+  inputItems.forEach((item, inputIndex) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+    const role =
+      typeof (item as { role?: unknown }).role === "string"
+        ? String((item as { role?: unknown }).role)
+        : undefined;
+    const content = (item as { content?: unknown }).content;
+    if (!Array.isArray(content)) {
+      return;
+    }
+    content.forEach((contentItem, contentIndex) => {
+      if (!contentItem || typeof contentItem !== "object") {
+        return;
+      }
+      const record = contentItem as { type?: unknown; image_url?: unknown };
+      if (record.type !== "input_image") {
+        return;
+      }
+      entries.push({
+        inputIndex,
+        contentIndex,
+        role,
+        summary: summarizeImagePayload(record.image_url),
+      });
+    });
+  });
+  return entries;
 }
 
 export function buildOpenAIWebSocketWarmUpPayload(params: {
@@ -102,6 +146,24 @@ export function buildOpenAIWebSocketResponseCreatePayload(params: {
     capability: "llm",
     transport: "websocket",
   }).capabilities.supportsResponsesStoreField;
+  const wsImageEntries = collectWsInputImageEntries(params.turnInput.inputItems);
+  logImagePayloadDebug({
+    stage: "agent.openai.websocket.request-images",
+    provider: readStringValue(params.model.provider),
+    model: params.model.id,
+    note: `inputMessages=${params.turnInput.inputItems.length}`,
+    entries: wsImageEntries.map((entry, index) => ({
+      index,
+      mimeType: entry.summary.mimeType,
+      summary: {
+        ...entry.summary,
+        prefix:
+          `input[${entry.inputIndex}].content[${entry.contentIndex}] ` +
+          (entry.summary.prefix ?? ""),
+      },
+    })),
+    allowEmpty: true,
+  });
 
   return {
     type: "response.create",

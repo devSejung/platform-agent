@@ -28,6 +28,8 @@ import {
   applyOpenAIResponsesPayloadPolicy,
   resolveOpenAIResponsesPayloadPolicy,
 } from "./openai-responses-payload-policy.js";
+import { logImagePayloadDebug, summarizeImagePayload } from "../infra/image-payload-debug.js";
+import { canonicalizeImageBase64 } from "../media/base64.js";
 import {
   normalizeOpenAIStrictToolParameters,
   resolveOpenAIStrictToolFlagForInventory,
@@ -97,6 +99,27 @@ type MutableAssistantOutput = {
 
 export { sanitizeTransportPayloadText } from "./transport-stream-shared.js";
 
+type OpenAIInputImageDebugEntry = {
+  inputIndex: number;
+  contentIndex: number;
+  role?: string;
+  summary: ReturnType<typeof summarizeImagePayload>;
+};
+
+type OpenAICompletionsImageDebugEntry = {
+  messageIndex: number;
+  contentIndex: number;
+  role?: string;
+  summary: ReturnType<typeof summarizeImagePayload>;
+};
+
+type OpenAIResponsesInputSummary = {
+  inputCount: number;
+  inputRoles: string[];
+  contentTypeMatrix: string[];
+  imageCount: number;
+};
+
 function stringifyUnknown(value: unknown, fallback = ""): string {
   if (typeof value === "string") {
     return value;
@@ -118,6 +141,245 @@ function stringifyJsonLike(value: unknown, fallback = ""): string {
     return String(value);
   }
   return fallback;
+}
+
+function collectOpenAIResponsesInputImageEntries(input: unknown): OpenAIInputImageDebugEntry[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const entries: OpenAIInputImageDebugEntry[] = [];
+  input.forEach((item, inputIndex) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+    const record = item as {
+      role?: unknown;
+      content?: unknown;
+      type?: unknown;
+      output?: unknown;
+    };
+    const role = typeof record.role === "string" ? record.role : undefined;
+    if (!Array.isArray(record.content)) {
+      return;
+    }
+    record.content.forEach((contentItem, contentIndex) => {
+      if (!contentItem || typeof contentItem !== "object") {
+        return;
+      }
+      const contentRecord = contentItem as { type?: unknown; image_url?: unknown };
+      if (contentRecord.type !== "input_image") {
+        return;
+      }
+      entries.push({
+        inputIndex,
+        contentIndex,
+        role,
+        summary: summarizeImagePayload(contentRecord.image_url),
+      });
+    });
+  });
+  return entries;
+}
+
+function collectOpenAICompletionsImageEntries(messages: unknown): OpenAICompletionsImageDebugEntry[] {
+  if (!Array.isArray(messages)) {
+    return [];
+  }
+  const entries: OpenAICompletionsImageDebugEntry[] = [];
+  messages.forEach((message, messageIndex) => {
+    if (!message || typeof message !== "object") {
+      return;
+    }
+    const record = message as { role?: unknown; content?: unknown };
+    const role = typeof record.role === "string" ? record.role : undefined;
+    if (!Array.isArray(record.content)) {
+      return;
+    }
+    record.content.forEach((contentItem, contentIndex) => {
+      if (!contentItem || typeof contentItem !== "object") {
+        return;
+      }
+      const contentRecord = contentItem as {
+        type?: unknown;
+        image_url?: unknown;
+      };
+      if (contentRecord.type !== "image_url") {
+        return;
+      }
+      const imageUrl =
+        contentRecord.image_url && typeof contentRecord.image_url === "object"
+          ? (contentRecord.image_url as { url?: unknown }).url
+          : contentRecord.image_url;
+      entries.push({
+        messageIndex,
+        contentIndex,
+        role,
+        summary: summarizeImagePayload(imageUrl),
+      });
+    });
+  });
+  return entries;
+}
+
+function summarizeOpenAIResponsesInput(input: unknown): OpenAIResponsesInputSummary {
+  if (!Array.isArray(input)) {
+    return { inputCount: 0, inputRoles: [], contentTypeMatrix: [], imageCount: 0 };
+  }
+  const inputRoles: string[] = [];
+  const contentTypeMatrix: string[] = [];
+  let imageCount = 0;
+  input.forEach((item, inputIndex) => {
+    if (!item || typeof item !== "object") {
+      contentTypeMatrix.push(`input[${inputIndex}]:<non-object>`);
+      return;
+    }
+    const record = item as { role?: unknown; content?: unknown; type?: unknown };
+    const role =
+      typeof record.role === "string"
+        ? record.role
+        : typeof record.type === "string"
+          ? record.type
+          : "unknown";
+    inputRoles.push(role);
+    if (!Array.isArray(record.content)) {
+      contentTypeMatrix.push(`input[${inputIndex}]:<non-array>`);
+      return;
+    }
+    const types = record.content.map((contentItem) => {
+      if (!contentItem || typeof contentItem !== "object") {
+        return "non-object";
+      }
+      const type = typeof (contentItem as { type?: unknown }).type === "string"
+        ? String((contentItem as { type?: unknown }).type)
+        : "unknown";
+      if (type === "input_image") {
+        imageCount += 1;
+      }
+      return type;
+    });
+    contentTypeMatrix.push(`input[${inputIndex}]:${types.join(",")}`);
+  });
+  return {
+    inputCount: input.length,
+    inputRoles,
+    contentTypeMatrix,
+    imageCount,
+  };
+}
+
+function inferImageMimeTypeFromBase64(base64: string): string | undefined {
+  const trimmed = base64.trim();
+  if (trimmed.startsWith("/9j/")) {
+    return "image/jpeg";
+  }
+  if (trimmed.startsWith("iVBOR")) {
+    return "image/png";
+  }
+  if (trimmed.startsWith("R0lGOD")) {
+    return "image/gif";
+  }
+  return undefined;
+}
+
+function normalizeImageMimeType(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const mimeType = value.trim().toLowerCase();
+  return mimeType.startsWith("image/") ? mimeType : undefined;
+}
+
+function buildOpenAIImageDataUrl(params: { data: unknown; mimeType: unknown }): string | undefined {
+  if (typeof params.data !== "string") {
+    return undefined;
+  }
+  const canonicalData = canonicalizeImageBase64(params.data);
+  if (!canonicalData) {
+    return undefined;
+  }
+  const mimeType =
+    inferImageMimeTypeFromBase64(canonicalData) ?? normalizeImageMimeType(params.mimeType);
+  if (!mimeType) {
+    return undefined;
+  }
+  return `data:${mimeType};base64,${canonicalData}`;
+}
+
+function omittedUnsupportedImageText(mimeType: unknown): string {
+  const label = typeof mimeType === "string" && mimeType.trim() ? mimeType.trim() : "unknown";
+  return `[OpenClaw omitted unsupported image payload: ${label}]`;
+}
+
+function toOpenAIResponsesInputImage(item: {
+  data?: unknown;
+  mimeType?: unknown;
+}): ResponseInputMessageContentList[number] {
+  const imageUrl = buildOpenAIImageDataUrl({ data: item.data, mimeType: item.mimeType });
+  if (!imageUrl) {
+    return {
+      type: "input_text",
+      text: omittedUnsupportedImageText(item.mimeType),
+    };
+  }
+  return {
+    type: "input_image",
+    detail: "auto",
+    image_url: imageUrl,
+  };
+}
+
+function sanitizeOpenAICompletionImageUrlContentItem(item: unknown): unknown {
+  if (!item || typeof item !== "object") {
+    return item;
+  }
+  const record = item as { type?: unknown; image_url?: unknown };
+  if (record.type !== "image_url") {
+    return item;
+  }
+  const imageUrl =
+    record.image_url && typeof record.image_url === "object"
+      ? (record.image_url as { url?: unknown }).url
+      : record.image_url;
+  if (typeof imageUrl !== "string") {
+    return { type: "text", text: omittedUnsupportedImageText(undefined) };
+  }
+  const summary = summarizeImagePayload(imageUrl);
+  if (summary.kind !== "data-url-base64" || !normalizeImageMimeType(summary.mimeType)) {
+    return { type: "text", text: omittedUnsupportedImageText(summary.mimeType) };
+  }
+  const canonicalData = canonicalizeImageBase64(imageUrl);
+  if (!canonicalData) {
+    return { type: "text", text: omittedUnsupportedImageText(summary.mimeType) };
+  }
+  const mimeType = inferImageMimeTypeFromBase64(canonicalData) ?? summary.mimeType;
+  return {
+    ...(item as Record<string, unknown>),
+    image_url: {
+      ...(record.image_url && typeof record.image_url === "object"
+        ? (record.image_url as Record<string, unknown>)
+        : {}),
+      url: `data:${mimeType};base64,${canonicalData}`,
+    },
+  };
+}
+
+function sanitizeOpenAICompletionsMessages(messages: unknown): unknown {
+  if (!Array.isArray(messages)) {
+    return messages;
+  }
+  return messages.map((message) => {
+    if (!message || typeof message !== "object") {
+      return message;
+    }
+    const record = message as { content?: unknown };
+    if (!Array.isArray(record.content)) {
+      return message;
+    }
+    return {
+      ...(message as Record<string, unknown>),
+      content: record.content.map(sanitizeOpenAICompletionImageUrlContentItem),
+    };
+  });
 }
 
 function getServiceTierCostMultiplier(serviceTier: ResponseCreateParamsStreaming["service_tier"]) {
@@ -243,17 +505,36 @@ function convertResponsesMessages(
           content: [{ type: "input_text", text: sanitizeTransportPayloadText(msg.content) }],
         });
       } else {
-        const content = (
-          msg.content.map((item) =>
-            item.type === "text"
-              ? { type: "input_text", text: sanitizeTransportPayloadText(item.text) }
-              : {
-                  type: "input_image",
-                  detail: "auto",
-                  image_url: `data:${item.mimeType};base64,${item.data}`,
-                },
-          ) as ResponseInputMessageContentList
-        ).filter((item) => model.input.includes("image") || item.type !== "input_image");
+        const imageEntries = msg.content
+          .map((item, index) =>
+            item.type === "image"
+              ? {
+                  index,
+                  mimeType: item.mimeType,
+                  summary: summarizeImagePayload(item.data),
+                }
+              : null,
+          )
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+        logImagePayloadDebug({
+          stage: "agent.openai.transport.user-images",
+          provider: model.provider,
+          model: model.id,
+          note: `messageIndex=${msgIndex}`,
+          entries: imageEntries,
+        });
+        const content = msg.content
+          .map((item) => {
+            if (item.type === "text") {
+              return { type: "input_text", text: sanitizeTransportPayloadText(item.text) };
+            }
+            if (item.type === "image") {
+              return toOpenAIResponsesInputImage(item);
+            }
+            return null;
+          })
+          .filter((item): item is ResponseInputMessageContentList[number] => item !== null)
+          .filter((item) => model.input.includes("image") || item.type !== "input_image");
         if (content.length > 0) {
           messages.push({ role: "user", content });
         }
@@ -319,11 +600,7 @@ function convertResponsesMessages(
                   : []),
                 ...msg.content
                   .filter((item) => item.type === "image")
-                  .map((item) => ({
-                    type: "input_image",
-                    detail: "auto",
-                    image_url: `data:${item.mimeType};base64,${item.data}`,
-                  })),
+                  .map((item) => toOpenAIResponsesInputImage(item)),
               ] as ResponseFunctionCallOutputItemList)
             : sanitizeTransportPayloadText(textResult || "(see attached image)"),
       });
@@ -673,11 +950,73 @@ export function createOpenAIResponsesTransportStreamFn(): StreamFn {
           options as OpenAIResponsesOptions,
           turnState?.metadata,
         );
+        const builtInputSummary = summarizeOpenAIResponsesInput(
+          (params as { input?: unknown }).input,
+        );
+        logImagePayloadDebug({
+          stage: "agent.openai.responses.breadcrumb",
+          provider: model.provider,
+          model: model.id,
+          note:
+            `phase=built inputCount=${builtInputSummary.inputCount} ` +
+            `imageCount=${builtInputSummary.imageCount} roles=${builtInputSummary.inputRoles.join("|")} ` +
+            `types=${builtInputSummary.contentTypeMatrix.join(" ; ")}`,
+          entries: [],
+          allowEmpty: true,
+        });
         const nextParams = await options?.onPayload?.(params, model);
         if (nextParams !== undefined) {
           params = nextParams as typeof params;
         }
+        const postPayloadInputSummary = summarizeOpenAIResponsesInput(
+          (params as { input?: unknown }).input,
+        );
+        logImagePayloadDebug({
+          stage: "agent.openai.responses.breadcrumb",
+          provider: model.provider,
+          model: model.id,
+          note:
+            `phase=after-onPayload inputCount=${postPayloadInputSummary.inputCount} ` +
+            `imageCount=${postPayloadInputSummary.imageCount} roles=${postPayloadInputSummary.inputRoles.join("|")} ` +
+            `types=${postPayloadInputSummary.contentTypeMatrix.join(" ; ")}`,
+          entries: [],
+          allowEmpty: true,
+        });
         params = mergeTransportMetadata(params, turnState?.metadata);
+        const mergedInputSummary = summarizeOpenAIResponsesInput(
+          (params as { input?: unknown }).input,
+        );
+        logImagePayloadDebug({
+          stage: "agent.openai.responses.breadcrumb",
+          provider: model.provider,
+          model: model.id,
+          note:
+            `phase=after-merge inputCount=${mergedInputSummary.inputCount} ` +
+            `imageCount=${mergedInputSummary.imageCount} roles=${mergedInputSummary.inputRoles.join("|")} ` +
+            `types=${mergedInputSummary.contentTypeMatrix.join(" ; ")}`,
+          entries: [],
+          allowEmpty: true,
+        });
+        const responseInputImageEntries = collectOpenAIResponsesInputImageEntries(
+          (params as { input?: unknown }).input,
+        );
+        logImagePayloadDebug({
+          stage: "agent.openai.responses.request-images",
+          provider: model.provider,
+          model: model.id,
+          note: `inputMessages=${Array.isArray((params as { input?: unknown }).input) ? (params as { input: unknown[] }).input.length : 0}`,
+          entries: responseInputImageEntries.map((entry, index) => ({
+            index,
+            mimeType: entry.summary.mimeType,
+            summary: {
+              ...entry.summary,
+              prefix:
+                `input[${entry.inputIndex}].content[${entry.contentIndex}] ` +
+                (entry.summary.prefix ?? ""),
+            },
+          })),
+          allowEmpty: true,
+        });
         const responseStream = (await client.responses.create(
           params as never,
           options?.signal ? { signal: options.signal } : undefined,
@@ -696,6 +1035,15 @@ export function createOpenAIResponsesTransportStreamFn(): StreamFn {
         stream.push({ type: "done", reason: output.stopReason as never, message: output as never });
         stream.end();
       } catch (error) {
+        logImagePayloadDebug({
+          stage: "agent.openai.responses.breadcrumb",
+          provider: model.provider,
+          model: model.id,
+          note:
+            `phase=catch error=${error instanceof Error ? error.message : JSON.stringify(error)}`,
+          entries: [],
+          allowEmpty: true,
+        });
         output.stopReason = options?.signal?.aborted ? "aborted" : "error";
         output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
         stream.push({ type: "error", reason: output.stopReason as never, error: output as never });
@@ -834,6 +1182,25 @@ export function createAzureOpenAIResponsesTransportStreamFn(): StreamFn {
           params = nextParams as typeof params;
         }
         params = mergeTransportMetadata(params, turnState?.metadata);
+        const responseInputImageEntries = collectOpenAIResponsesInputImageEntries(
+          (params as { input?: unknown }).input,
+        );
+        logImagePayloadDebug({
+          stage: "agent.openai.responses.request-images",
+          provider: model.provider,
+          model: model.id,
+          note: `inputMessages=${Array.isArray((params as { input?: unknown }).input) ? (params as { input: unknown[] }).input.length : 0}`,
+          entries: responseInputImageEntries.map((entry, index) => ({
+            index,
+            mimeType: entry.summary.mimeType,
+            summary: {
+              ...entry.summary,
+              prefix:
+                `input[${entry.inputIndex}].content[${entry.contentIndex}] ` +
+                (entry.summary.prefix ?? ""),
+            },
+          })),
+        });
         const responseStream = (await client.responses.create(
           params as never,
           options?.signal ? { signal: options.signal } : undefined,
@@ -963,6 +1330,25 @@ export function createOpenAICompletionsTransportStreamFn(): StreamFn {
         if (nextParams !== undefined) {
           params = nextParams as typeof params;
         }
+        const completionsImageEntries = collectOpenAICompletionsImageEntries(
+          (params as { messages?: unknown }).messages,
+        );
+        logImagePayloadDebug({
+          stage: "agent.openai.completions.request-images",
+          provider: model.provider,
+          model: model.id,
+          note: `messages=${Array.isArray((params as { messages?: unknown }).messages) ? (params as { messages: unknown[] }).messages.length : 0}`,
+          entries: completionsImageEntries.map((entry, index) => ({
+            index,
+            mimeType: entry.summary.mimeType,
+            summary: {
+              ...entry.summary,
+              prefix:
+                `messages[${entry.messageIndex}].content[${entry.contentIndex}] ` +
+                (entry.summary.prefix ?? ""),
+            },
+          })),
+        });
         const responseStream = (await client.chat.completions.create(params as never, {
           signal: options?.signal,
         })) as unknown as AsyncIterable<ChatCompletionChunk>;
@@ -1264,7 +1650,8 @@ export function buildOpenAICompletionsParams(
         systemPrompt: stripSystemPromptCacheBoundary(context.systemPrompt),
       }
     : context;
-  const messages = convertMessages(model as never, completionsContext, compat as never);
+  const convertedMessages = convertMessages(model as never, completionsContext, compat as never);
+  const messages = sanitizeOpenAICompletionsMessages(convertedMessages) as typeof convertedMessages;
   const params: Record<string, unknown> = {
     model: model.id,
     messages: compat.requiresStringContent

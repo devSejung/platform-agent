@@ -229,6 +229,12 @@ export async function handleSendChat(
   const attachments = host.chatAttachments ?? [];
   const attachmentsToSend = messageOverride == null ? attachments : [];
   const hasAttachments = attachmentsToSend.length > 0;
+  const hasUploadingAttachments = attachmentsToSend.some((attachment) => attachment.status === "uploading");
+
+  if (hasUploadingAttachments) {
+    host.lastError = "Wait for file uploads to finish before sending.";
+    return;
+  }
 
   if (!message && !hasAttachments) {
     return;

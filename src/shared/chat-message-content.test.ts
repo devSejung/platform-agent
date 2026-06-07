@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractAttachmentContentBlocks,
   extractAssistantTextForPhase,
   extractAssistantVisibleText,
   extractFirstTextBlock,
   resolveAssistantMessagePhase,
+  toChatMessageContentBlocks,
 } from "./chat-message-content.js";
 
 describe("shared/chat-message-content", () => {
@@ -50,6 +52,51 @@ describe("shared/chat-message-content", () => {
     expect(extractFirstTextBlock({ content: [{ type: "image" }] })).toBeUndefined();
     expect(extractFirstTextBlock({ content: ["hello"] })).toBeUndefined();
     expect(extractFirstTextBlock({ content: [{ text: 1 }, { text: "later" }] })).toBeUndefined();
+  });
+
+  it("preserves unknown object blocks when normalizing content arrays", () => {
+    expect(
+      toChatMessageContentBlocks([
+        { type: "attachment", fileName: "a.txt", attachmentType: "file" },
+        { foo: "bar" },
+        null,
+        "drop-me",
+      ]),
+    ).toEqual([
+      { type: "attachment", fileName: "a.txt", attachmentType: "file" },
+      { foo: "bar" },
+    ]);
+  });
+});
+
+describe("extractAttachmentContentBlocks", () => {
+  it("extracts structured attachment blocks without dropping metadata", () => {
+    expect(
+      extractAttachmentContentBlocks({
+        content: [
+          { type: "text", text: "see attached" },
+          {
+            type: "attachment",
+            attachmentType: "image",
+            fileName: "capture.png",
+            workspacePath: "inbox/chat-attachments/2026-06-06/capture.png",
+            mimeType: "image/png",
+            sizeBytes: 1234,
+            promptMode: "image",
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        type: "attachment",
+        attachmentType: "image",
+        fileName: "capture.png",
+        workspacePath: "inbox/chat-attachments/2026-06-06/capture.png",
+        mimeType: "image/png",
+        sizeBytes: 1234,
+        promptMode: "image",
+      },
+    ]);
   });
 });
 

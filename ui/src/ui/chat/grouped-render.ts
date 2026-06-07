@@ -1,5 +1,6 @@
 import { html, nothing } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
+import { EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH } from "../../../../src/gateway/employee-workspace-files-contract.ts";
 import { getSafeLocalStorage } from "../../local-storage.ts";
 import type { AssistantIdentity } from "../assistant-identity.ts";
 import { icons } from "../icons.ts";
@@ -26,6 +27,23 @@ type ImageBlock = {
 type AudioClip = {
   url: string;
 };
+
+type MessageAttachment = {
+  type: "image" | "file";
+  fileName: string;
+  workspacePath?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  promptMode?: string;
+};
+
+function buildWorkspaceDownloadUrl(relativePath: string): string {
+  return `${EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH}?path=${encodeURIComponent(relativePath)}`;
+}
+
+function buildWorkspaceInlineImageUrl(relativePath: string): string {
+  return `${EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH}?path=${encodeURIComponent(relativePath)}&inline=1`;
+}
 
 function extractImages(message: unknown): ImageBlock[] {
   const m = message as Record<string, unknown>;
@@ -61,6 +79,16 @@ function extractImages(message: unknown): ImageBlock[] {
     }
   }
 
+  if (images.length === 0) {
+    const attachmentImages = extractAttachments(message)
+      .filter((attachment) => attachment.type === "image" && attachment.workspacePath)
+      .map((attachment) => ({
+        url: buildWorkspaceInlineImageUrl(attachment.workspacePath!),
+        alt: attachment.fileName,
+      }));
+    images.push(...attachmentImages);
+  }
+
   return images;
 }
 
@@ -88,6 +116,91 @@ function extractAudioClips(message: unknown): AudioClip[] {
     }
   }
   return clips;
+}
+
+function extractAttachments(message: unknown): MessageAttachment[] {
+  const entry = message as Record<string, unknown>;
+  const fromTopLevel = Array.isArray(entry.Attachments) ? entry.Attachments : [];
+  const fromContent = Array.isArray(entry.content)
+    ? entry.content.filter((value) => {
+        if (!value || typeof value !== "object") {
+          return false;
+        }
+        const candidate = value as Record<string, unknown>;
+        return candidate.type === "attachment";
+      })
+    : [];
+  return [...fromTopLevel, ...fromContent]
+    .map((value) => {
+      if (!value || typeof value !== "object") {
+        return null;
+      }
+      const candidate = value as Record<string, unknown>;
+      const fileName =
+        typeof candidate.fileName === "string" && candidate.fileName.trim()
+          ? candidate.fileName
+          : null;
+      if (!fileName) {
+        return null;
+      }
+      return {
+        type:
+          candidate.type === "image" || candidate.attachmentType === "image" ? "image" : "file",
+        fileName,
+        workspacePath:
+          typeof candidate.workspacePath === "string" ? candidate.workspacePath : undefined,
+        mimeType: typeof candidate.mimeType === "string" ? candidate.mimeType : undefined,
+        sizeBytes: typeof candidate.sizeBytes === "number" ? candidate.sizeBytes : undefined,
+        promptMode: typeof candidate.promptMode === "string" ? candidate.promptMode : undefined,
+      } satisfies MessageAttachment;
+    })
+    .filter((value): value is MessageAttachment => value !== null);
+}
+
+function formatAttachmentSize(sizeBytes?: number): string | null {
+  if (typeof sizeBytes !== "number" || !Number.isFinite(sizeBytes) || sizeBytes < 0) {
+    return null;
+  }
+  if (sizeBytes >= 1024 * 1024) {
+    return `${(sizeBytes / (1024 * 1024)).toFixed(2).replace(/\.00$/, "")} MB`;
+  }
+  if (sizeBytes >= 1024) {
+    return `${(sizeBytes / 1024).toFixed(1).replace(/\.0$/, "")} KB`;
+  }
+  return `${sizeBytes} B`;
+}
+
+function renderMessageAttachments(attachments: MessageAttachment[]) {
+  const fileAttachments = attachments.filter((attachment) => attachment.type !== "image");
+  if (fileAttachments.length === 0) {
+    return nothing;
+  }
+  return html`
+    <div class="chat-message-attachments">
+      ${fileAttachments.map((attachment) => {
+        const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
+        const detail = [attachment.promptMode, sizeLabel].filter(Boolean).join(" · ");
+        const content = html`
+          <span class="chat-message-attachments__icon">${icons.file}</span>
+          <span class="chat-message-attachments__body">
+            <span class="chat-message-attachments__name">${attachment.fileName}</span>
+            ${detail
+              ? html`<span class="chat-message-attachments__meta">${detail}</span>`
+              : nothing}
+          </span>
+        `;
+        return attachment.workspacePath
+          ? html`<a
+              class="chat-message-attachments__item"
+              href=${buildWorkspaceDownloadUrl(attachment.workspacePath)}
+              title=${attachment.workspacePath}
+            >
+              ${content}
+            </a>`
+          : html`<div class="chat-message-attachments__item">${content}</div>`;
+      })}
+    </div>
+  `;
 }
 
 export function renderReadingIndicatorGroup(assistant?: AssistantIdentity, basePath?: string) {
@@ -739,6 +852,8 @@ function renderGroupedMessage(
   const hasImages = images.length > 0;
   const audioClips = extractAudioClips(message);
   const hasAudio = audioClips.length > 0;
+  const attachments = extractAttachments(message);
+  const hasAttachments = attachments.length > 0;
 
   const extractedText = extractTextCached(message);
   const extractedThinking =
@@ -762,7 +877,7 @@ function renderGroupedMessage(
 
   // Suppress empty bubbles when tool cards are the only content and toggle is off
   const visibleToolCards = hasToolCards && (opts.showToolCalls ?? true);
-  if (!markdown && !visibleToolCards && !hasImages && !hasAudio) {
+  if (!markdown && !visibleToolCards && !hasImages && !hasAudio && !hasAttachments) {
     return nothing;
   }
 
@@ -799,6 +914,7 @@ function renderGroupedMessage(
               </summary>
               <div class="chat-tool-msg-body">
                 ${renderMessageImages(images)} ${renderMessageAudio(audioClips)}
+                ${renderMessageAttachments(attachments)}
                 ${reasoningMarkdown
                   ? html`<div class="chat-thinking">
                       ${unsafeHTML(toSanitizedMarkdownHtml(reasoningMarkdown))}
@@ -823,6 +939,7 @@ function renderGroupedMessage(
           `
         : html`
             ${renderMessageImages(images)} ${renderMessageAudio(audioClips)}
+            ${renderMessageAttachments(attachments)}
             ${reasoningMarkdown
               ? html`<div class="chat-thinking">
                   ${unsafeHTML(toSanitizedMarkdownHtml(reasoningMarkdown))}

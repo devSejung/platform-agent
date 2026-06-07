@@ -10,6 +10,10 @@ import { filterHeartbeatPairs } from "../../../auto-reply/heartbeat-filter.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import { formatErrorMessage } from "../../../infra/errors.js";
 import { resolveHeartbeatSummaryForAgent } from "../../../infra/heartbeat-summary.js";
+import {
+  logImagePayloadDebug,
+  summarizeImagePayload,
+} from "../../../infra/image-payload-debug.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
 import {
   ensureGlobalUndiciEnvProxyDispatcher,
@@ -1083,6 +1087,20 @@ export async function runEmbeddedAttempt(
         resolvedApiKey: params.resolvedApiKey,
         authStorage: params.authStorage,
       });
+      logImagePayloadDebug({
+        stage: "agent.transport.path",
+        runId: params.runId,
+        sessionKey: params.sessionKey,
+        provider: params.provider,
+        model: params.modelId,
+        note:
+          `phase=resolved strategy=${streamStrategy} api=${params.model.api} ` +
+          `defaultStreamFn=${defaultSessionStreamFn?.name || "anonymous"} ` +
+          `providerStreamFn=${providerStreamFn?.name || "none"} ` +
+          `resolvedStreamFn=${activeSession.agent.streamFn?.name || "anonymous"}`,
+        entries: [],
+        allowEmpty: true,
+      });
 
       const { effectiveExtraParams } = applyExtraParamsToAgent(
         activeSession.agent,
@@ -1804,6 +1822,21 @@ export async function runEmbeddedAttempt(
             messages: activeSession.messages,
             note: `images: prompt=${imageResult.images.length}`,
           });
+          logImagePayloadDebug({
+            stage: "agent.embedded.prompt-images",
+            runId: params.runId,
+            sessionKey: params.sessionKey,
+            provider: params.provider,
+            model: params.modelId,
+            note:
+              `existing=${params.images?.length ?? 0} prompt=${imageResult.images.length} ` +
+              `messageCount=${activeSession.messages.length}`,
+            entries: imageResult.images.map((image, index) => ({
+              index,
+              mimeType: image.mimeType,
+              summary: summarizeImagePayload(image.data),
+            })),
+          });
 
           // Diagnostic: log context sizes before prompt to help debug early overflow errors.
           if (log.isEnabled("debug")) {
@@ -1930,10 +1963,34 @@ export async function runEmbeddedAttempt(
             // Only pass images option if there are actually images to pass
             // This avoids potential issues with models that don't expect the images parameter
             if (imageResult.images.length > 0) {
+              logImagePayloadDebug({
+                stage: "agent.transport.path",
+                runId: params.runId,
+                sessionKey: params.sessionKey,
+                provider: params.provider,
+                model: params.modelId,
+                note:
+                  `phase=before-prompt strategy=${streamStrategy} api=${params.model.api} ` +
+                  `promptImages=${imageResult.images.length}`,
+                entries: [],
+                allowEmpty: true,
+              });
               await abortable(
                 activeSession.prompt(effectivePrompt, { images: imageResult.images }),
               );
             } else {
+              logImagePayloadDebug({
+                stage: "agent.transport.path",
+                runId: params.runId,
+                sessionKey: params.sessionKey,
+                provider: params.provider,
+                model: params.modelId,
+                note:
+                  `phase=before-prompt strategy=${streamStrategy} api=${params.model.api} ` +
+                  `promptImages=0`,
+                entries: [],
+                allowEmpty: true,
+              });
               await abortable(activeSession.prompt(effectivePrompt));
             }
           }

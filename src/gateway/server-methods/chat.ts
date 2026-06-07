@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
 import { resolveAccountTimezone } from "../../accounts/account-store.js";
 import { DEFAULT_PLATFORMCLAW_TIMEZONE } from "../../agents/date-time.js";
@@ -18,6 +19,7 @@ import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.j
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import { resolveSessionFilePath } from "../../config/sessions.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { logImagePayloadDebug, summarizeImagePayload } from "../../infra/image-payload-debug.js";
 import { jsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
 import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
 import { type SavedMedia, saveMediaBuffer } from "../../media/store.js";
@@ -26,7 +28,10 @@ import { normalizeInputProvenance, type InputProvenance } from "../../sessions/i
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { parseAgentSessionKey } from "../../sessions/session-key-utils.js";
 import { emitSessionTranscriptUpdate } from "../../sessions/transcript-events.js";
-import { resolveAssistantMessagePhase } from "../../shared/chat-message-content.js";
+import {
+  extractAttachmentContentBlocks,
+  resolveAssistantMessagePhase,
+} from "../../shared/chat-message-content.js";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
@@ -50,6 +55,7 @@ import {
 } from "../chat-abort.js";
 import {
   type ChatImageContent,
+  type ChatTranscriptAttachment,
   MediaOffloadError,
   type OffloadedRef,
   parseMessageWithAttachments,
@@ -406,12 +412,32 @@ async function persistChatSendImages(params: {
 function buildChatSendTranscriptMessage(params: {
   message: string;
   savedImages: SavedMedia[];
+  attachments?: ChatTranscriptAttachment[];
   timestamp: number;
 }) {
   const mediaFields = resolveChatSendTranscriptMediaFields(params.savedImages);
+  const content =
+    params.attachments && params.attachments.length > 0
+      ? [
+          ...(params.message ? [{ type: "text" as const, text: params.message }] : []),
+          ...params.attachments.map((attachment) => ({
+            type: "attachment" as const,
+            attachmentType: attachment.type,
+            fileName: attachment.fileName,
+            ...(attachment.storedFileName ? { storedFileName: attachment.storedFileName } : {}),
+            ...(attachment.workspacePath ? { workspacePath: attachment.workspacePath } : {}),
+            mimeType: attachment.mimeType,
+            ...(typeof attachment.sizeBytes === "number"
+              ? { sizeBytes: attachment.sizeBytes }
+              : {}),
+            ...(attachment.promptMode ? { promptMode: attachment.promptMode } : {}),
+            ...(attachment.inlineTruncated ? { inlineTruncated: true } : {}),
+          })),
+        ]
+      : params.message;
   return {
     role: "user" as const,
-    content: params.message,
+    content,
     timestamp: params.timestamp,
     ...mediaFields,
   };
@@ -451,11 +477,39 @@ async function rewriteChatSendUserTurnMediaPaths(params: {
   sessionKey: string;
   message: string;
   savedImages: SavedMedia[];
+  attachments?: ChatTranscriptAttachment[];
+  matchTexts?: string[];
 }) {
   const mediaFields = resolveChatSendTranscriptMediaFields(params.savedImages);
-  if (!("MediaPath" in mediaFields)) {
+  const transcriptMessage = buildChatSendTranscriptMessage({
+    message: params.message,
+    savedImages: params.savedImages,
+    attachments: params.attachments,
+    timestamp: Date.now(),
+  });
+  const hasAttachmentContent =
+    Array.isArray(transcriptMessage.content) &&
+    transcriptMessage.content.some(
+      (block) =>
+        block &&
+        typeof block === "object" &&
+        (block as { type?: unknown }).type === "attachment",
+    );
+  if (!("MediaPath" in mediaFields) && !hasAttachmentContent) {
     return;
   }
+  const matchTexts = [params.message, ...(params.matchTexts ?? [])]
+    .map((text) => text.trim())
+    .filter(Boolean);
+  const matchesUserText = (value: string | undefined) => {
+    const text = value?.trim();
+    if (!text) {
+      return false;
+    }
+    return matchTexts.some(
+      (candidate) => text === candidate || text.endsWith(`\n\n${candidate}`),
+    );
+  };
   const sessionManager = SessionManager.open(params.transcriptPath);
   const branch = sessionManager.getBranch();
   const target = [...branch].toReversed().find((entry) => {
@@ -470,10 +524,13 @@ async function rewriteChatSendUserTurnMediaPaths(params: {
         (entry.message as { MediaPath?: string }).MediaPath) ||
       (existingPaths && existingPaths.length > 0)
     ) {
-      return false;
+      const attachments = extractAttachmentContentBlocks(entry.message);
+      if (attachments.length > 0) {
+        return false;
+      }
     }
-    return (
-      extractTranscriptUserText((entry.message as { content?: unknown }).content) === params.message
+    return matchesUserText(
+      extractTranscriptUserText((entry.message as { content?: unknown }).content),
     );
   });
   if (!target || target.type !== "message") {
@@ -481,8 +538,9 @@ async function rewriteChatSendUserTurnMediaPaths(params: {
   }
   const rewrittenMessage = {
     ...target.message,
+    content: transcriptMessage.content,
     ...mediaFields,
-  };
+  } as AgentMessage;
   await rewriteTranscriptEntriesInSessionFile({
     sessionFile: params.transcriptPath,
     sessionKey: params.sessionKey,
@@ -741,12 +799,151 @@ function shouldDropAssistantHistoryMessage(message: unknown): boolean {
   return !hasAssistantNonTextContent(message);
 }
 
+const ATTACHED_FILES_METADATA_PREFIX = "[Attached files metadata]";
+const RECENT_IMAGE_ATTACHMENT_CONTEXT_PREFIX = "[Recent image attachment context]";
+
+function extractHistoryText(message: unknown): string {
+  if (!message || typeof message !== "object") {
+    return "";
+  }
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return content
+    .map((block) => {
+      if (!block || typeof block !== "object") {
+        return "";
+      }
+      const record = block as { type?: unknown; text?: unknown };
+      if (
+        (record.type === "text" ||
+          record.type === "input_text" ||
+          record.type === "output_text" ||
+          record.type === undefined) &&
+        typeof record.text === "string"
+      ) {
+        return record.text;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function isUserHistoryMessage(message: unknown): boolean {
+  return Boolean(
+    message &&
+      typeof message === "object" &&
+      (message as { role?: unknown }).role === "user",
+  );
+}
+
+function getAttachmentPromptTailText(text: string): string {
+  const fenceEnd = text.indexOf("```\n", text.indexOf("```yaml") + "```yaml".length);
+  if (fenceEnd < 0) {
+    return "";
+  }
+  return text.slice(fenceEnd + 4).trim();
+}
+
+function attachmentPromptMatchesVisibleTurn(params: {
+  promptText: string;
+  visibleText: string;
+  attachmentTokens: string[];
+}): boolean {
+  if (!params.promptText.startsWith(ATTACHED_FILES_METADATA_PREFIX)) {
+    return false;
+  }
+  if (params.attachmentTokens.length === 0) {
+    return false;
+  }
+  const matchingToken = params.attachmentTokens.some((token) => params.promptText.includes(token));
+  if (!matchingToken) {
+    return false;
+  }
+  const promptTail = getAttachmentPromptTailText(params.promptText);
+  if (!promptTail) {
+    return true;
+  }
+  const visibleText = params.visibleText.trim();
+  return visibleText.length === 0 || promptTail === visibleText || promptTail.endsWith(visibleText);
+}
+
+function shouldDropInternalAttachmentPromptMessage(
+  message: unknown,
+  priorVisibleUserMessages: unknown[],
+): boolean {
+  if (!isUserHistoryMessage(message)) {
+    return false;
+  }
+  const promptText = extractHistoryText(message).trim();
+  if (!promptText.startsWith(ATTACHED_FILES_METADATA_PREFIX)) {
+    return false;
+  }
+  for (const prior of priorVisibleUserMessages.slice(-3).toReversed()) {
+    const attachments = extractAttachmentContentBlocks(prior);
+    if (attachments.length === 0) {
+      continue;
+    }
+    const attachmentTokens = attachments.flatMap((attachment) =>
+      [attachment.workspacePath, attachment.fileName, attachment.storedFileName].filter(
+        (value): value is string => typeof value === "string" && value.trim().length > 0,
+      ),
+    );
+    if (
+      attachmentPromptMatchesVisibleTurn({
+        promptText,
+        visibleText: extractHistoryText(prior),
+        attachmentTokens,
+      })
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isImageAttachmentBlock(block: ReturnType<typeof extractAttachmentContentBlocks>[number]) {
+  const mime = typeof block.mimeType === "string" ? block.mimeType.toLowerCase() : "";
+  return block.attachmentType === "image" && mime.startsWith("image/");
+}
+
+function shouldDropInternalRecentImagePromptMessage(
+  message: unknown,
+  priorVisibleUserMessages: unknown[],
+): boolean {
+  if (!isUserHistoryMessage(message)) {
+    return false;
+  }
+  const promptText = extractHistoryText(message).trim();
+  if (!promptText.startsWith(RECENT_IMAGE_ATTACHMENT_CONTEXT_PREFIX)) {
+    return false;
+  }
+  const priorImageTokens = priorVisibleUserMessages
+    .flatMap((prior) => extractAttachmentContentBlocks(prior))
+    .filter(isImageAttachmentBlock)
+    .flatMap((attachment) =>
+      [attachment.workspacePath, attachment.fileName, attachment.storedFileName].filter(
+        (value): value is string => typeof value === "string" && value.trim().length > 0,
+      ),
+    );
+  if (priorImageTokens.length === 0) {
+    return false;
+  }
+  return priorImageTokens.some((token) => promptText.includes(token));
+}
+
 export function sanitizeChatHistoryMessages(messages: unknown[], maxChars: number): unknown[] {
   if (messages.length === 0) {
     return messages;
   }
   let changed = false;
   const next: unknown[] = [];
+  const priorVisibleUserMessages: unknown[] = [];
   for (const message of messages) {
     // Drop assistant commentary-only entries and NO_REPLY-only entries, but
     // keep mixed assistant entries that still carry non-text content.
@@ -754,9 +951,20 @@ export function sanitizeChatHistoryMessages(messages: unknown[], maxChars: numbe
       changed = true;
       continue;
     }
+    if (shouldDropInternalAttachmentPromptMessage(message, priorVisibleUserMessages)) {
+      changed = true;
+      continue;
+    }
+    if (shouldDropInternalRecentImagePromptMessage(message, priorVisibleUserMessages)) {
+      changed = true;
+      continue;
+    }
     const res = sanitizeChatHistoryMessage(message, maxChars);
     changed ||= res.changed;
     next.push(res.message);
+    if (isUserHistoryMessage(res.message)) {
+      priorVisibleUserMessages.push(res.message);
+    }
   }
   return changed ? next : messages;
 }
@@ -1500,9 +1708,11 @@ export const chatHandlers: GatewayRequestHandlers = {
     const { cfg, entry, canonicalKey: sessionKey } = loadSessionEntry(rawSessionKey);
 
     let parsedMessage = inboundMessage;
+    let parsedPromptPreamble = "";
     let parsedImages: ChatImageContent[] = [];
     let parsedImageOrder: PromptImageOrderEntry[] = [];
     let parsedOffloadedRefs: OffloadedRef[] = [];
+    let parsedTranscriptAttachments: ChatTranscriptAttachment[] = [];
 
     const timeoutMs = resolveAgentTimeoutMs({
       cfg,
@@ -1577,9 +1787,24 @@ export const chatHandlers: GatewayRequestHandlers = {
           supportsImages,
         });
         parsedMessage = parsed.message;
+        parsedPromptPreamble = parsed.promptPreamble;
         parsedImages = parsed.images;
         parsedImageOrder = parsed.imageOrder;
         parsedOffloadedRefs = parsed.offloadedRefs;
+        parsedTranscriptAttachments = parsed.transcriptAttachments;
+        logImagePayloadDebug({
+          stage: "gateway.chat.send.parsed-images",
+          runId: clientRunId,
+          sessionKey,
+          provider: modelRef.provider,
+          model: modelRef.model,
+          note: `attachments=${normalizedAttachments.length} parsedImages=${parsed.images.length} offloaded=${parsed.offloadedRefs.length}`,
+          entries: parsed.images.map((image, index) => ({
+            index,
+            mimeType: image.mimeType,
+            summary: summarizeImagePayload(image.data),
+          })),
+        });
       } catch (err) {
         // MediaOffloadError indicates a server-side storage fault (ENOSPC, EPERM,
         // etc.). All other errors are client-side input validation failures.
@@ -1597,7 +1822,6 @@ export const chatHandlers: GatewayRequestHandlers = {
         return;
       }
     }
-
     try {
       const abortController = new AbortController();
       context.chatAbortControllers.set(clientRunId, {
@@ -1638,9 +1862,17 @@ export const chatHandlers: GatewayRequestHandlers = {
         : injectThinking
           ? `/think ${p.thinking} ${parsedMessage}`
           : parsedMessage;
-      const messageForAgent = systemProvenanceReceipt
-        ? [systemProvenanceReceipt, parsedMessage].filter(Boolean).join("\n\n")
+      const messageWithAttachmentContext = parsedPromptPreamble
+        ? [parsedPromptPreamble, parsedMessage].filter(Boolean).join("\n\n")
         : parsedMessage;
+      const commandBodyWithAttachmentContext = parsedPromptPreamble
+        ? commandBody.trim().startsWith("/")
+          ? commandBody
+          : [parsedPromptPreamble, commandBody].filter(Boolean).join("\n\n")
+        : commandBody;
+      const messageForAgent = systemProvenanceReceipt
+        ? [systemProvenanceReceipt, messageWithAttachmentContext].filter(Boolean).join("\n\n")
+        : messageWithAttachmentContext;
       const clientInfo = client?.connect?.client;
       const {
         originatingChannel,
@@ -1665,9 +1897,9 @@ export const chatHandlers: GatewayRequestHandlers = {
       const ctx: MsgContext = {
         Body: messageForAgent,
         BodyForAgent: stampedMessage,
-        BodyForCommands: commandBody,
+        BodyForCommands: commandBodyWithAttachmentContext,
         RawBody: parsedMessage,
-        CommandBody: commandBody,
+        CommandBody: commandBodyWithAttachmentContext,
         InputProvenance: systemInputProvenance,
         SessionKey: sessionKey,
         Provider: INTERNAL_MESSAGE_CHANNEL,
@@ -1708,6 +1940,13 @@ export const chatHandlers: GatewayRequestHandlers = {
           if (!resolvedSessionId) {
             return;
           }
+          const persistedImages = await persistedImagesPromise;
+          const transcriptMessage = buildChatSendTranscriptMessage({
+            message: parsedMessage,
+            savedImages: persistedImages,
+            attachments: parsedTranscriptAttachments,
+            timestamp: now,
+          });
           const transcriptPath = resolveTranscriptPath({
             sessionId: resolvedSessionId,
             storePath: latestStorePath,
@@ -1717,15 +1956,10 @@ export const chatHandlers: GatewayRequestHandlers = {
           if (!transcriptPath) {
             return;
           }
-          const persistedImages = await persistedImagesPromise;
           emitSessionTranscriptUpdate({
             sessionFile: transcriptPath,
             sessionKey,
-            message: buildChatSendTranscriptMessage({
-              message: parsedMessage,
-              savedImages: persistedImages,
-              timestamp: now,
-            }),
+            message: transcriptMessage,
           });
         })();
         await userTranscriptUpdatePromise;
@@ -1755,6 +1989,8 @@ export const chatHandlers: GatewayRequestHandlers = {
           sessionKey,
           message: parsedMessage,
           savedImages: await persistedImagesPromise,
+          attachments: parsedTranscriptAttachments,
+          matchTexts: [messageWithAttachmentContext, messageForAgent],
         });
       };
       const dispatcher = createReplyDispatcher({
@@ -1770,14 +2006,27 @@ export const chatHandlers: GatewayRequestHandlers = {
         },
       });
 
+      const hasInboundImageTurn =
+        parsedImages.length > 0 ||
+        parsedOffloadedRefs.length > 0 ||
+        parsedTranscriptAttachments.some((attachment) => attachment.type === "image");
+
       // Surface accepted inbound turns immediately so transcript subscribers
       // (gateway watchers, MCP bridges, external channel backends) do not wait
       // on model startup, completion, or failure paths before seeing the user turn.
-      void emitUserTranscriptUpdate().catch((transcriptErr) => {
-        context.logGateway.warn(
-          `webchat eager user transcript update failed: ${formatForLog(transcriptErr)}`,
-        );
-      });
+      //
+      // Images are excluded from the eager path because the embedded runner
+      // replays transcript history and also injects current-turn native images.
+      // Persisting the current image turn before agent start can make the same
+      // user turn appear both in replay history and as the fresh prompt input,
+      // which has caused Codex image runs to stall.
+      if (!hasInboundImageTurn) {
+        void emitUserTranscriptUpdate().catch((transcriptErr) => {
+          context.logGateway.warn(
+            `webchat eager user transcript update failed: ${formatForLog(transcriptErr)}`,
+          );
+        });
+      }
 
       let agentRunStarted = false;
       const employeeTimezoneConfigOverride = {

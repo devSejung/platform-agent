@@ -1,4 +1,5 @@
 import { formatErrorMessage } from "../infra/errors.js";
+import { logImagePayloadDebug, summarizeImagePayload } from "../infra/image-payload-debug.js";
 import { estimateBase64DecodedBytes } from "../media/base64.js";
 import type { PromptImageOrderEntry } from "../media/prompt-image-order.js";
 import { sniffMimeFromBase64 } from "../media/sniff-mime-from-base64.js";
@@ -13,6 +14,13 @@ export type ChatAttachment = {
   mimeType?: string;
   fileName?: string;
   content?: unknown;
+  workspacePath?: string;
+  originalFileName?: string;
+  storedFileName?: string;
+  sizeBytes?: number;
+  promptMode?: string;
+  inlineContent?: string | null;
+  inlineTruncated?: boolean;
 };
 
 export type ChatImageContent = {
@@ -45,6 +53,7 @@ export type OffloadedRef = {
 
 export type ParsedMessageWithImages = {
   message: string;
+  promptPreamble: string;
   /** Small attachments (≤ OFFLOAD_THRESHOLD_BYTES) passed inline to the model */
   images: ChatImageContent[];
   /** Original accepted attachment order after inline/offloaded split. */
@@ -63,6 +72,18 @@ export type ParsedMessageWithImages = {
    * do not inject unresolvable media:// markers into prompt text.
    */
   offloadedRefs: OffloadedRef[];
+  transcriptAttachments: ChatTranscriptAttachment[];
+};
+
+export type ChatTranscriptAttachment = {
+  type: "image" | "file";
+  fileName: string;
+  storedFileName?: string;
+  workspacePath?: string;
+  mimeType: string;
+  sizeBytes?: number;
+  promptMode?: "image" | "inline" | "workspace";
+  inlineTruncated?: boolean;
 };
 
 type AttachmentLog = {
@@ -82,6 +103,7 @@ type SavedMedia = {
 };
 
 const OFFLOAD_THRESHOLD_BYTES = 2_000_000;
+const INLINE_ATTACHMENTS_TOTAL_MAX_BYTES = 1024 * 1024;
 
 const MIME_TO_EXT: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -135,6 +157,120 @@ function normalizeMime(mime?: string): string | undefined {
   }
   const cleaned = normalizeOptionalLowercaseString(mime.split(";")[0]);
   return cleaned || undefined;
+}
+
+function extractDataUrlMime(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const match = /^\s*data:([^;,]+)(?:;[^,]*)?,/i.exec(value);
+  return normalizeMime(match?.[1]);
+}
+
+function normalizeAttachmentType(value: string | undefined): "image" | "file" {
+  return value === "image" ? "image" : "file";
+}
+
+function normalizePromptMode(value: string | undefined): "image" | "inline" | "workspace" | undefined {
+  return value === "image" || value === "inline" || value === "workspace" ? value : undefined;
+}
+
+function formatAttachmentSize(sizeBytes?: number): string {
+  if (typeof sizeBytes !== "number" || !Number.isFinite(sizeBytes) || sizeBytes < 0) {
+    return "unknown";
+  }
+  if (sizeBytes >= 1024 * 1024) {
+    return `${(sizeBytes / (1024 * 1024)).toFixed(2).replace(/\.00$/, "")} MB`;
+  }
+  if (sizeBytes >= 1024) {
+    return `${(sizeBytes / 1024).toFixed(1).replace(/\.0$/, "")} KB`;
+  }
+  return `${sizeBytes} B`;
+}
+
+function buildTranscriptAttachment(att: ChatAttachment, fallbackLabel: string): ChatTranscriptAttachment {
+  const mimeType = normalizeMime(att.mimeType) ?? "application/octet-stream";
+  return {
+    type: normalizeAttachmentType(att.type),
+    fileName: att.originalFileName || att.fileName || fallbackLabel,
+    storedFileName: typeof att.storedFileName === "string" ? att.storedFileName : undefined,
+    workspacePath: typeof att.workspacePath === "string" ? att.workspacePath : undefined,
+    mimeType,
+    sizeBytes: typeof att.sizeBytes === "number" ? att.sizeBytes : undefined,
+    promptMode: normalizePromptMode(att.promptMode),
+    inlineTruncated: att.inlineTruncated === true,
+  };
+}
+
+function appendWorkspaceAttachmentPromptBlock(lines: string[], att: ChatTranscriptAttachment) {
+  lines.push(`- name: ${att.fileName}`);
+  lines.push(`  type: ${att.type}`);
+  lines.push(`  mime: ${att.mimeType}`);
+  lines.push(`  size: ${formatAttachmentSize(att.sizeBytes)}`);
+  if (att.workspacePath) {
+    lines.push(`  workspace_path: ${att.workspacePath}`);
+  }
+  if (att.storedFileName) {
+    lines.push(`  stored_name: ${att.storedFileName}`);
+  }
+  lines.push(`  handling: ${att.promptMode ?? "workspace"}`);
+}
+
+function logAttachmentClassificationDebug(params: {
+  index: number;
+  label: string;
+  declaredMime?: string;
+  contentDataUrlMime?: string;
+  transcriptAttachment: ChatTranscriptAttachment;
+  shouldTreatAsImageContent: boolean;
+  supportsImages?: boolean;
+  content: unknown;
+}) {
+  logImagePayloadDebug({
+    stage: "gateway.chat.attachments.classify",
+    note:
+      `index=${params.index} label=${params.label} ` +
+      `declaredMime=${params.declaredMime ?? "none"} ` +
+      `contentDataUrlMime=${params.contentDataUrlMime ?? "none"} ` +
+      `transcriptType=${params.transcriptAttachment.type} ` +
+      `promptMode=${params.transcriptAttachment.promptMode ?? "none"} ` +
+      `shouldImage=${params.shouldTreatAsImageContent ? "true" : "false"} ` +
+      `supportsImages=${params.supportsImages === false ? "false" : "true"}`,
+    entries: [
+      {
+        index: params.index,
+        mimeType: params.declaredMime ?? params.contentDataUrlMime,
+        summary: summarizeImagePayload(params.content),
+      },
+    ],
+    allowEmpty: true,
+  });
+}
+
+function logAttachmentImageCandidateDebug(params: {
+  index: number;
+  label: string;
+  providedMime?: string;
+  sniffedMime?: string;
+  finalMime?: string;
+  action: "drop-non-image" | "drop-unknown" | "drop-resolved-non-image" | "accept-inline" | "accept-offload";
+  base64: string;
+}) {
+  logImagePayloadDebug({
+    stage: "gateway.chat.attachments.image-candidate",
+    note:
+      `index=${params.index} label=${params.label} action=${params.action} ` +
+      `providedMime=${params.providedMime ?? "none"} ` +
+      `sniffedMime=${params.sniffedMime ?? "none"} ` +
+      `finalMime=${params.finalMime ?? "none"}`,
+    entries: [
+      {
+        index: params.index,
+        mimeType: params.finalMime ?? params.sniffedMime ?? params.providedMime,
+        summary: summarizeImagePayload(params.base64),
+      },
+    ],
+  });
 }
 
 function isImageMime(mime?: string): boolean {
@@ -301,25 +437,21 @@ export async function parseMessageWithAttachments(
   const log = opts?.log;
 
   if (!attachments || attachments.length === 0) {
-    return { message, images: [], imageOrder: [], offloadedRefs: [] };
-  }
-
-  // For text-only models drop all attachments cleanly. Do not save files or
-  // inject media:// markers that would never be resolved and would leak
-  // internal path references into the model's prompt.
-  if (opts?.supportsImages === false) {
-    if (attachments.length > 0) {
-      log?.warn(
-        `parseMessageWithAttachments: ${attachments.length} attachment(s) dropped — model does not support images`,
-      );
-    }
-    return { message, images: [], imageOrder: [], offloadedRefs: [] };
+    return { message, promptPreamble: "", images: [], imageOrder: [], offloadedRefs: [], transcriptAttachments: [] };
   }
 
   const images: ChatImageContent[] = [];
   const imageOrder: PromptImageOrderEntry[] = [];
   const offloadedRefs: OffloadedRef[] = [];
+  const transcriptAttachments: ChatTranscriptAttachment[] = [];
+  const inlineAttachmentBlocks: Array<{
+    attachment: ChatTranscriptAttachment;
+    content: string;
+    truncated: boolean;
+  }> = [];
+  const workspaceAttachmentBlocks: ChatTranscriptAttachment[] = [];
   let updatedMessage = message;
+  let inlineBudgetBytes = 0;
 
   // Track IDs of files saved during this request for cleanup if a later
   // attachment fails validation and the entire parse is aborted.
@@ -328,6 +460,66 @@ export async function parseMessageWithAttachments(
   try {
     for (const [idx, att] of attachments.entries()) {
       if (!att) {
+        continue;
+      }
+
+      const fallbackLabel = att.fileName || att.type || `attachment-${idx + 1}`;
+      const baseTranscriptAttachment = buildTranscriptAttachment(att, fallbackLabel);
+      const declaredMime = normalizeMime(att.mimeType);
+      const contentDataUrlMime = extractDataUrlMime(att.content);
+      const transcriptAttachment =
+        contentDataUrlMime !== undefined && !isImageMime(contentDataUrlMime)
+          ? {
+              ...baseTranscriptAttachment,
+              type: "file" as const,
+              mimeType: contentDataUrlMime,
+              promptMode:
+                baseTranscriptAttachment.promptMode === "image"
+                  ? ("workspace" as const)
+                  : baseTranscriptAttachment.promptMode,
+            }
+          : baseTranscriptAttachment;
+      transcriptAttachments.push(transcriptAttachment);
+      const shouldTreatAsImageContent =
+        contentDataUrlMime !== undefined
+          ? isImageMime(contentDataUrlMime)
+          : isImageMime(declaredMime) ||
+            (declaredMime === undefined && transcriptAttachment.type === "image");
+      logAttachmentClassificationDebug({
+        index: idx,
+        label: fallbackLabel,
+        declaredMime,
+        contentDataUrlMime,
+        transcriptAttachment,
+        shouldTreatAsImageContent,
+        supportsImages: opts?.supportsImages,
+        content: att.content,
+      });
+
+      if (typeof att.content !== "string" || !shouldTreatAsImageContent) {
+        if (transcriptAttachment.type === "file") {
+          const normalizedPromptMode = transcriptAttachment.promptMode ?? "workspace";
+          if (normalizedPromptMode === "inline" && typeof att.inlineContent === "string") {
+            const inlineBytes = Buffer.byteLength(att.inlineContent, "utf8");
+            if (inlineBudgetBytes + inlineBytes <= INLINE_ATTACHMENTS_TOTAL_MAX_BYTES) {
+              inlineBudgetBytes += inlineBytes;
+              inlineAttachmentBlocks.push({
+                attachment: { ...transcriptAttachment, promptMode: "inline" },
+                content: att.inlineContent,
+                truncated: att.inlineTruncated === true,
+              });
+            } else {
+              workspaceAttachmentBlocks.push({ ...transcriptAttachment, promptMode: "workspace" });
+            }
+          } else {
+            workspaceAttachmentBlocks.push({
+              ...transcriptAttachment,
+              promptMode: normalizedPromptMode === "image" ? "workspace" : normalizedPromptMode,
+            });
+          }
+        } else if (opts?.supportsImages === false) {
+          log?.warn(`attachment ${fallbackLabel}: image dropped — model does not support images`);
+        }
         continue;
       }
 
@@ -358,11 +550,27 @@ export async function parseMessageWithAttachments(
       const sniffedMime = normalizeMime(await sniffMimeFromBase64(b64));
 
       if (sniffedMime && !isImageMime(sniffedMime)) {
-        log?.warn(`attachment ${label}: detected non-image (${sniffedMime}), dropping`);
+        logAttachmentImageCandidateDebug({
+          index: idx,
+          label,
+          providedMime,
+          sniffedMime,
+          action: "drop-non-image",
+          base64: b64,
+        });
+        log?.warn(`attachment ${label}: detected non-image (${sniffedMime}), dropping content`);
         continue;
       }
       if (!sniffedMime && !isImageMime(providedMime)) {
-        log?.warn(`attachment ${label}: unable to detect image mime type, dropping`);
+        logAttachmentImageCandidateDebug({
+          index: idx,
+          label,
+          providedMime,
+          sniffedMime,
+          action: "drop-unknown",
+          base64: b64,
+        });
+        log?.warn(`attachment ${label}: unable to detect image mime type, dropping content`);
         continue;
       }
       if (sniffedMime && providedMime && sniffedMime !== providedMime) {
@@ -374,6 +582,30 @@ export async function parseMessageWithAttachments(
       // Third fallback normalises `mime` so a raw un-normalised string (e.g.
       // "IMAGE/JPEG") does not silently bypass the SUPPORTED_OFFLOAD_MIMES check.
       const finalMime = sniffedMime ?? providedMime ?? normalizeMime(mime) ?? mime;
+      if (!isImageMime(finalMime)) {
+        logAttachmentImageCandidateDebug({
+          index: idx,
+          label,
+          providedMime,
+          sniffedMime,
+          finalMime,
+          action: "drop-resolved-non-image",
+          base64: b64,
+        });
+        log?.warn(`attachment ${label}: resolved non-image mime type (${finalMime}), dropping content`);
+        continue;
+      }
+      transcriptAttachments[transcriptAttachments.length - 1] = {
+        ...transcriptAttachment,
+        type: "image",
+        mimeType: finalMime,
+        promptMode: "image",
+      };
+
+      if (opts?.supportsImages === false) {
+        log?.warn(`attachment ${label}: image dropped — model does not support images`);
+        continue;
+      }
 
       let isOffloaded = false;
 
@@ -430,6 +662,15 @@ export async function parseMessageWithAttachments(
             label,
           });
           imageOrder.push("offloaded");
+          logAttachmentImageCandidateDebug({
+            index: idx,
+            label,
+            providedMime,
+            sniffedMime,
+            finalMime,
+            action: "accept-offload",
+            base64: b64,
+          });
 
           isOffloaded = true;
         } catch (err) {
@@ -447,6 +688,15 @@ export async function parseMessageWithAttachments(
 
       images.push({ type: "image", data: b64, mimeType: finalMime });
       imageOrder.push("inline");
+      logAttachmentImageCandidateDebug({
+        index: idx,
+        label,
+        providedMime,
+        sniffedMime,
+        finalMime,
+        action: "accept-inline",
+        base64: b64,
+      });
     }
   } catch (err) {
     // Best-effort cleanup before rethrowing.
@@ -456,11 +706,43 @@ export async function parseMessageWithAttachments(
     throw err;
   }
 
+  const promptLines: string[] = [];
+  if (workspaceAttachmentBlocks.length > 0 || inlineAttachmentBlocks.length > 0) {
+    promptLines.push("[Attached files metadata]");
+    promptLines.push("The user uploaded files into the workspace before sending this message.");
+    promptLines.push("Use the metadata below. Open workspace files when deeper inspection is needed.");
+    promptLines.push("");
+    promptLines.push("```yaml");
+    promptLines.push("attachments:");
+    for (const att of workspaceAttachmentBlocks) {
+      appendWorkspaceAttachmentPromptBlock(promptLines, att);
+    }
+    for (const att of inlineAttachmentBlocks) {
+      appendWorkspaceAttachmentPromptBlock(promptLines, att.attachment);
+    }
+    promptLines.push("```");
+  }
+  for (const block of inlineAttachmentBlocks) {
+    promptLines.push("");
+    promptLines.push(`[Inline attachment: ${block.attachment.fileName}]`);
+    if (block.attachment.workspacePath) {
+      promptLines.push(`workspace_path: ${block.attachment.workspacePath}`);
+    }
+    if (block.truncated) {
+      promptLines.push("note: content was truncated during upload preview.");
+    }
+    promptLines.push("```text");
+    promptLines.push(block.content);
+    promptLines.push("```");
+  }
+
   return {
     message: updatedMessage !== message ? updatedMessage.trimEnd() : message,
+    promptPreamble: promptLines.join("\n").trim(),
     images,
     imageOrder,
     offloadedRefs,
+    transcriptAttachments,
   };
 }
 

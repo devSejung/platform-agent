@@ -21,11 +21,16 @@ export type MessageGroup = {
 };
 
 /** Content item types in a normalized message */
-export type MessageContentItem = {
-  type: "text" | "tool_call" | "tool_result";
+export type MessageContentItem = Record<string, unknown> & {
+  type: string;
   text?: string;
   name?: string;
   args?: unknown;
+  attachmentType?: string;
+  fileName?: string;
+  workspacePath?: string;
+  mimeType?: string;
+  sizeBytes?: number;
 };
 
 /** Normalized message structure for rendering */

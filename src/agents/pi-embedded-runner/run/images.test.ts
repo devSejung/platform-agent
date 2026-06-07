@@ -291,6 +291,32 @@ describe("detectAndLoadPromptImages", () => {
     expectNoPromptImages(result);
   });
 
+  it("sanitizes existing prompt images even when the prompt has no image references", async () => {
+    const pdf = Buffer.from("%PDF-1.7\nfake-pdf").toString("base64");
+    const result = await detectAndLoadPromptImages({
+      prompt: "uploaded file",
+      workspaceDir: "/tmp",
+      model: { input: ["text", "image"] },
+      existingImages: [{ type: "image", data: pdf, mimeType: "application/pdf" }],
+    });
+
+    expect(result.images).toHaveLength(0);
+  });
+
+  it("repairs existing prompt image mime type when the payload is a real image", async () => {
+    const pngB64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/woAAn8B9FD5fHAAAAAASUVORK5CYII=";
+    const result = await detectAndLoadPromptImages({
+      prompt: "uploaded image",
+      workspaceDir: "/tmp",
+      model: { input: ["text", "image"] },
+      existingImages: [{ type: "image", data: pngB64, mimeType: "application/pdf" }],
+    });
+
+    expect(result.images).toHaveLength(1);
+    expect(result.images[0]?.mimeType).toBe("image/png");
+  });
+
   it("preserves attachment order when offloaded refs and inline images are mixed", async () => {
     const merged = mergePromptAttachmentImages({
       imageOrder: ["offloaded", "inline"],

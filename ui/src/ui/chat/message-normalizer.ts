@@ -8,6 +8,10 @@ import {
   isToolResultContentType,
   resolveToolBlockArgs,
 } from "../../../../src/chat/tool-content.js";
+import {
+  isTextLikeContentBlock,
+  toChatMessageContentBlocks,
+} from "../../../../src/shared/chat-message-content.js";
 import type { NormalizedMessage, MessageContentItem } from "../types/chat-types.ts";
 
 /**
@@ -42,11 +46,22 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
   if (typeof m.content === "string") {
     content = [{ type: "text", text: m.content }];
   } else if (Array.isArray(m.content)) {
-    content = m.content.map((item: Record<string, unknown>) => ({
-      type: (item.type as MessageContentItem["type"]) || "text",
-      text: item.text as string | undefined,
-      name: item.name as string | undefined,
+    content = toChatMessageContentBlocks(m.content).map((item) => ({
+      ...item,
+      type:
+        typeof item.type === "string"
+          ? item.type
+          : isTextLikeContentBlock(item)
+            ? "text"
+            : "unknown",
+      text: typeof item.text === "string" ? item.text : undefined,
+      name: typeof item.name === "string" ? item.name : undefined,
       args: resolveToolBlockArgs(item),
+      attachmentType: typeof item.attachmentType === "string" ? item.attachmentType : undefined,
+      fileName: typeof item.fileName === "string" ? item.fileName : undefined,
+      workspacePath: typeof item.workspacePath === "string" ? item.workspacePath : undefined,
+      mimeType: typeof item.mimeType === "string" ? item.mimeType : undefined,
+      sizeBytes: typeof item.sizeBytes === "number" ? item.sizeBytes : undefined,
     }));
   } else if (typeof m.text === "string") {
     content = [{ type: "text", text: m.text }];

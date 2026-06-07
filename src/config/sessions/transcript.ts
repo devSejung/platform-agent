@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { randomBytes } from "node:crypto";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
+import { prepareSessionManagerForRun } from "../../agents/pi-embedded-runner/session-manager-init.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { emitSessionTranscriptUpdate } from "../../sessions/transcript-events.js";
 import {
@@ -45,6 +47,8 @@ export type SessionTranscriptUpdateMode = "inline" | "file-only" | "none";
 export type SessionTranscriptAssistantMessage = Parameters<SessionManager["appendMessage"]>[0] & {
   role: "assistant";
 };
+
+export type SessionTranscriptMessage = Parameters<SessionManager["appendMessage"]>[0];
 
 export async function resolveSessionTranscriptFile(params: {
   sessionId: string;
@@ -146,10 +150,10 @@ export async function appendAssistantMessageToSessionTranscript(params: {
   });
 }
 
-export async function appendExactAssistantMessageToSessionTranscript(params: {
+export async function appendExactMessageToSessionTranscript(params: {
   agentId?: string;
   sessionKey: string;
-  message: SessionTranscriptAssistantMessage;
+  message: SessionTranscriptMessage;
   idempotencyKey?: string;
   storePath?: string;
   updateMode?: SessionTranscriptUpdateMode;
@@ -157,9 +161,6 @@ export async function appendExactAssistantMessageToSessionTranscript(params: {
   const sessionKey = params.sessionKey.trim();
   if (!sessionKey) {
     return { ok: false, reason: "missing sessionKey" };
-  }
-  if (params.message.role !== "assistant") {
-    return { ok: false, reason: "message role must be assistant" };
   }
 
   const storePath = params.storePath ?? resolveDefaultSessionStorePath(params.agentId);
@@ -189,6 +190,10 @@ export async function appendExactAssistantMessageToSessionTranscript(params: {
     };
   }
 
+  const hadSessionFile = await fs.promises
+    .access(sessionFile)
+    .then(() => true)
+    .catch(() => false);
   await ensureSessionHeader({ sessionFile, sessionId: entry.sessionId });
 
   const explicitIdempotencyKey =
@@ -201,11 +206,49 @@ export async function appendExactAssistantMessageToSessionTranscript(params: {
     return { ok: true, sessionFile, messageId: existingMessageId };
   }
 
+  if (params.message.role !== "assistant") {
+    const messageId = randomBytes(4).toString("hex");
+    const topLevelTimestamp =
+      typeof (params.message as { timestamp?: unknown }).timestamp === "number" &&
+      Number.isFinite((params.message as { timestamp?: number }).timestamp)
+        ? new Date((params.message as { timestamp: number }).timestamp).toISOString()
+        : new Date().toISOString();
+    const entry = {
+      type: "message",
+      id: messageId,
+      parentId: null,
+      timestamp: topLevelTimestamp,
+      message: {
+        ...params.message,
+        ...(explicitIdempotencyKey ? { idempotencyKey: explicitIdempotencyKey } : {}),
+      },
+    };
+    await fs.promises.appendFile(sessionFile, `${JSON.stringify(entry)}\n`, "utf-8");
+    switch (params.updateMode ?? "inline") {
+      case "inline":
+        emitSessionTranscriptUpdate({ sessionFile, sessionKey, message: entry.message, messageId });
+        break;
+      case "file-only":
+        emitSessionTranscriptUpdate(sessionFile);
+        break;
+      case "none":
+        break;
+    }
+    return { ok: true, sessionFile, messageId };
+  }
+
   const message = {
     ...params.message,
     ...(explicitIdempotencyKey ? { idempotencyKey: explicitIdempotencyKey } : {}),
   } as Parameters<SessionManager["appendMessage"]>[0];
   const sessionManager = SessionManager.open(sessionFile);
+  await prepareSessionManagerForRun({
+    sessionManager,
+    sessionFile,
+    hadSessionFile,
+    sessionId: entry.sessionId,
+    cwd: process.cwd(),
+  });
   const messageId = sessionManager.appendMessage(message);
 
   switch (params.updateMode ?? "inline") {
@@ -219,6 +262,20 @@ export async function appendExactAssistantMessageToSessionTranscript(params: {
       break;
   }
   return { ok: true, sessionFile, messageId };
+}
+
+export async function appendExactAssistantMessageToSessionTranscript(params: {
+  agentId?: string;
+  sessionKey: string;
+  message: SessionTranscriptAssistantMessage;
+  idempotencyKey?: string;
+  storePath?: string;
+  updateMode?: SessionTranscriptUpdateMode;
+}): Promise<SessionTranscriptAppendResult> {
+  if (params.message.role !== "assistant") {
+    return { ok: false, reason: "message role must be assistant" };
+  }
+  return appendExactMessageToSessionTranscript(params);
 }
 
 async function transcriptHasIdempotencyKey(

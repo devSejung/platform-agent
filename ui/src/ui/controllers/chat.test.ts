@@ -581,6 +581,82 @@ describe("sendChatMessage", () => {
       ],
     });
   });
+
+  it("sends uploaded PDFs as file attachments even if the local kind is wrong", async () => {
+    const request = vi.fn().mockResolvedValue({});
+    const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], "spec.pdf", {
+      type: "application/pdf",
+    });
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+    });
+
+    const result = await sendChatMessage(state, "check this", [
+      {
+        id: "att-1",
+        kind: "image",
+        fileName: "spec.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: file.size,
+        status: "workspace",
+        progress: 100,
+        workspacePath: "inbox/chat-attachments/2026-06-06/spec.pdf",
+        storedFileName: "spec.pdf",
+        file,
+      },
+    ]);
+
+    expect(result).not.toBeNull();
+    expect(request).toHaveBeenCalledWith(
+      "chat.send",
+      expect.objectContaining({
+        attachments: [
+          expect.objectContaining({
+            type: "file",
+            mimeType: "application/pdf",
+            workspacePath: "inbox/chat-attachments/2026-06-06/spec.pdf",
+          }),
+        ],
+      }),
+    );
+    const payload = request.mock.calls[0]?.[1] as { attachments?: Array<Record<string, unknown>> };
+    expect(payload.attachments?.[0]?.content).toBeUndefined();
+  });
+
+  it("keeps real images on the image payload path", async () => {
+    const request = vi.fn().mockResolvedValue({});
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "capture.png", {
+      type: "image/png",
+    });
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+    });
+
+    const result = await sendChatMessage(state, "check this", [
+      {
+        id: "att-1",
+        kind: "image",
+        fileName: "capture.png",
+        mimeType: "image/png",
+        sizeBytes: file.size,
+        status: "image",
+        progress: 100,
+        workspacePath: "inbox/chat-attachments/2026-06-06/capture.png",
+        storedFileName: "capture.png",
+        file,
+      },
+    ]);
+
+    expect(result).not.toBeNull();
+    const payload = request.mock.calls[0]?.[1] as { attachments?: Array<Record<string, unknown>> };
+    expect(payload.attachments?.[0]).toMatchObject({
+      type: "image",
+      mimeType: "image/png",
+    });
+    expect(typeof payload.attachments?.[0]?.content).toBe("string");
+  });
 });
 
 describe("abortChatRun", () => {

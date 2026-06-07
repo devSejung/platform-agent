@@ -1,7 +1,7 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { ImageContent } from "@mariozechner/pi-ai";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { canonicalizeBase64 } from "../media/base64.js";
+import { canonicalizeImageBase64 } from "../media/base64.js";
 import {
   buildImageResizeSideGrid,
   getImageMetadata,
@@ -59,6 +59,10 @@ function inferMimeTypeFromBase64(base64: string): string | undefined {
     return "image/gif";
   }
   return undefined;
+}
+
+function isImageMimeType(mimeType: string | undefined): boolean {
+  return typeof mimeType === "string" && mimeType.toLowerCase().startsWith("image/");
 }
 
 function formatBytesShort(bytes: number): string {
@@ -297,7 +301,7 @@ export async function sanitizeContentBlocksImages(
       } satisfies TextContentBlock);
       continue;
     }
-    const canonicalData = canonicalizeBase64(data);
+    const canonicalData = canonicalizeImageBase64(data);
     if (!canonicalData) {
       out.push({
         type: "text",
@@ -309,6 +313,13 @@ export async function sanitizeContentBlocksImages(
     try {
       const inferredMimeType = inferMimeTypeFromBase64(canonicalData);
       const mimeType = inferredMimeType ?? block.mimeType;
+      if (!isImageMimeType(mimeType)) {
+        out.push({
+          type: "text",
+          text: `[${label}] omitted image payload: unsupported mime type ${mimeType || "unknown"}`,
+        } satisfies TextContentBlock);
+        continue;
+      }
       const fileName = inferImageFileName({ block, label, mediaPathHint });
       const resized = await resizeImageBase64IfNeeded({
         base64: canonicalData,

@@ -10,6 +10,7 @@ import {
   type SimpleStreamOptions,
   type ThinkingLevel,
 } from "@mariozechner/pi-ai";
+import { logImagePayloadDebug, summarizeImagePayload } from "../infra/image-payload-debug.js";
 import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 import {
   applyAnthropicPayloadPolicyToParams,
@@ -58,6 +59,14 @@ type AnthropicTransportModel = Model<"anthropic-messages"> & {
 
 type AnthropicTransportOptions = AnthropicOptions &
   Pick<SimpleStreamOptions, "reasoning" | "thinkingBudgets">;
+
+type AnthropicImageDebugEntry = {
+  messageIndex: number;
+  contentIndex: number;
+  role?: string;
+  mediaType?: string;
+  summary: ReturnType<typeof summarizeImagePayload>;
+};
 
 type TransportContentBlock =
   | { type: "text"; text: string; index?: number }
@@ -205,6 +214,44 @@ function convertContentBlocks(
     });
   }
   return blocks;
+}
+
+function collectAnthropicRequestImageEntries(messages: unknown): AnthropicImageDebugEntry[] {
+  if (!Array.isArray(messages)) {
+    return [];
+  }
+  const entries: AnthropicImageDebugEntry[] = [];
+  messages.forEach((message, messageIndex) => {
+    if (!message || typeof message !== "object") {
+      return;
+    }
+    const record = message as { role?: unknown; content?: unknown };
+    const role = typeof record.role === "string" ? record.role : undefined;
+    if (!Array.isArray(record.content)) {
+      return;
+    }
+    record.content.forEach((contentItem, contentIndex) => {
+      if (!contentItem || typeof contentItem !== "object") {
+        return;
+      }
+      const contentRecord = contentItem as {
+        type?: unknown;
+        source?: unknown;
+      };
+      if (contentRecord.type !== "image" || !contentRecord.source || typeof contentRecord.source !== "object") {
+        return;
+      }
+      const source = contentRecord.source as { media_type?: unknown; data?: unknown };
+      entries.push({
+        messageIndex,
+        contentIndex,
+        role,
+        mediaType: typeof source.media_type === "string" ? source.media_type : undefined,
+        summary: summarizeImagePayload(source.data),
+      });
+    });
+  });
+  return entries;
 }
 
 function normalizeToolCallId(id: string): string {
@@ -625,6 +672,25 @@ export function createAnthropicMessagesTransportStreamFn(): StreamFn {
         if (nextParams !== undefined) {
           params = nextParams as Record<string, unknown>;
         }
+        const anthropicImageEntries = collectAnthropicRequestImageEntries(
+          (params as { messages?: unknown }).messages,
+        );
+        logImagePayloadDebug({
+          stage: "agent.anthropic.request-images",
+          provider: model.provider,
+          model: model.id,
+          note: `messages=${Array.isArray((params as { messages?: unknown }).messages) ? (params as { messages: unknown[] }).messages.length : 0}`,
+          entries: anthropicImageEntries.map((entry, index) => ({
+            index,
+            mimeType: entry.mediaType ?? entry.summary.mimeType,
+            summary: {
+              ...entry.summary,
+              prefix:
+                `messages[${entry.messageIndex}].content[${entry.contentIndex}] ` +
+                (entry.summary.prefix ?? ""),
+            },
+          })),
+        });
         const anthropicStream = client.messages.stream(
           { ...params, stream: true } as never,
           transportOptions.signal ? { signal: transportOptions.signal } : undefined,

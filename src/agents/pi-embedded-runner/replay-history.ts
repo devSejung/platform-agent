@@ -410,6 +410,7 @@ export async function sanitizeSessionHistory(params: {
       preserveNativeAnthropicToolUseIds: policy.preserveNativeAnthropicToolUseIds,
       preserveSignatures: policy.preserveSignatures,
       sanitizeThoughtSignatures: policy.sanitizeThoughtSignatures,
+      workspaceDir: params.workspaceDir,
       ...resolveImageSanitizationLimits(params.config),
     },
   );

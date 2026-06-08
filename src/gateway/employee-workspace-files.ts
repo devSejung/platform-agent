@@ -330,7 +330,7 @@ async function readPreviewTextBuffer(filePath: string, totalSize: number) {
 async function buildZipArchivePreview(filePath: string) {
   const zip = await JSZip.loadAsync(await fs.readFile(filePath));
   const archiveEntries = Object.values(zip.files)
-    .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }))
+    .toSorted((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }))
     .slice(0, MAX_ARCHIVE_PREVIEW_ENTRIES)
     .map((entry) => ({
       path: entry.name,

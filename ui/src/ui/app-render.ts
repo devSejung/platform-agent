@@ -14,7 +14,12 @@ import {
 } from "./app-render.helpers.ts";
 import { warnQueryToken } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
-import { agentLogoUrl, employeeLogoUrl } from "./views/agents-utils.ts";
+import { searchDirectoryAccounts } from "./controllers/accounts.ts";
+import {
+  loadAdminAccounts,
+  loadAdminAccountDetail,
+  updateAdminAccountRoleAction,
+} from "./controllers/admin-accounts.ts";
 import { loadAgentFileContent, loadAgentFiles, saveAgentFile } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
@@ -78,6 +83,18 @@ import {
   saveExecApprovals,
   updateExecApprovalsFormValue,
 } from "./controllers/exec-approvals.ts";
+import {
+  addGroupMemberAction,
+  archiveGroupScopeAction,
+  createGroupAction,
+  createPartAction,
+  loadGroups,
+  loadGroupDetail,
+  loadGroupScopeOptions,
+  removeGroupMemberAction,
+  updateGroupAction,
+  updatePartAction,
+} from "./controllers/groups.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
@@ -89,6 +106,23 @@ import {
   restoreSessionFromCheckpoint,
   toggleSessionCompactionCheckpoints,
 } from "./controllers/sessions.ts";
+import {
+  closeSkillHubDetail,
+  deleteSkillHubEntry,
+  deleteSkillHubSkill,
+  installSkillHubSkill,
+  loadSkillHub,
+  loadSkillHubDetail,
+  loadSkillHubWorkspacePublish,
+  publishWorkspaceSkillWithPrompts,
+  resolveExistingSkillHubPromptsForSkillName,
+  toEditorPrompts,
+  transferSkillHubOwnershipAction,
+  toggleLikeSkillHubSkill,
+  updateSkillHubSkill,
+  updateSkillHubMetadataAction,
+  uploadSkillHubPackageWithPrompts,
+} from "./controllers/skill-hub.ts";
 import {
   deleteWorkspaceSkill,
   closeClawHubDetail,
@@ -103,58 +137,20 @@ import {
   updateSkillEnabled,
 } from "./controllers/skills.ts";
 import {
-  closeSkillHubDetail,
-  deleteSkillHubSkill,
-  hideSkillHubSkill,
-  installSkillHubSkill,
-  loadSkillHub,
-  loadSkillHubDetail,
-  publishWorkspaceSkillWithPrompts,
-  resolveExistingSkillHubPromptsForSkillName,
-  toEditorPrompts,
-  transferSkillHubOwnershipAction,
-  toggleLikeSkillHubSkill,
-  updateSkillHubSkill,
-  updateSkillHubMetadataAction,
-  uploadSkillHubPackageWithPrompts,
-} from "./controllers/skill-hub.ts";
-import { searchDirectoryAccounts } from "./controllers/accounts.ts";
-import {
-  loadAdminAccounts,
-  loadAdminAccountDetail,
-  updateAdminAccountRoleAction,
-} from "./controllers/admin-accounts.ts";
-import {
-  addGroupMemberAction,
-  archiveGroupScopeAction,
-  createGroupAction,
-  createPartAction,
-  loadGroups,
-  loadGroupDetail,
-  loadGroupScopeOptions,
-  removeGroupMemberAction,
-  updateGroupAction,
-  updatePartAction,
-} from "./controllers/groups.ts";
+  dismissEmployeeAnnouncement,
+  isEmployeeAnnouncementDismissed,
+  resolveEmployeeAnnouncement,
+} from "./employee-announcement.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import "./components/dashboard-header.ts";
 import { icons } from "./icons.ts";
+import { normalizeBasePath, subtitleForTab, tabGroupsForMode, titleForTab } from "./navigation.ts";
 import {
   buildAgentMainSessionKey,
   parseAgentSessionKey,
   resolveAgentIdFromSessionKey,
 } from "./session-key.ts";
-import {
-  normalizeBasePath,
-  subtitleForTab,
-  tabGroupsForMode,
-  titleForTab,
-} from "./navigation.ts";
-import {
-  dismissEmployeeAnnouncement,
-  isEmployeeAnnouncementDismissed,
-  resolveEmployeeAnnouncement,
-} from "./employee-announcement.ts";
+import { employeeLogoUrl } from "./views/agents-utils.ts";
 import {
   resolveAgentConfig,
   resolveConfiguredCronModelSuggestions,
@@ -430,8 +426,8 @@ function trimStringOrNull(value: unknown): string | null {
 
 function resolveWorkspaceDocsUrl(state: AppViewState): string | null {
   const configDocsUrl = trimStringOrNull(
-    (state.configSnapshot?.config as { gateway?: { controlUi?: { docsUrl?: unknown } } } | null)?.gateway
-      ?.controlUi?.docsUrl,
+    (state.configSnapshot?.config as { gateway?: { controlUi?: { docsUrl?: unknown } } } | null)
+      ?.gateway?.controlUi?.docsUrl,
   );
   return configDocsUrl ?? state.employeeUi.docsUrl;
 }
@@ -493,9 +489,7 @@ function renderEmployeeIdentitySummary(state: AppViewState, navCollapsed: boolea
         <span class="sidebar-identity__title">Signed in</span>
         ${employeeId ? html`<span class="sidebar-identity__badge">${employeeId}</span>` : nothing}
       </div>
-      ${employeeName
-        ? html`<div class="sidebar-identity__primary">${employeeName}</div>`
-        : nothing}
+      ${employeeName ? html`<div class="sidebar-identity__primary">${employeeName}</div>` : nothing}
       ${roleLabel || groupSummary
         ? html`
             <div class="sidebar-identity__chips">
@@ -586,23 +580,21 @@ function renderEmployeeHeartbeat(state: AppViewState) {
     | null
     | undefined;
   const heartbeatConfig =
-    heartbeat && typeof heartbeat === "object" && heartbeat.config && typeof heartbeat.config === "object"
+    heartbeat &&
+    typeof heartbeat === "object" &&
+    heartbeat.config &&
+    typeof heartbeat.config === "object"
       ? heartbeat.config
       : null;
   const status = heartbeat?.status?.trim() || "unknown";
   const statusTone =
-    status === "ok-empty" || status === "ok-token"
-      ? "ok"
-      : status === "failed"
-        ? "error"
-        : "warn";
+    status === "ok-empty" || status === "ok-token" ? "ok" : status === "failed" ? "error" : "warn";
   const preview = heartbeat?.preview?.trim() || t("employeeHeartbeat.previewFallback");
   const statusHeadline =
     status === "ok-empty" || status === "ok-token"
       ? t("employeeHeartbeat.statusStable")
       : t("employeeHeartbeat.statusMonitor");
-  const statusSummary =
-    heartbeat?.reason?.trim() || t("employeeHeartbeat.statusSummaryFallback");
+  const statusSummary = heartbeat?.reason?.trim() || t("employeeHeartbeat.statusSummaryFallback");
   const mascotUrl = employeeLogoUrl(state.basePath);
   return html`
     <section class="employee-workspace__panel employee-workspace__panel--heartbeat">
@@ -643,7 +635,8 @@ function renderEmployeeHeartbeat(state: AppViewState) {
       <div class="employee-heartbeat-details">
         <div class="employee-heartbeat-details__section employee-heartbeat-details__section--hero">
           <div class="employee-heartbeat-details__label employee-heartbeat-details__label--icon">
-            <span class="employee-heartbeat-details__icon employee-heartbeat-details__icon--${statusTone}"
+            <span
+              class="employee-heartbeat-details__icon employee-heartbeat-details__icon--${statusTone}"
               >${icons.radio}</span
             >
             <span>${statusHeadline}</span>
@@ -669,11 +662,17 @@ function renderEmployeeHeartbeat(state: AppViewState) {
           <div class="employee-heartbeat-details__value">${statusSummary}</div>
         </div>
         <div class="employee-heartbeat-details__section">
-          <div class="employee-heartbeat-details__label">${t("employeeHeartbeat.lastReceivedAt")}</div>
-          <div class="employee-heartbeat-details__value">${formatEmployeeDateTime(heartbeat?.ts)}</div>
+          <div class="employee-heartbeat-details__label">
+            ${t("employeeHeartbeat.lastReceivedAt")}
+          </div>
+          <div class="employee-heartbeat-details__value">
+            ${formatEmployeeDateTime(heartbeat?.ts)}
+          </div>
         </div>
         <div class="employee-heartbeat-details__section">
-          <div class="employee-heartbeat-details__label">${t("employeeHeartbeat.lastDeliveryInfo")}</div>
+          <div class="employee-heartbeat-details__label">
+            ${t("employeeHeartbeat.lastDeliveryInfo")}
+          </div>
           <div class="employee-heartbeat-details__preview">
             ${typeof heartbeat?.durationMs === "number" ? `${heartbeat.durationMs}ms` : "-"} ·
             ${heartbeat?.to?.trim() || t("employeeHeartbeat.noTarget")}<br />${preview}
@@ -699,7 +698,9 @@ export function renderApp(state: AppViewState) {
   }
   const visibleTabGroups = tabGroupsForMode(state.employeeMode).map((group) => ({
     ...group,
-    tabs: group.tabs.filter((tab) => (tab === "admin" ? Boolean(state.employeeAccountSummary?.hasAdminAccess) : true)),
+    tabs: group.tabs.filter((tab) =>
+      tab === "admin" ? Boolean(state.employeeAccountSummary?.hasAdminAccess) : true,
+    ),
   }));
   const allowedTabs = new Set(visibleTabGroups.flatMap((group) => [...group.tabs]));
   if (!allowedTabs.has(state.tab)) {
@@ -948,137 +949,138 @@ export function renderApp(state: AppViewState) {
         })
       : nothing;
 
-  const cronView = state.tab === "cron"
-    ? lazyRender(lazyCron, (m) =>
-        m.renderCron({
-          basePath: state.basePath,
-          employeeMode: state.employeeMode,
-          lockedAgentId: state.employeeMode ? employeeAgentId : null,
-          loading: state.cronLoading,
-          status: state.cronStatus,
-          jobs: visibleCronJobs,
-          jobsLoadingMore: state.cronJobsLoadingMore,
-          jobsTotal: state.cronJobsTotal,
-          jobsHasMore: state.cronJobsHasMore,
-          jobsQuery: state.cronJobsQuery,
-          jobsEnabledFilter: state.cronJobsEnabledFilter,
-          jobsScheduleKindFilter: state.cronJobsScheduleKindFilter,
-          jobsLastStatusFilter: state.cronJobsLastStatusFilter,
-          jobsSortBy: state.cronJobsSortBy,
-          jobsSortDir: state.cronJobsSortDir,
-          editingJobId: state.cronEditingJobId,
-          error: state.cronError,
-          busy: state.cronBusy,
-          form: state.employeeMode ? employeeCronForm : state.cronForm,
-          channels: state.channelsSnapshot?.channelMeta?.length
-            ? state.channelsSnapshot.channelMeta.map((entry) => entry.id)
-            : (state.channelsSnapshot?.channelOrder ?? []),
-          channelLabels: state.channelsSnapshot?.channelLabels ?? {},
-          channelMeta: state.channelsSnapshot?.channelMeta ?? [],
-          runsJobId: state.cronRunsJobId,
-          runs: state.cronRuns,
-          runsTotal: state.cronRunsTotal,
-          runsHasMore: state.cronRunsHasMore,
-          runsLoadingMore: state.cronRunsLoadingMore,
-          runsScope: state.cronRunsScope,
-          runsStatuses: state.cronRunsStatuses,
-          runsDeliveryStatuses: state.cronRunsDeliveryStatuses,
-          runsStatusFilter: state.cronRunsStatusFilter,
-          runsQuery: state.cronRunsQuery,
-          runsSortDir: state.cronRunsSortDir,
-          fieldErrors: state.cronFieldErrors,
-          canSubmit: !hasCronFormErrors(state.cronFieldErrors),
-          agentSuggestions: state.employeeMode ? [employeeAgentId] : cronAgentSuggestions,
-          modelSuggestions: cronModelSuggestions,
-          thinkingSuggestions: CRON_THINKING_SUGGESTIONS,
-          timezoneSuggestions: CRON_TIMEZONE_SUGGESTIONS,
-          deliveryToSuggestions,
-          accountSuggestions,
-          onFormChange: (patch) => {
-            const base = state.employeeMode ? employeeCronForm : state.cronForm;
-            const next = normalizeCronFormState({
-              ...base,
-              ...patch,
-              ...(state.employeeMode ? { agentId: employeeAgentId, clearAgent: false } : {}),
-            });
-            state.cronForm = next;
-            state.cronFieldErrors = validateCronForm(next);
-          },
-          onRefresh: () => state.loadCron(),
-          onAdd: () => {
-            if (state.employeeMode) {
-              state.cronForm = employeeCronForm;
-              state.cronFieldErrors = validateCronForm(employeeCronForm);
-            }
-            return addCronJob(state);
-          },
-          onEdit: (job) => {
-            startCronEdit(state, job);
-            if (state.employeeMode) {
-              state.cronForm = normalizeCronFormState({
-                ...state.cronForm,
-                agentId: employeeAgentId,
-                clearAgent: false,
+  const cronView =
+    state.tab === "cron"
+      ? lazyRender(lazyCron, (m) =>
+          m.renderCron({
+            basePath: state.basePath,
+            employeeMode: state.employeeMode,
+            lockedAgentId: state.employeeMode ? employeeAgentId : null,
+            loading: state.cronLoading,
+            status: state.cronStatus,
+            jobs: visibleCronJobs,
+            jobsLoadingMore: state.cronJobsLoadingMore,
+            jobsTotal: state.cronJobsTotal,
+            jobsHasMore: state.cronJobsHasMore,
+            jobsQuery: state.cronJobsQuery,
+            jobsEnabledFilter: state.cronJobsEnabledFilter,
+            jobsScheduleKindFilter: state.cronJobsScheduleKindFilter,
+            jobsLastStatusFilter: state.cronJobsLastStatusFilter,
+            jobsSortBy: state.cronJobsSortBy,
+            jobsSortDir: state.cronJobsSortDir,
+            editingJobId: state.cronEditingJobId,
+            error: state.cronError,
+            busy: state.cronBusy,
+            form: state.employeeMode ? employeeCronForm : state.cronForm,
+            channels: state.channelsSnapshot?.channelMeta?.length
+              ? state.channelsSnapshot.channelMeta.map((entry) => entry.id)
+              : (state.channelsSnapshot?.channelOrder ?? []),
+            channelLabels: state.channelsSnapshot?.channelLabels ?? {},
+            channelMeta: state.channelsSnapshot?.channelMeta ?? [],
+            runsJobId: state.cronRunsJobId,
+            runs: state.cronRuns,
+            runsTotal: state.cronRunsTotal,
+            runsHasMore: state.cronRunsHasMore,
+            runsLoadingMore: state.cronRunsLoadingMore,
+            runsScope: state.cronRunsScope,
+            runsStatuses: state.cronRunsStatuses,
+            runsDeliveryStatuses: state.cronRunsDeliveryStatuses,
+            runsStatusFilter: state.cronRunsStatusFilter,
+            runsQuery: state.cronRunsQuery,
+            runsSortDir: state.cronRunsSortDir,
+            fieldErrors: state.cronFieldErrors,
+            canSubmit: !hasCronFormErrors(state.cronFieldErrors),
+            agentSuggestions: state.employeeMode ? [employeeAgentId] : cronAgentSuggestions,
+            modelSuggestions: cronModelSuggestions,
+            thinkingSuggestions: CRON_THINKING_SUGGESTIONS,
+            timezoneSuggestions: CRON_TIMEZONE_SUGGESTIONS,
+            deliveryToSuggestions,
+            accountSuggestions,
+            onFormChange: (patch) => {
+              const base = state.employeeMode ? employeeCronForm : state.cronForm;
+              const next = normalizeCronFormState({
+                ...base,
+                ...patch,
+                ...(state.employeeMode ? { agentId: employeeAgentId, clearAgent: false } : {}),
               });
-            }
-          },
-          onClone: (job) => {
-            startCronClone(state, job);
-            if (state.employeeMode) {
-              state.cronForm = normalizeCronFormState({
-                ...state.cronForm,
-                agentId: employeeAgentId,
-                clearAgent: false,
+              state.cronForm = next;
+              state.cronFieldErrors = validateCronForm(next);
+            },
+            onRefresh: () => state.loadCron(),
+            onAdd: () => {
+              if (state.employeeMode) {
+                state.cronForm = employeeCronForm;
+                state.cronFieldErrors = validateCronForm(employeeCronForm);
+              }
+              return addCronJob(state);
+            },
+            onEdit: (job) => {
+              startCronEdit(state, job);
+              if (state.employeeMode) {
+                state.cronForm = normalizeCronFormState({
+                  ...state.cronForm,
+                  agentId: employeeAgentId,
+                  clearAgent: false,
+                });
+              }
+            },
+            onClone: (job) => {
+              startCronClone(state, job);
+              if (state.employeeMode) {
+                state.cronForm = normalizeCronFormState({
+                  ...state.cronForm,
+                  agentId: employeeAgentId,
+                  clearAgent: false,
+                });
+              }
+            },
+            onCancelEdit: () => cancelCronEdit(state),
+            onToggle: (job, enabled) => toggleCronJob(state, job, enabled),
+            onRun: (job, mode) => runCronJob(state, job, mode ?? "force"),
+            onRemove: (job) => removeCronJob(state, job),
+            onLoadRuns: async (jobId) => {
+              updateCronRunsFilter(state, { cronRunsScope: "job" });
+              await loadCronRuns(state, jobId);
+            },
+            onLoadMoreJobs: () => loadMoreCronJobs(state),
+            onJobsFiltersChange: async (patch) => {
+              updateCronJobsFilter(state, patch);
+              const shouldReload =
+                typeof patch.cronJobsQuery === "string" ||
+                Boolean(patch.cronJobsEnabledFilter) ||
+                Boolean(patch.cronJobsSortBy) ||
+                Boolean(patch.cronJobsSortDir);
+              if (shouldReload) {
+                await reloadCronJobs(state);
+              }
+            },
+            onJobsFiltersReset: async () => {
+              updateCronJobsFilter(state, {
+                cronJobsQuery: "",
+                cronJobsEnabledFilter: "all",
+                cronJobsScheduleKindFilter: "all",
+                cronJobsLastStatusFilter: "all",
+                cronJobsSortBy: "nextRunAtMs",
+                cronJobsSortDir: "asc",
               });
-            }
-          },
-          onCancelEdit: () => cancelCronEdit(state),
-          onToggle: (job, enabled) => toggleCronJob(state, job, enabled),
-          onRun: (job, mode) => runCronJob(state, job, mode ?? "force"),
-          onRemove: (job) => removeCronJob(state, job),
-          onLoadRuns: async (jobId) => {
-            updateCronRunsFilter(state, { cronRunsScope: "job" });
-            await loadCronRuns(state, jobId);
-          },
-          onLoadMoreJobs: () => loadMoreCronJobs(state),
-          onJobsFiltersChange: async (patch) => {
-            updateCronJobsFilter(state, patch);
-            const shouldReload =
-              typeof patch.cronJobsQuery === "string" ||
-              Boolean(patch.cronJobsEnabledFilter) ||
-              Boolean(patch.cronJobsSortBy) ||
-              Boolean(patch.cronJobsSortDir);
-            if (shouldReload) {
               await reloadCronJobs(state);
-            }
-          },
-          onJobsFiltersReset: async () => {
-            updateCronJobsFilter(state, {
-              cronJobsQuery: "",
-              cronJobsEnabledFilter: "all",
-              cronJobsScheduleKindFilter: "all",
-              cronJobsLastStatusFilter: "all",
-              cronJobsSortBy: "nextRunAtMs",
-              cronJobsSortDir: "asc",
-            });
-            await reloadCronJobs(state);
-          },
-          onLoadMoreRuns: () => loadMoreCronRuns(state),
-          onRunsFiltersChange: async (patch) => {
-            updateCronRunsFilter(state, patch);
-            if (state.cronRunsScope === "all") {
-              await loadCronRuns(state, null);
-              return;
-            }
-            await loadCronRuns(state, state.cronRunsJobId);
-          },
-          onNavigateToChat: (sessionKey) => {
-            switchChatSession(state, sessionKey);
-            state.setTab("chat" as import("./navigation.ts").Tab);
-          },
-        }),
-      )
-    : nothing;
+            },
+            onLoadMoreRuns: () => loadMoreCronRuns(state),
+            onRunsFiltersChange: async (patch) => {
+              updateCronRunsFilter(state, patch);
+              if (state.cronRunsScope === "all") {
+                await loadCronRuns(state, null);
+                return;
+              }
+              await loadCronRuns(state, state.cronRunsJobId);
+            },
+            onNavigateToChat: (sessionKey) => {
+              switchChatSession(state, sessionKey);
+              state.setTab("chat" as import("./navigation.ts").Tab);
+            },
+          }),
+        )
+      : nothing;
 
   return html`
     ${renderCommandPalette({
@@ -1194,42 +1196,43 @@ export function renderApp(state: AppViewState) {
               <div class="sidebar-body-stack">
                 ${renderEmployeeIdentitySummary(state, navCollapsed)}
                 <nav class="sidebar-nav">
-                ${visibleTabGroups.map((group) => {
-                  const isGroupCollapsed = state.settings.navGroupsCollapsed[group.label] ?? false;
-                  const hasActiveTab = group.tabs.some((tab) => tab === state.tab);
-                  const showItems = navCollapsed || hasActiveTab || !isGroupCollapsed;
+                  ${visibleTabGroups.map((group) => {
+                    const isGroupCollapsed =
+                      state.settings.navGroupsCollapsed[group.label] ?? false;
+                    const hasActiveTab = group.tabs.some((tab) => tab === state.tab);
+                    const showItems = navCollapsed || hasActiveTab || !isGroupCollapsed;
 
-                  return html`
-                    <section class="nav-section ${!showItems ? "nav-section--collapsed" : ""}">
-                      ${!navCollapsed
-                        ? html`
-                            <button
-                              class="nav-section__label"
-                              @click=${() => {
-                                const next = { ...state.settings.navGroupsCollapsed };
-                                next[group.label] = !isGroupCollapsed;
-                                state.applySettings({
-                                  ...state.settings,
-                                  navGroupsCollapsed: next,
-                                });
-                              }}
-                              aria-expanded=${showItems}
-                            >
-                              <span class="nav-section__label-text"
-                                >${t(`nav.${group.label}`)}</span
+                    return html`
+                      <section class="nav-section ${!showItems ? "nav-section--collapsed" : ""}">
+                        ${!navCollapsed
+                          ? html`
+                              <button
+                                class="nav-section__label"
+                                @click=${() => {
+                                  const next = { ...state.settings.navGroupsCollapsed };
+                                  next[group.label] = !isGroupCollapsed;
+                                  state.applySettings({
+                                    ...state.settings,
+                                    navGroupsCollapsed: next,
+                                  });
+                                }}
+                                aria-expanded=${showItems}
                               >
-                              <span class="nav-section__chevron"> ${icons.chevronDown} </span>
-                            </button>
-                          `
-                        : nothing}
-                      <div class="nav-section__items">
-                        ${group.tabs.map((tab) =>
-                          renderTab(state, tab, { collapsed: navCollapsed }),
-                        )}
-                      </div>
-                    </section>
-                  `;
-                })}
+                                <span class="nav-section__label-text"
+                                  >${t(`nav.${group.label}`)}</span
+                                >
+                                <span class="nav-section__chevron"> ${icons.chevronDown} </span>
+                              </button>
+                            `
+                          : nothing}
+                        <div class="nav-section__items">
+                          ${group.tabs.map((tab) =>
+                            renderTab(state, tab, { collapsed: navCollapsed }),
+                          )}
+                        </div>
+                      </section>
+                    `;
+                  })}
                 </nav>
               </div>
             </div>
@@ -1312,7 +1315,9 @@ export function renderApp(state: AppViewState) {
                 ${employeeAnnouncement.title
                   ? html`<strong>${employeeAnnouncement.title}</strong>`
                   : nothing}
-                ${employeeAnnouncement.body ? html`<div>${employeeAnnouncement.body}</div>` : nothing}
+                ${employeeAnnouncement.body
+                  ? html`<div>${employeeAnnouncement.body}</div>`
+                  : nothing}
                 ${employeeAnnouncement.linkUrl
                   ? html`
                       <div>
@@ -1602,8 +1607,7 @@ export function renderApp(state: AppViewState) {
               }),
             )
           : nothing}
-        ${renderUsageTab(state)}
-        ${cronView}
+        ${renderUsageTab(state)} ${cronView}
         ${state.tab === "heartbeat" ? renderEmployeeHeartbeat(state) : nothing}
         ${state.tab === "agents"
           ? lazyRender(lazyAgents, (m) =>
@@ -2110,6 +2114,9 @@ export function renderApp(state: AppViewState) {
                 busySlug: state.skillHubBusySlug,
                 message: state.skillHubMessage,
                 workspacePublishing: state.skillHubWorkspacePublishing,
+                workspacePendingKeys: state.skillHubWorkspacePendingKeys,
+                workspacePublishEntries: state.skillHubWorkspacePublishEntries,
+                overview: state.skillHubOverview,
                 uploading: state.skillHubUploading,
                 workspacePanelOpen: state.skillHubWorkspacePanelOpen,
                 editorOpen: state.skillHubEditorOpen,
@@ -2129,7 +2136,6 @@ export function renderApp(state: AppViewState) {
                 transferReason: state.skillHubTransferReason,
                 transferError: state.skillHubTransferError,
                 transferLoading: state.skillHubTransferLoading,
-                workspaceSkillsReport: state.employeeMode ? state.agentSkillsReport : state.skillsReport,
                 onScopeChange: (scope) => {
                   state.skillHubScope = scope;
                   void loadSkillHub(state);
@@ -2142,7 +2148,10 @@ export function renderApp(state: AppViewState) {
                   state.skillHubQuery = query;
                   void loadSkillHub(state);
                 },
-                onRefresh: () => void loadSkillHub(state),
+                onRefresh: () => {
+                  void loadSkillHub(state);
+                  void loadSkillHubWorkspacePublish(state);
+                },
                 onOpenDetail: (slug) => void loadSkillHubDetail(state, slug),
                 onCloseDetail: () => closeSkillHubDetail(state),
                 onLike: (slug) => void toggleLikeSkillHubSkill(state, slug),
@@ -2203,18 +2212,20 @@ export function renderApp(state: AppViewState) {
                     }
                   })();
                 },
-                onSetVisibility: (slug, hidden) => {
+                onDeleteFromHub: (slug) => {
                   if (
                     typeof window !== "undefined" &&
                     !window.confirm(
-                      hidden
-                        ? "이 스킬을 Hub에서 숨깁니다. 새 설치에는 더 이상 노출되지 않습니다."
-                        : "이 스킬을 다시 Hub에 표시합니다.",
+                      "이 스킬을 Skill Hub에서 완전히 삭제합니다. 워크스페이스 복사본은 유지되며 다시 발행할 수 있습니다.",
                     )
                   ) {
                     return;
                   }
-                  void hideSkillHubSkill(state, slug, hidden);
+                  void deleteSkillHubEntry(state, slug);
+                },
+                onOpenWorkspaceSkillDetail: (skillKey) => {
+                  state.skillsDetailKey = skillKey;
+                  state.tab = "skills";
                 },
                 onOpenPublishEditor: (skillName, title) => {
                   state.skillHubEditorOpen = true;
@@ -2229,7 +2240,10 @@ export function renderApp(state: AppViewState) {
                   state.skillHubEditorLoading = true;
                   void (async () => {
                     try {
-                      const existing = await resolveExistingSkillHubPromptsForSkillName(state, skillName);
+                      const existing = await resolveExistingSkillHubPromptsForSkillName(
+                        state,
+                        skillName,
+                      );
                       if (
                         !state.skillHubEditorOpen ||
                         state.skillHubEditorMode !== "publish" ||
@@ -2246,7 +2260,8 @@ export function renderApp(state: AppViewState) {
                         state.skillHubEditorMode === "publish" &&
                         state.skillHubEditorSkillName === skillName
                       ) {
-                        state.skillHubEditorError = err instanceof Error ? err.message : String(err);
+                        state.skillHubEditorError =
+                          err instanceof Error ? err.message : String(err);
                       }
                     } finally {
                       if (
@@ -2282,7 +2297,11 @@ export function renderApp(state: AppViewState) {
                   state.skillHubEditorSlug = slug;
                   state.skillHubEditorFile = null;
                   state.skillHubEditorDescription = summary;
-                  state.skillHubEditorPrompts = [prompts[0] ?? "", prompts[1] ?? "", prompts[2] ?? ""];
+                  state.skillHubEditorPrompts = [
+                    prompts[0] ?? "",
+                    prompts[1] ?? "",
+                    prompts[2] ?? "",
+                  ];
                   state.skillHubEditorError = null;
                   state.skillHubEditorLoading = false;
                 },
@@ -2303,7 +2322,9 @@ export function renderApp(state: AppViewState) {
                 },
                 onEditorPromptChange: (index, value) => {
                   const next = state.skillHubEditorPrompts.slice(0, 3);
-                  while (next.length < 3) {next.push("");}
+                  while (next.length < 3) {
+                    next.push("");
+                  }
                   next[index] = value.slice(0, 200);
                   state.skillHubEditorPrompts = next;
                 },
@@ -2324,11 +2345,15 @@ export function renderApp(state: AppViewState) {
                           state.skillHubEditorError = "Missing workspace skill.";
                           return;
                         }
-                        await publishWorkspaceSkillWithPrompts(
-                          state,
-                          state.skillHubEditorSkillName,
-                          prompts,
+                        const publishEntry = state.skillHubWorkspacePublishEntries.find(
+                          (entry) => entry.skillName === state.skillHubEditorSkillName,
                         );
+                        if (!publishEntry || publishEntry.disabled) {
+                          state.skillHubEditorError =
+                            "발행 상태가 변경되었습니다. Skill Hub를 새로고침해주세요.";
+                          return;
+                        }
+                        await publishWorkspaceSkillWithPrompts(state, publishEntry, prompts);
                       } else if (state.skillHubEditorMode === "upload") {
                         if (!state.skillHubEditorFile) {
                           state.skillHubEditorError = "Choose a .skill file first.";
@@ -2453,7 +2478,8 @@ export function renderApp(state: AppViewState) {
                       state.skillHubTransferTargetAccountId = null;
                       state.skillHubTransferReason = "";
                     } catch (err) {
-                      state.skillHubTransferError = err instanceof Error ? err.message : String(err);
+                      state.skillHubTransferError =
+                        err instanceof Error ? err.message : String(err);
                     } finally {
                       state.skillHubTransferLoading = false;
                     }
@@ -2755,8 +2781,7 @@ export function renderApp(state: AppViewState) {
               onToggleAllSelections: (relativePaths, selected) =>
                 state.setAllWorkspaceFileSelections(relativePaths, selected),
               onDownload: (relativePaths) => state.downloadWorkspaceFiles(relativePaths),
-              onOpenFilePreview: (relativePath) =>
-                state.openWorkspaceFilePreview(relativePath),
+              onOpenFilePreview: (relativePath) => state.openWorkspaceFilePreview(relativePath),
               onCloseFilePreview: () => state.closeWorkspaceFilePreview(),
               onCreateFolder: (name) => state.createWorkspaceFolder(name),
               onRename: (relativePath, nextName) =>

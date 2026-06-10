@@ -1,21 +1,17 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { getAccountById, resolveAccountDisplayName } from "../accounts/account-store.js";
 import { getPlatformClawDatabase } from "../accounts/db.js";
-import { extractArchive } from "./skills-install-extract.js";
-import {
-  loadWorkspaceSkillEntries,
-  type SkillEntry,
-} from "./skills.js";
-import { bumpSkillsSnapshotVersion } from "./skills/refresh.js";
-import { readSkillFrontmatterSafe } from "./skills/local-loader.js";
-import { resolveSkillSource } from "./skills/source.js";
-import type { ParsedSkillFrontmatter } from "./skills/types.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { safeParseJson } from "../utils.js";
 import { CONFIG_DIR, ensureDir } from "../utils.js";
+import { extractArchive } from "./skills-install-extract.js";
+import { loadWorkspaceSkillEntries, type SkillEntry } from "./skills.js";
+import { loadSkillsFromDirSafe } from "./skills/local-loader.js";
+import { bumpSkillsSnapshotVersion } from "./skills/refresh.js";
+import { resolveSkillSource } from "./skills/source.js";
 
 const fsp = fs.promises;
 
@@ -31,6 +27,7 @@ const WORKSPACE_INSTALL_STATE_FILE = ".skill-hub-installed.json";
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)$/;
 const MAX_EXAMPLE_PROMPTS = 3;
 const MAX_EXAMPLE_PROMPT_CHARS = 200;
+const publishQueues = new Map<string, Promise<void>>();
 
 function trimOrNull(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
@@ -90,6 +87,7 @@ export type SkillHubMetadata = {
   publishedAt: string;
   updatedAt: string;
   latestVersion: string;
+  contentChecksum?: string;
   hidden: boolean;
   flags: SkillHubWarningFlags;
   stats: {
@@ -143,15 +141,64 @@ export type SkillHubDetail = SkillHubListEntry & {
   versions: SkillHubVersionRecord[];
 };
 
+export type WorkspacePublishState =
+  | "new_local_skill"
+  | "update_available_from_local"
+  | "up_to_date"
+  | "existing_skill_non_owner"
+  | "conflict_or_unknown";
+
+export type WorkspacePublishEntry = {
+  skillName: string;
+  skillKey: string;
+  description: string;
+  matchedHubSlug?: string;
+  hubVersion?: string;
+  ownerAccountId?: string;
+  installedFromHub: boolean;
+  localChecksum?: string;
+  hubChecksum?: string;
+  flags?: SkillHubWarningFlags;
+  state: WorkspacePublishState;
+  actionLabel: string;
+  disabled: boolean;
+  reason: string;
+};
+
+export type SkillHubOverview = {
+  sharedSkillCount: number;
+  updateAvailableCount: number;
+  localSkillCount: number;
+  installedSkillCount: number;
+  recentUpdates: Array<{
+    slug: string;
+    displayName: string;
+    latestVersion: string;
+    updatedAt: string;
+  }>;
+};
+
 type PublishPreparedSkill = {
   displayName: string;
   summary: string;
   sourceDir: string;
-  requestedVersion?: string;
+  contentChecksum: string;
   flags: SkillHubWarningFlags;
   examplePrompts: string[];
   cleanupDir?: string;
 };
+
+export type SkillHubPublishIntent = "create" | "update";
+
+const CHECKSUM_IGNORED_DIRECTORY_NAMES = new Set([
+  ".git",
+  "node_modules",
+  "__pycache__",
+  ".pytest_cache",
+  ".cache",
+  "coverage",
+]);
+const CHECKSUM_IGNORED_FILE_NAMES = new Set([".DS_Store", WORKSPACE_INSTALL_STATE_FILE]);
 
 function resolveSkillHubMetadataPath(slug: string): string {
   return path.join(METADATA_ROOT, `${slug}.json`);
@@ -201,7 +248,9 @@ function sanitizeExamplePrompts(value: unknown): string[] {
   return prompts;
 }
 
-function normalizeSkillHubMetadata(value: SkillHubMetadata | Record<string, unknown>): SkillHubMetadata {
+function normalizeSkillHubMetadata(
+  value: SkillHubMetadata | Record<string, unknown>,
+): SkillHubMetadata {
   const raw = value as Partial<SkillHubMetadata> & {
     presentation?: { examplePrompts?: unknown };
     engagement?: { likeCount?: unknown };
@@ -224,6 +273,9 @@ function normalizeSkillHubMetadata(value: SkillHubMetadata | Record<string, unkn
     publishedAt: String(raw.publishedAt ?? ""),
     updatedAt: String(raw.updatedAt ?? ""),
     latestVersion: String(raw.latestVersion ?? ""),
+    ...(typeof raw.contentChecksum === "string" && raw.contentChecksum.trim()
+      ? { contentChecksum: raw.contentChecksum.trim() }
+      : {}),
     hidden: Boolean(raw.hidden),
     flags: {
       hasHiddenFiles: Boolean(raw.flags?.hasHiddenFiles),
@@ -298,11 +350,11 @@ function appendSkillOwnershipEvent(params: {
 function toSlug(value: string): string {
   const ascii = value
     .normalize("NFKD")
-    .replace(/[^\x00-\x7F]/g, "")
+    .replace(/[^\p{ASCII}]/gu, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return ascii || `skill-${randomUUID().slice(0, 8)}`;
+  return ascii || `skill-${createHash("sha256").update(value).digest("hex").slice(0, 8)}`;
 }
 
 function parseSemver(value: string): [number, number, number] | null {
@@ -335,16 +387,9 @@ function incrementPatch(version: string): string {
   return `${parsed[0]}.${parsed[1]}.${parsed[2] + 1}`;
 }
 
-function chooseNextVersion(existing: SkillHubMetadata | null, requestedVersion?: string): string {
-  const requested = requestedVersion?.trim();
+function chooseNextVersion(existing: SkillHubMetadata | null): string {
   if (!existing) {
-    if (requested && parseSemver(requested)) {
-      return requested;
-    }
     return "1.0.0";
-  }
-  if (requested && parseSemver(requested) && compareSemver(requested, existing.latestVersion) > 0) {
-    return requested;
   }
   return incrementPatch(existing.latestVersion);
 }
@@ -368,17 +413,20 @@ async function listSkillHubMetadata(): Promise<SkillHubMetadata[]> {
   }
   const entries = await Promise.all(
     names.map(async (entry) => {
-      const value = await readJsonFile<Record<string, unknown> | null>(path.join(METADATA_ROOT, entry), null);
+      const value = await readJsonFile<Record<string, unknown> | null>(
+        path.join(METADATA_ROOT, entry),
+        null,
+      );
       return value ? normalizeSkillHubMetadata(value) : null;
     }),
   );
-  return entries.filter((entry): entry is SkillHubMetadata => Boolean(entry)).toSorted((a, b) =>
-    a.displayName.localeCompare(b.displayName),
-  );
+  return entries
+    .filter((entry): entry is SkillHubMetadata => Boolean(entry))
+    .toSorted((a, b) => a.displayName.localeCompare(b.displayName));
 }
 
 async function readWorkspaceInstallState(workspaceDir: string): Promise<SkillHubInstallState> {
-  return await readJsonFile<SkillHubInstallState>(resolveWorkspaceInstallStatePath(workspaceDir), {
+  return await readJsonFile(resolveWorkspaceInstallStatePath(workspaceDir), {
     skills: {},
   });
 }
@@ -390,6 +438,10 @@ async function writeWorkspaceInstallState(workspaceDir: string, state: SkillHubI
 async function writeSkillHubMetadata(metadata: SkillHubMetadata) {
   const normalized = normalizeSkillHubMetadata(metadata);
   await writeJsonFile(resolveSkillHubMetadataPath(normalized.slug), normalized);
+  await refreshSkillHubAggregates();
+}
+
+async function refreshSkillHubAggregates() {
   await writeJsonFile(
     path.join(AGGREGATES_ROOT, "stats.json"),
     Object.fromEntries(
@@ -424,6 +476,9 @@ async function scanSkillTree(rootDir: string): Promise<SkillHubWarningFlags> {
   async function walk(currentDir: string): Promise<void> {
     const entries = await fsp.readdir(currentDir, { withFileTypes: true });
     for (const entry of entries) {
+      if (shouldIgnoreChecksumEntry(entry.name, entry.isDirectory())) {
+        continue;
+      }
       const fullPath = path.join(currentDir, entry.name);
       if (entry.name.startsWith(".")) {
         flags.hasHiddenFiles = true;
@@ -454,13 +509,164 @@ function trimSummary(value: string): string {
   return normalized.slice(0, 220);
 }
 
-function requestedVersionFromFrontmatter(frontmatter: ParsedSkillFrontmatter): string | undefined {
-  const value = frontmatter.version?.trim();
-  return value && parseSemver(value) ? value : undefined;
-}
-
 function summaryFromEntry(entry: SkillEntry): string {
   return trimSummary(entry.skill.description);
+}
+
+function updateHashWithLength(hash: ReturnType<typeof createHash>, value: Buffer | string) {
+  const buffer = typeof value === "string" ? Buffer.from(value, "utf8") : value;
+  const length = Buffer.allocUnsafe(8);
+  length.writeBigUInt64BE(BigInt(buffer.length));
+  hash.update(length);
+  hash.update(buffer);
+}
+
+function shouldIgnoreChecksumEntry(name: string, isDirectory: boolean): boolean {
+  if (isDirectory) {
+    return CHECKSUM_IGNORED_DIRECTORY_NAMES.has(name);
+  }
+  return CHECKSUM_IGNORED_FILE_NAMES.has(name) || name.endsWith(".log");
+}
+
+export async function computeSkillDirectoryChecksum(rootDir: string): Promise<string> {
+  const files: Array<{ relativePath: string; absolutePath: string }> = [];
+
+  async function walk(currentDir: string): Promise<void> {
+    const entries = await fsp.readdir(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (shouldIgnoreChecksumEntry(entry.name, entry.isDirectory())) {
+        continue;
+      }
+      const absolutePath = path.join(currentDir, entry.name);
+      if (entry.isSymbolicLink()) {
+        throw new Error(`symlinks are not allowed in skill packages (${entry.name})`);
+      }
+      if (entry.isDirectory()) {
+        await walk(absolutePath);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      files.push({
+        relativePath: path.relative(rootDir, absolutePath).split(path.sep).join("/"),
+        absolutePath,
+      });
+    }
+  }
+
+  await walk(rootDir);
+  files.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+  const hash = createHash("sha256");
+  for (const file of files) {
+    const content = await fsp.readFile(file.absolutePath);
+    updateHashWithLength(hash, file.relativePath);
+    updateHashWithLength(hash, content);
+  }
+  return hash.digest("hex");
+}
+
+function flagsEqual(left: SkillHubWarningFlags, right: SkillHubWarningFlags): boolean {
+  return (
+    left.hasHiddenFiles === right.hasHiddenFiles &&
+    left.hasExecutableFiles === right.hasExecutableFiles
+  );
+}
+
+function workspacePublishPresentation(state: WorkspacePublishState, reason?: string) {
+  switch (state) {
+    case "new_local_skill":
+      return {
+        actionLabel: "발행",
+        disabled: false,
+        reason: reason ?? "허브에 새 스킬로 등록됩니다.",
+      };
+    case "update_available_from_local":
+      return {
+        actionLabel: "업데이트 업로드",
+        disabled: false,
+        reason: reason ?? "허브의 기존 스킬을 현재 로컬 내용으로 업데이트합니다.",
+      };
+    case "up_to_date":
+      return {
+        actionLabel: "최신 상태",
+        disabled: true,
+        reason: reason ?? "허브와 로컬 내용이 동일합니다.",
+      };
+    case "existing_skill_non_owner":
+      return {
+        actionLabel: "발행 불가",
+        disabled: true,
+        reason:
+          reason ??
+          "이 스킬은 다른 사용자가 발행한 Hub 스킬입니다. 원본 업데이트는 owner만 가능합니다.",
+      };
+    case "conflict_or_unknown":
+      return {
+        actionLabel: "확인 필요",
+        disabled: true,
+        reason: reason ?? "스킬 identity 또는 owner 정보를 확인할 수 없습니다.",
+      };
+  }
+}
+
+export function resolveWorkspacePublishState(params: {
+  displayName: string;
+  actor: SkillHubActor;
+  existing: SkillHubMetadata | null;
+  localChecksum: string;
+  localFlags: SkillHubWarningFlags;
+}): Pick<WorkspacePublishEntry, "state" | "actionLabel" | "disabled" | "reason"> {
+  const slug = toSlug(params.displayName);
+  if (!params.existing) {
+    return {
+      state: "new_local_skill",
+      ...workspacePublishPresentation("new_local_skill"),
+    };
+  }
+  if (params.existing.slug !== slug || params.existing.displayName !== params.displayName) {
+    return {
+      state: "conflict_or_unknown",
+      ...workspacePublishPresentation(
+        "conflict_or_unknown",
+        "동일한 slug를 사용하는 다른 스킬이 있어 발행할 수 없습니다.",
+      ),
+    };
+  }
+  if (!params.existing.owner.accountId) {
+    return {
+      state: "conflict_or_unknown",
+      ...workspacePublishPresentation(
+        "conflict_or_unknown",
+        "기존 Hub 스킬의 owner 정보를 확인할 수 없습니다.",
+      ),
+    };
+  }
+  if (params.existing.owner.accountId !== params.actor.employeeId) {
+    return {
+      state: "existing_skill_non_owner",
+      ...workspacePublishPresentation("existing_skill_non_owner"),
+    };
+  }
+  if (
+    params.existing.contentChecksum &&
+    params.existing.contentChecksum === params.localChecksum &&
+    flagsEqual(params.existing.flags, params.localFlags)
+  ) {
+    return {
+      state: "up_to_date",
+      ...workspacePublishPresentation("up_to_date"),
+    };
+  }
+  return {
+    state: "update_available_from_local",
+    ...workspacePublishPresentation(
+      "update_available_from_local",
+      params.existing.contentChecksum
+        ? undefined
+        : "기존 Hub 스킬에 checksum이 없어 업데이트 후 최신 상태 판정이 가능해집니다.",
+    ),
+  };
 }
 
 async function prepareWorkspacePublishSkill(params: {
@@ -479,17 +685,13 @@ async function prepareWorkspacePublishSkill(params: {
   if (!match) {
     throw new Error(`workspace skill not found: ${params.skillName}`);
   }
-  const frontmatter =
-    readSkillFrontmatterSafe({
-      rootDir: match.skill.baseDir,
-      filePath: match.skill.filePath,
-    }) ?? {};
+  const flags = await scanSkillTree(match.skill.baseDir);
   return {
     displayName: match.skill.name,
     summary: summaryFromEntry(match),
     sourceDir: match.skill.baseDir,
-    requestedVersion: requestedVersionFromFrontmatter(frontmatter),
-    flags: await scanSkillTree(match.skill.baseDir),
+    contentChecksum: await computeSkillDirectoryChecksum(match.skill.baseDir),
+    flags,
     examplePrompts: sanitizeExamplePrompts(params.examplePrompts),
   };
 }
@@ -500,7 +702,7 @@ async function detectSingleExtractedSkillDir(extractedRoot: string): Promise<str
   if (dirs.length !== 1) {
     throw new Error("skill package must contain exactly one top-level folder");
   }
-  const skillDir = path.join(extractedRoot, dirs[0]!.name);
+  const skillDir = path.join(extractedRoot, dirs[0].name);
   try {
     await fsp.access(path.join(skillDir, "SKILL.md"));
   } catch {
@@ -535,22 +737,21 @@ async function prepareUploadedSkill(params: {
   }
   const skillDir = await detectSingleExtractedSkillDir(extractDir);
   try {
-    const loaded = loadWorkspaceSkillEntries(extractDir, {});
-    const match = loaded.find((entry) => path.resolve(entry.skill.baseDir) === path.resolve(skillDir));
+    const loaded = loadSkillsFromDirSafe({
+      dir: skillDir,
+      source: "openclaw-workspace",
+    }).skills;
+    const match = loaded.find((skill) => path.resolve(skill.baseDir) === path.resolve(skillDir));
     if (!match) {
       throw new Error("could not read skill metadata from uploaded package");
     }
-    const frontmatter =
-      readSkillFrontmatterSafe({
-        rootDir: match.skill.baseDir,
-        filePath: match.skill.filePath,
-      }) ?? {};
+    const flags = await scanSkillTree(skillDir);
     return {
-      displayName: match.skill.name,
-      summary: summaryFromEntry(match),
+      displayName: match.name,
+      summary: trimSummary(match.description),
       sourceDir: skillDir,
-      requestedVersion: requestedVersionFromFrontmatter(frontmatter),
-      flags: await scanSkillTree(skillDir),
+      contentChecksum: await computeSkillDirectoryChecksum(skillDir),
+      flags,
       examplePrompts: sanitizeExamplePrompts(params.examplePrompts),
       cleanupDir: extractDir,
     };
@@ -570,20 +771,63 @@ async function copySkillDirectory(sourceDir: string, destinationDir: string) {
   });
 }
 
-async function publishPreparedSkill(params: {
+type PublishPreparedSkillResult = {
+  slug: string;
+  version: string;
+  created: boolean;
+  noOp: boolean;
+};
+
+async function publishPreparedSkillUnlocked(params: {
   actor: SkillHubActor;
   prepared: PublishPreparedSkill;
-}): Promise<{ slug: string; version: string; created: boolean }> {
+  intent?: SkillHubPublishIntent;
+  expectedSlug?: string;
+  expectedLocalChecksum?: string;
+  expectedHubChecksum?: string | null;
+}): Promise<PublishPreparedSkillResult> {
   await ensureSkillHubDirs();
   const slug = toSlug(params.prepared.displayName);
+  if (params.expectedSlug && params.expectedSlug !== slug) {
+    throw new Error("스킬 identity가 변경되었습니다. 목록을 새로고침한 후 다시 시도해주세요.");
+  }
+  if (
+    params.expectedLocalChecksum &&
+    params.expectedLocalChecksum !== params.prepared.contentChecksum
+  ) {
+    throw new Error("로컬 스킬 내용이 변경되었습니다. 목록을 새로고침한 후 다시 시도해주세요.");
+  }
   const existing = await readSkillHubMetadata(slug);
+  if (params.intent === "create" && existing) {
+    throw new Error("이미 같은 identity의 Hub 스킬이 있습니다. 목록을 새로고침해주세요.");
+  }
+  if (params.intent === "update" && !existing) {
+    throw new Error("업데이트할 Hub 스킬을 찾을 수 없습니다. 목록을 새로고침해주세요.");
+  }
   if (existing && existing.displayName !== params.prepared.displayName) {
     throw new Error(`slug conflict for ${params.prepared.displayName}`);
   }
   if (existing && existing.owner.accountId !== params.actor.employeeId) {
     throw new Error("only the current skill owner can publish a new version of this skill");
   }
-  const version = chooseNextVersion(existing, params.prepared.requestedVersion);
+  if (params.expectedHubChecksum !== undefined) {
+    const currentHubChecksum = existing?.contentChecksum ?? null;
+    if (currentHubChecksum !== params.expectedHubChecksum) {
+      throw new Error("Hub 스킬이 변경되었습니다. 목록을 새로고침한 후 다시 시도해주세요.");
+    }
+  }
+  if (
+    existing?.contentChecksum === params.prepared.contentChecksum &&
+    flagsEqual(existing.flags, params.prepared.flags)
+  ) {
+    return {
+      slug,
+      version: existing.latestVersion,
+      created: false,
+      noOp: true,
+    };
+  }
+  const version = chooseNextVersion(existing);
   const versionDir = resolveSkillHubVersionDir(slug, version);
   await copySkillDirectory(params.prepared.sourceDir, versionDir);
   const nowIso = new Date().toISOString();
@@ -593,6 +837,7 @@ async function publishPreparedSkill(params: {
         summary: params.prepared.summary,
         updatedAt: nowIso,
         latestVersion: version,
+        contentChecksum: params.prepared.contentChecksum,
         flags: params.prepared.flags,
         hidden: false,
         versions: [
@@ -623,6 +868,7 @@ async function publishPreparedSkill(params: {
         publishedAt: nowIso,
         updatedAt: nowIso,
         latestVersion: version,
+        contentChecksum: params.prepared.contentChecksum,
         hidden: false,
         flags: params.prepared.flags,
         stats: {
@@ -675,7 +921,35 @@ async function publishPreparedSkill(params: {
     slug,
     version,
     created: !existing,
+    noOp: false,
   };
+}
+
+async function publishPreparedSkill(params: {
+  actor: SkillHubActor;
+  prepared: PublishPreparedSkill;
+  intent?: SkillHubPublishIntent;
+  expectedSlug?: string;
+  expectedLocalChecksum?: string;
+  expectedHubChecksum?: string | null;
+}): Promise<PublishPreparedSkillResult> {
+  const slug = toSlug(params.prepared.displayName);
+  const previous = publishQueues.get(slug) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous.then(() => current);
+  publishQueues.set(slug, queued);
+  await previous;
+  try {
+    return await publishPreparedSkillUnlocked(params);
+  } finally {
+    release();
+    if (publishQueues.get(slug) === queued) {
+      publishQueues.delete(slug);
+    }
+  }
 }
 
 export async function publishWorkspaceSkillToHub(params: {
@@ -684,6 +958,10 @@ export async function publishWorkspaceSkillToHub(params: {
   actor: SkillHubActor;
   skillName: string;
   examplePrompts?: string[];
+  intent: SkillHubPublishIntent;
+  expectedSlug?: string;
+  expectedLocalChecksum: string;
+  expectedHubChecksum?: string | null;
 }) {
   const prepared = await prepareWorkspacePublishSkill({
     workspaceDir: params.workspaceDir,
@@ -694,6 +972,10 @@ export async function publishWorkspaceSkillToHub(params: {
   return await publishPreparedSkill({
     actor: params.actor,
     prepared,
+    intent: params.intent,
+    expectedSlug: params.expectedSlug,
+    expectedLocalChecksum: params.expectedLocalChecksum,
+    expectedHubChecksum: params.expectedHubChecksum,
   });
 }
 
@@ -702,6 +984,7 @@ export async function uploadSkillPackageToHub(params: {
   filename: string;
   contentBase64: string;
   examplePrompts?: string[];
+  expectedHubChecksum?: string | null;
 }) {
   const prepared = await prepareUploadedSkill({
     filename: params.filename,
@@ -712,6 +995,7 @@ export async function uploadSkillPackageToHub(params: {
     return await publishPreparedSkill({
       actor: params.actor,
       prepared,
+      expectedHubChecksum: params.expectedHubChecksum,
     });
   } finally {
     if (prepared.cleanupDir) {
@@ -722,7 +1006,7 @@ export async function uploadSkillPackageToHub(params: {
 
 async function readLikesState(slug: string): Promise<SkillHubLikesState> {
   await ensureSkillHubDirs();
-  return await readJsonFile<SkillHubLikesState>(resolveLikesStatePath(slug), { actors: {} });
+  return await readJsonFile(resolveLikesStatePath(slug), { actors: {} });
 }
 
 async function writeLikesState(slug: string, state: SkillHubLikesState): Promise<void> {
@@ -789,9 +1073,13 @@ export async function listSkillHubEntries(params: {
   const all = await listSkillHubMetadata();
   const installState = await readWorkspaceInstallState(params.workspaceDir);
   const query = params.query?.trim().toLowerCase() ?? "";
-  const entries = (await Promise.all(
-    all.map((metadata) => mapMetadataToListEntry({ metadata, actor: params.actor, installState })),
-  ))
+  const entries = (
+    await Promise.all(
+      all.map((metadata) =>
+        mapMetadataToListEntry({ metadata, actor: params.actor, installState }),
+      ),
+    )
+  )
     .filter((entry) => {
       if (!query) {
         return true;
@@ -825,20 +1113,141 @@ export async function listSkillHubEntries(params: {
     }
     switch (sort) {
       case "installs":
-        if (b.installCount !== a.installCount) {return b.installCount - a.installCount;}
+        if (b.installCount !== a.installCount) {
+          return b.installCount - a.installCount;
+        }
         break;
       case "likes":
-        if (b.likeCount !== a.likeCount) {return b.likeCount - a.likeCount;}
+        if (b.likeCount !== a.likeCount) {
+          return b.likeCount - a.likeCount;
+        }
         break;
       case "az":
         return a.displayName.localeCompare(b.displayName);
       case "recent":
       default:
-        if (b.updatedAt !== a.updatedAt) {return b.updatedAt.localeCompare(a.updatedAt);}
+        if (b.updatedAt !== a.updatedAt) {
+          return b.updatedAt.localeCompare(a.updatedAt);
+        }
         break;
     }
     return a.displayName.localeCompare(b.displayName);
   });
+}
+
+export async function listWorkspacePublishEntries(params: {
+  workspaceDir: string;
+  actor: SkillHubActor;
+  config?: OpenClawConfig;
+}): Promise<WorkspacePublishEntry[]> {
+  const entries = loadWorkspaceSkillEntries(params.workspaceDir, {
+    config: params.config,
+  }).filter((entry) => resolveSkillSource(entry.skill) === "openclaw-workspace");
+  const metadata = await listSkillHubMetadata();
+  const metadataBySlug = new Map(metadata.map((entry) => [entry.slug, entry]));
+  const installState = await readWorkspaceInstallState(params.workspaceDir);
+
+  return await Promise.all(
+    entries.map(async (entry): Promise<WorkspacePublishEntry> => {
+      const displayName = entry.skill.name;
+      const skillKey = entry.metadata?.skillKey ?? displayName;
+      const slug = toSlug(displayName);
+      const existing = metadataBySlug.get(slug) ?? null;
+      const installedFromHub = Object.values(installState.skills).some(
+        (installed) =>
+          installed.displayName === displayName ||
+          path.resolve(installed.installedPath) === path.resolve(entry.skill.baseDir),
+      );
+      try {
+        const flags = await scanSkillTree(entry.skill.baseDir);
+        const localChecksum = await computeSkillDirectoryChecksum(entry.skill.baseDir);
+        const presentation = resolveWorkspacePublishState({
+          displayName,
+          actor: params.actor,
+          existing,
+          localChecksum,
+          localFlags: flags,
+        });
+        return {
+          skillName: displayName,
+          skillKey,
+          description: entry.skill.description,
+          ...(existing
+            ? {
+                matchedHubSlug: existing.slug,
+                hubVersion: existing.latestVersion,
+                ownerAccountId: existing.owner.accountId,
+              }
+            : {}),
+          installedFromHub,
+          localChecksum,
+          ...(existing?.contentChecksum ? { hubChecksum: existing.contentChecksum } : {}),
+          flags,
+          ...presentation,
+        };
+      } catch (err) {
+        const message = formatErrorMessage(err);
+        const symlink = message.toLowerCase().includes("symlink");
+        return {
+          skillName: displayName,
+          skillKey,
+          description: entry.skill.description,
+          ...(existing
+            ? {
+                matchedHubSlug: existing.slug,
+                hubVersion: existing.latestVersion,
+                ownerAccountId: existing.owner.accountId,
+              }
+            : {}),
+          installedFromHub,
+          state: "conflict_or_unknown",
+          ...workspacePublishPresentation(
+            "conflict_or_unknown",
+            symlink
+              ? "심볼릭 링크가 포함된 스킬은 발행할 수 없습니다."
+              : `스킬 내용을 확인할 수 없습니다: ${message}`,
+          ),
+        };
+      }
+    }),
+  );
+}
+
+export async function getSkillHubOverview(params: {
+  workspaceDir: string;
+  actor: SkillHubActor;
+  config?: OpenClawConfig;
+}): Promise<SkillHubOverview> {
+  const [allMetadata, installState, localEntries] = await Promise.all([
+    listSkillHubMetadata(),
+    readWorkspaceInstallState(params.workspaceDir),
+    Promise.resolve(
+      loadWorkspaceSkillEntries(params.workspaceDir, { config: params.config }).filter(
+        (entry) => resolveSkillSource(entry.skill) === "openclaw-workspace",
+      ),
+    ),
+  ]);
+  const installedEntries = await Promise.all(
+    allMetadata.map((metadata) =>
+      mapMetadataToListEntry({ metadata, actor: params.actor, installState }),
+    ),
+  );
+  return {
+    sharedSkillCount: allMetadata.filter((entry) => !entry.hidden).length,
+    updateAvailableCount: installedEntries.filter((entry) => entry.updateAvailable).length,
+    localSkillCount: localEntries.length,
+    installedSkillCount: Object.keys(installState.skills).length,
+    recentUpdates: allMetadata
+      .filter((entry) => !entry.hidden || entry.owner.accountId === params.actor.employeeId)
+      .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .slice(0, 5)
+      .map((entry) => ({
+        slug: entry.slug,
+        displayName: entry.displayName,
+        latestVersion: entry.latestVersion,
+        updatedAt: entry.updatedAt,
+      })),
+  };
 }
 
 export async function getSkillHubDetail(params: {
@@ -877,7 +1286,7 @@ async function recalculateInstallerCount(slug: string): Promise<number> {
       if (entry.name !== WORKSPACE_INSTALL_STATE_FILE) {
         continue;
       }
-      const state = await readJsonFile<SkillHubInstallState>(fullPath, { skills: {} });
+      const state = await readJsonFile(fullPath, { skills: {} });
       if (state.skills[slug]) {
         count += 1;
       }
@@ -885,6 +1294,34 @@ async function recalculateInstallerCount(slug: string): Promise<number> {
   }
   await walk(stateDir);
   return count;
+}
+
+async function detachHubInstallReferences(slug: string): Promise<void> {
+  async function walk(dir: string): Promise<void> {
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = await fsp.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+        continue;
+      }
+      if (entry.name !== WORKSPACE_INSTALL_STATE_FILE) {
+        continue;
+      }
+      const state = await readJsonFile(fullPath, { skills: {} });
+      if (!state.skills[slug]) {
+        continue;
+      }
+      delete state.skills[slug];
+      await writeJsonFile(fullPath, state);
+    }
+  }
+  await walk(CONFIG_DIR);
 }
 
 async function installSkillHubVersionToWorkspace(params: {
@@ -969,10 +1406,10 @@ export async function updateSkillFromHub(params: {
   if (!state.skills[params.slug]) {
     throw new Error("skill is not installed in this workspace");
   }
-  if (compareSemver(metadata.latestVersion, state.skills[params.slug]!.installedVersion) <= 0) {
+  if (compareSemver(metadata.latestVersion, state.skills[params.slug].installedVersion) <= 0) {
     return {
       slug: params.slug,
-      version: state.skills[params.slug]!.installedVersion,
+      version: state.skills[params.slug].installedVersion,
       updated: false,
     };
   }
@@ -996,11 +1433,7 @@ export async function updateSkillFromHub(params: {
   };
 }
 
-export async function hideSkillFromHub(params: {
-  slug: string;
-  actor: SkillHubActor;
-  hidden?: boolean;
-}) {
+export async function deleteSkillFromHub(params: { slug: string; actor: SkillHubActor }) {
   const metadata = await readSkillHubMetadata(params.slug);
   if (!metadata) {
     throw new Error(`skill not found: ${params.slug}`);
@@ -1008,23 +1441,28 @@ export async function hideSkillFromHub(params: {
   const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
   const actorIsAdmin = params.actor.globalRole === "admin";
   if (!actorIsOwner && !actorIsAdmin) {
-    throw new Error("only the skill owner or an admin can manage visibility for this skill");
+    throw new Error("only the skill owner or an admin can delete this skill from Skill Hub");
   }
-  metadata.hidden = typeof params.hidden === "boolean" ? params.hidden : true;
-  metadata.updatedAt = new Date().toISOString();
-  await writeSkillHubMetadata(metadata);
-  await appendEventLog("hides.ndjson", {
-    ts: metadata.updatedAt,
+  const nowIso = new Date().toISOString();
+  await removeDirIfExists(resolveSkillHubMetadataPath(params.slug));
+  await removeDirIfExists(path.join(REGISTRY_ROOT, params.slug));
+  await removeDirIfExists(resolveLikesStatePath(params.slug));
+  await detachHubInstallReferences(params.slug);
+  await refreshSkillHubAggregates();
+  await appendEventLog("hub-deletes.ndjson", {
+    ts: nowIso,
     slug: params.slug,
     actor: params.actor,
-    hidden: metadata.hidden,
+    by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
   });
   appendSkillOwnershipEvent({
     slug: params.slug,
     actorAccountId: params.actor.employeeId,
-    eventType: metadata.hidden ? "skill.hidden" : "skill.unhidden",
+    eventType: "skill.deleted.from_hub",
     payload: {
       by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
+      previousOwnerAccountId: metadata.owner.accountId,
+      previousUploaderEmployeeId: metadata.uploader.employeeId,
     },
   });
 }
@@ -1158,7 +1596,9 @@ export async function transferSkillHubOwnership(params: {
   const previousOwnerAccountId = metadata.owner.accountId;
   metadata.owner = {
     accountId: target.id,
-    ...(resolveAccountDisplayName(target.id) ? { name: resolveAccountDisplayName(target.id)! } : {}),
+    ...(resolveAccountDisplayName(target.id)
+      ? { name: resolveAccountDisplayName(target.id)! }
+      : {}),
   };
   metadata.updatedAt = new Date().toISOString();
   await writeSkillHubMetadata(metadata);
@@ -1230,7 +1670,10 @@ export async function deleteSkillFromWorkspace(params: {
   });
   const local = entries.find((entry) => {
     const source = resolveSkillSource(entry.skill);
-    return source === "openclaw-workspace" && (entry.skill.name === params.skillKey || entry.metadata?.skillKey === params.skillKey);
+    return (
+      source === "openclaw-workspace" &&
+      (entry.skill.name === params.skillKey || entry.metadata?.skillKey === params.skillKey)
+    );
   });
   if (!local) {
     throw new Error(`workspace skill not found: ${params.skillKey}`);
@@ -1289,7 +1732,10 @@ export function resolveInstalledHubVersionForSkill(params: {
 }): SkillHubInstallStateEntry | null {
   const state = readInstalledSkillHubStateSync(params.workspaceDir);
   for (const value of Object.values(state.skills)) {
-    if (value.displayName === params.skillName || path.resolve(value.installedPath) === path.resolve(params.baseDir)) {
+    if (
+      value.displayName === params.skillName ||
+      path.resolve(value.installedPath) === path.resolve(params.baseDir)
+    ) {
       return value;
     }
   }
@@ -1348,7 +1794,11 @@ export function formatHubPublishMessage(params: {
   slug: string;
   version: string;
   created: boolean;
+  noOp?: boolean;
 }): string {
+  if (params.noOp) {
+    return "이미 최신 상태입니다.";
+  }
   if (params.created) {
     return `Published to Skill Hub: ${params.slug}`;
   }

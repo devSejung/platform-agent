@@ -137,7 +137,7 @@ describe("skill hub metadata compatibility", () => {
         actor: { employeeId: "agent-other", name: "Other" },
         examplePrompts: ["one"],
       }),
-    ).rejects.toThrow("only the skill owner can edit example prompts");
+    ).rejects.toThrow("only the skill owner or an admin can edit example prompts");
 
     await updateSkillHubExamplePrompts({
       slug: "demo-skill",

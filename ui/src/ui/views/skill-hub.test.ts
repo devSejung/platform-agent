@@ -3,37 +3,23 @@
 import { render } from "lit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "../../i18n/index.ts";
-import type { SkillStatusEntry, SkillStatusReport } from "../types.ts";
 import { renderSkillHub, type SkillHubProps } from "./skill-hub.ts";
 
-const dialogRestores: Array<() => void> = [];
-
-function createWorkspaceSkill(overrides: Partial<SkillStatusEntry> = {}): SkillStatusEntry {
+function createWorkspaceSkill() {
   return {
-    name: "workspace-skill-alpha",
+    skillName: "workspace-skill-alpha",
     description: "Workspace skill description",
-    source: "openclaw-workspace",
-    filePath: "/tmp/workspace/skills/workspace-skill-alpha/SKILL.md",
-    baseDir: "/tmp/workspace/skills/workspace-skill-alpha",
     skillKey: "workspace-skill-alpha",
-    always: false,
+    installedFromHub: false,
+    localChecksum: "checksum",
+    state: "new_local_skill" as const,
+    actionLabel: "Publish",
     disabled: false,
-    blockedByAllowlist: false,
-    eligible: true,
-    requirements: { bins: [], env: [], config: [], os: [] },
-    missing: { bins: [], env: [], config: [], os: [] },
-    configChecks: [],
-    install: [],
-    ...overrides,
+    reason: "This will be published as a new skill.",
   };
 }
 
 function createProps(overrides: Partial<SkillHubProps> = {}): SkillHubProps {
-  const workspaceSkillsReport: SkillStatusReport = {
-    workspaceDir: "/tmp/workspace",
-    managedSkillsDir: "/tmp/managed-skills",
-    skills: [createWorkspaceSkill()],
-  };
   return {
     loading: false,
     entries: [],
@@ -48,9 +34,17 @@ function createProps(overrides: Partial<SkillHubProps> = {}): SkillHubProps {
     busySlug: null,
     message: null,
     workspacePublishing: false,
+    workspacePendingKeys: [],
+    workspacePublishEntries: [createWorkspaceSkill()],
+    overview: {
+      sharedSkillCount: 0,
+      updateAvailableCount: 0,
+      localSkillCount: 1,
+      installedSkillCount: 0,
+      recentUpdates: [],
+    },
     uploading: false,
     workspacePanelOpen: false,
-    workspaceSkillsReport,
     editorOpen: false,
     editorMode: null,
     editorTitle: null,
@@ -77,7 +71,7 @@ function createProps(overrides: Partial<SkillHubProps> = {}): SkillHubProps {
     onInstall: () => undefined,
     onUpdate: () => undefined,
     onDelete: () => undefined,
-    onSetVisibility: () => undefined,
+    onDeleteFromHub: () => undefined,
     onLike: () => undefined,
     onCopy: () => undefined,
     onOpenPublishEditor: () => undefined,
@@ -99,21 +93,6 @@ function createProps(overrides: Partial<SkillHubProps> = {}): SkillHubProps {
   };
 }
 
-function installDialogMethod(name: "showModal" | "close", impl: (this: HTMLDialogElement) => void) {
-  const original = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, name);
-  Object.defineProperty(HTMLDialogElement.prototype, name, {
-    configurable: true,
-    value: impl,
-  });
-  dialogRestores.push(() => {
-    if (original) {
-      Object.defineProperty(HTMLDialogElement.prototype, name, original);
-    } else {
-      delete (HTMLDialogElement.prototype as unknown as Record<string, unknown>)[name];
-    }
-  });
-}
-
 describe("renderSkillHub", () => {
   beforeEach(async () => {
     await i18n.setLocale("en");
@@ -121,9 +100,6 @@ describe("renderSkillHub", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    while (dialogRestores.length > 0) {
-      dialogRestores.pop()?.();
-    }
   });
 
   it("renders the view and workspace publish panel without throwing", async () => {
@@ -153,6 +129,34 @@ describe("renderSkillHub", () => {
 
     expect(container.querySelector("dialog")?.hasAttribute("open")).toBe(true);
     expect(container.textContent).toContain("Upload skill package");
+  });
+
+  it("renders the server-provided publish state and disables unavailable actions", async () => {
+    const container = document.createElement("div");
+    render(
+      renderSkillHub(
+        createProps({
+          workspacePanelOpen: true,
+          workspacePublishEntries: [
+            {
+              ...createWorkspaceSkill(),
+              installedFromHub: true,
+              state: "existing_skill_non_owner",
+              actionLabel: "발행 불가",
+              disabled: true,
+              reason: "원본 업데이트는 owner만 가능합니다.",
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    const buttons = [...container.querySelectorAll("button")];
+    const publishButton = buttons.find((button) => button.textContent?.includes("발행 불가"));
+    expect(publishButton?.disabled).toBe(true);
+    expect(container.textContent).toContain("원본 업데이트는 owner만 가능합니다.");
   });
 
   it("renders the ownership transfer dialog when requested", async () => {

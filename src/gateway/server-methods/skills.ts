@@ -1,6 +1,7 @@
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { canExecRequestNode } from "../../agents/exec-defaults.js";
 import {
+  deleteSkillFromHub,
   deleteSkillFromWorkspace,
   formatHubPublishMessage,
   formatSkillHubDeleteMessage,
@@ -8,9 +9,10 @@ import {
   formatSkillHubInstallMessage,
   formatSkillHubUpdateMessage,
   getSkillHubDetail,
-  hideSkillFromHub,
+  getSkillHubOverview,
   installSkillFromHub,
   listSkillHubEntries,
+  listWorkspacePublishEntries,
   publishWorkspaceSkillToHub,
   resolveSkillHubActor,
   toggleSkillHubLike,
@@ -54,6 +56,7 @@ import {
   validateSkillHubPublishParams,
   validateSkillHubTransferOwnershipParams,
   validateSkillHubUploadParams,
+  validateSkillHubWorkspacePublishListParams,
   validateSkillsDeleteParams,
   validateSkillsInstallParams,
   validateSkillsSearchParams,
@@ -410,7 +413,10 @@ export const skillsHandlers: GatewayRequestHandlers = {
       const result = await deleteSkillFromWorkspace({
         workspaceDir,
         skillKey: (params as { skillKey: string }).skillKey,
-        slug: typeof (params as { slug?: string }).slug === "string" ? (params as { slug?: string }).slug : undefined,
+        slug:
+          typeof (params as { slug?: string }).slug === "string"
+            ? (params as { slug?: string }).slug
+            : undefined,
         config: cfg,
       });
       respond(
@@ -449,10 +455,14 @@ export const skillsHandlers: GatewayRequestHandlers = {
       const entries = await listSkillHubEntries({
         workspaceDir,
         actor,
-        query: typeof (params as { query?: string }).query === "string" ? (params as { query?: string }).query : undefined,
+        query:
+          typeof (params as { query?: string }).query === "string"
+            ? (params as { query?: string }).query
+            : undefined,
         scope:
           typeof (params as { scope?: string }).scope === "string"
-            ? ((params as { scope?: "discover" | "installed" | "uploads" | "updates" }).scope ?? "discover")
+            ? ((params as { scope?: "discover" | "installed" | "uploads" | "updates" }).scope ??
+              "discover")
             : "discover",
         sort:
           typeof (params as { sort?: string }).sort === "string"
@@ -460,6 +470,38 @@ export const skillsHandlers: GatewayRequestHandlers = {
             : "recent",
       });
       respond(true, { entries }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.workspacePublish.list": async ({ params, respond, client }) => {
+    if (!validateSkillHubWorkspacePublishListParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.workspacePublish.list params: ${formatValidationErrors(validateSkillHubWorkspacePublishListParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { workspaceDir, actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const [entries, overview] = await Promise.all([
+        listWorkspacePublishEntries({
+          workspaceDir,
+          actor,
+          config: cfg,
+        }),
+        getSkillHubOverview({
+          workspaceDir,
+          actor,
+          config: cfg,
+        }),
+      ]);
+      respond(true, { entries, overview }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
     }
@@ -509,10 +551,14 @@ export const skillsHandlers: GatewayRequestHandlers = {
         config: cfg,
         actor,
         skillName: (params as { skillName: string }).skillName,
-        examplePrompts:
-          Array.isArray((params as { examplePrompts?: string[] }).examplePrompts)
-            ? (params as { examplePrompts?: string[] }).examplePrompts
-            : undefined,
+        intent: (params as { intent: "create" | "update" }).intent,
+        expectedSlug: (params as { expectedSlug?: string }).expectedSlug,
+        expectedLocalChecksum: (params as { expectedLocalChecksum: string }).expectedLocalChecksum,
+        expectedHubChecksum: (params as { expectedHubChecksum?: string | null })
+          .expectedHubChecksum,
+        examplePrompts: Array.isArray((params as { examplePrompts?: string[] }).examplePrompts)
+          ? (params as { examplePrompts?: string[] }).examplePrompts
+          : undefined,
       });
       respond(
         true,
@@ -547,10 +593,11 @@ export const skillsHandlers: GatewayRequestHandlers = {
         actor,
         filename: (params as { filename: string }).filename,
         contentBase64: (params as { contentBase64: string }).contentBase64,
-        examplePrompts:
-          Array.isArray((params as { examplePrompts?: string[] }).examplePrompts)
-            ? (params as { examplePrompts?: string[] }).examplePrompts
-            : undefined,
+        expectedHubChecksum: (params as { expectedHubChecksum?: string | null })
+          .expectedHubChecksum,
+        examplePrompts: Array.isArray((params as { examplePrompts?: string[] }).examplePrompts)
+          ? (params as { examplePrompts?: string[] }).examplePrompts
+          : undefined,
       });
       respond(
         true,
@@ -649,17 +696,46 @@ export const skillsHandlers: GatewayRequestHandlers = {
     const cfg = loadConfig();
     const { actor } = resolveSkillsWorkspace({ cfg, client });
     try {
-      await hideSkillFromHub({
+      await deleteSkillFromHub({
         slug: (params as { slug: string }).slug,
         actor,
-        hidden: true,
       });
       respond(
         true,
         {
           ok: true,
           slug: (params as { slug: string }).slug,
-          message: `Hidden from Skill Hub: ${(params as { slug: string }).slug}`,
+          message: `Deleted from Skill Hub: ${(params as { slug: string }).slug}`,
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.hardDelete": async ({ params, respond, client }) => {
+    if (!validateSkillHubHideParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.hardDelete params: ${formatValidationErrors(validateSkillHubHideParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { actor } = resolveSkillsWorkspace({ cfg, client });
+    try {
+      const slug = (params as { slug: string }).slug;
+      await deleteSkillFromHub({ slug, actor });
+      respond(
+        true,
+        {
+          ok: true,
+          slug,
+          message: `Deleted from Skill Hub: ${slug}`,
         },
         undefined,
       );
@@ -682,18 +758,14 @@ export const skillsHandlers: GatewayRequestHandlers = {
     const cfg = loadConfig();
     const { actor } = resolveSkillsWorkspace({ cfg, client });
     try {
-      const { slug, hidden } = params as { slug: string; hidden?: boolean };
-      await hideSkillFromHub({
-        slug,
-        actor,
-        hidden: typeof hidden === "boolean" ? hidden : true,
-      });
+      const { slug } = params as { slug: string; hidden?: boolean };
+      await deleteSkillFromHub({ slug, actor });
       respond(
         true,
         {
           ok: true,
           slug,
-          message: hidden ? `Hidden from Skill Hub: ${slug}` : `Visible in Skill Hub: ${slug}`,
+          message: `Deleted from Skill Hub: ${slug}`,
         },
         undefined,
       );

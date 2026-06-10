@@ -1,28 +1,28 @@
+import type {
+  EmployeeUiAccountSummary,
+  EmployeeUiLoginNotice,
+} from "../../../src/gateway/employee-ui-contract.ts";
 import type { EventLogEntry } from "./app-events.ts";
 import type { CompactionStatus, FallbackStatus, RunPhaseStatus } from "./app-tool-stream.ts";
+import type { AccountDirectoryEntry } from "./controllers/accounts.ts";
+import type { AdminAccountDetail, AdminAccountEntry } from "./controllers/admin-accounts.ts";
 import type { CronModelSuggestionsState, CronState } from "./controllers/cron.ts";
 import type { DevicePairingList } from "./controllers/devices.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
+import type { GroupDetail, GroupEntry, GroupScopeOption } from "./controllers/groups.ts";
+import type { SkillHubDetail, SkillHubEntry, SkillHubScope } from "./controllers/skill-hub.ts";
 import type {
   ClawHubSearchResult,
   ClawHubSkillDetail,
   SkillMessage,
 } from "./controllers/skills.ts";
-import type { SkillHubDetail, SkillHubEntry, SkillHubScope } from "./controllers/skill-hub.ts";
-import type { AccountDirectoryEntry } from "./controllers/accounts.ts";
-import type { AdminAccountDetail, AdminAccountEntry } from "./controllers/admin-accounts.ts";
-import type { GroupDetail, GroupEntry, GroupScopeOption } from "./controllers/groups.ts";
 import type { WorkspaceFileUploadItem } from "./controllers/workspace-files.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import type { UiSettings } from "./storage.ts";
 import type { ThemeTransitionContext } from "./theme-transition.ts";
 import type { ResolvedTheme, ThemeMode, ThemeName } from "./theme.ts";
-import type {
-  EmployeeUiAccountSummary,
-  EmployeeUiLoginNotice,
-} from "../../../src/gateway/employee-ui-contract.ts";
 import type {
   AgentsListResult,
   AgentsFilesListResult,
@@ -125,7 +125,9 @@ export type AppViewState = {
   workspaceFilesUploads: WorkspaceFileUploadItem[];
   workspaceFilesPreviewLoading: boolean;
   workspaceFilesPreviewError: string | null;
-  workspaceFilesPreview: import("../../../src/gateway/employee-workspace-files-contract.ts").WorkspaceFilePreviewResponse | null;
+  workspaceFilesPreview:
+    | import("../../../src/gateway/employee-workspace-files-contract.ts").WorkspaceFilePreviewResponse
+    | null;
   nodesLoading: boolean;
   nodes: Array<Record<string, unknown>>;
   chatNewMessagesBelow: boolean;
@@ -362,6 +364,9 @@ export type AppViewState = {
     skillHubBusySlug: string | null;
     skillHubMessage: { kind: "success" | "error"; text: string } | null;
     skillHubWorkspacePublishing: boolean;
+    skillHubWorkspacePendingKeys: string[];
+    skillHubWorkspacePublishEntries: import("./controllers/skill-hub.ts").WorkspacePublishEntry[];
+    skillHubOverview: import("./controllers/skill-hub.ts").SkillHubOverview | null;
     skillHubUploading: boolean;
     skillHubWorkspacePanelOpen: boolean;
     skillHubEditorOpen: boolean;
@@ -501,11 +506,11 @@ export type AppViewState = {
     handleNostrProfileImport: () => Promise<void>;
     handleNostrProfileToggleAdvanced: () => void;
     handleExecApprovalDecision: (decision: "allow-once" | "allow-always" | "deny") => Promise<void>;
-  handleGatewayUrlConfirm: () => void;
-  handleGatewayUrlCancel: () => void;
-  handleEmployeeLogin: () => Promise<void>;
-  handleEmployeeAdSso: () => Promise<void>;
-  handleEmployeeLogout: () => Promise<void>;
+    handleGatewayUrlConfirm: () => void;
+    handleGatewayUrlCancel: () => void;
+    handleEmployeeLogin: () => Promise<void>;
+    handleEmployeeAdSso: () => Promise<void>;
+    handleEmployeeLogout: () => Promise<void>;
     handleConfigLoad: () => Promise<void>;
     handleConfigSave: () => Promise<void>;
     handleConfigApply: () => Promise<void>;

@@ -2,6 +2,42 @@ import type { GatewayBrowserClient } from "../gateway.ts";
 
 export type SkillHubScope = "discover" | "installed" | "uploads" | "updates";
 export type SkillHubSort = "recent" | "installs" | "likes" | "az";
+export type WorkspacePublishState =
+  | "new_local_skill"
+  | "update_available_from_local"
+  | "up_to_date"
+  | "existing_skill_non_owner"
+  | "conflict_or_unknown";
+
+export type WorkspacePublishEntry = {
+  skillName: string;
+  skillKey: string;
+  description: string;
+  matchedHubSlug?: string;
+  hubVersion?: string;
+  ownerAccountId?: string;
+  installedFromHub: boolean;
+  localChecksum?: string;
+  hubChecksum?: string;
+  flags?: SkillHubEntry["flags"];
+  state: WorkspacePublishState;
+  actionLabel: string;
+  disabled: boolean;
+  reason: string;
+};
+
+export type SkillHubOverview = {
+  sharedSkillCount: number;
+  updateAvailableCount: number;
+  localSkillCount: number;
+  installedSkillCount: number;
+  recentUpdates: Array<{
+    slug: string;
+    displayName: string;
+    latestVersion: string;
+    updatedAt: string;
+  }>;
+};
 
 export type SkillHubEntry = {
   slug: string;
@@ -61,6 +97,9 @@ export type SkillHubState = {
   skillHubBusySlug: string | null;
   skillHubMessage: { kind: "success" | "error"; text: string } | null;
   skillHubWorkspacePublishing: boolean;
+  skillHubWorkspacePendingKeys: string[];
+  skillHubWorkspacePublishEntries: WorkspacePublishEntry[];
+  skillHubOverview: SkillHubOverview | null;
   skillHubUploading: boolean;
   skillHubEditorOpen: boolean;
   skillHubEditorMode: "publish" | "upload" | "edit-metadata" | null;
@@ -83,7 +122,7 @@ function getErrorMessage(err: unknown): string {
 
 export async function loadSkillHub(state: SkillHubState) {
   if (!state.client || !state.connected) {
-    return;
+    return false;
   }
   state.skillHubLoading = true;
   state.skillHubError = null;
@@ -94,10 +133,29 @@ export async function loadSkillHub(state: SkillHubState) {
       ...(state.skillHubQuery.trim() ? { query: state.skillHubQuery.trim() } : {}),
     });
     state.skillHubEntries = result?.entries ?? [];
+    return true;
   } catch (err) {
     state.skillHubError = getErrorMessage(err);
+    return false;
   } finally {
     state.skillHubLoading = false;
+  }
+}
+
+export async function loadSkillHubWorkspacePublish(state: SkillHubState) {
+  if (!state.client || !state.connected) {
+    return false;
+  }
+  try {
+    const result = await state.client.request<{
+      entries: WorkspacePublishEntry[];
+      overview: SkillHubOverview;
+    }>("skillhub.workspacePublish.list", {});
+    state.skillHubWorkspacePublishEntries = result?.entries ?? [];
+    state.skillHubOverview = result?.overview ?? null;
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -110,9 +168,12 @@ export async function loadSkillHubDetail(state: SkillHubState, slug: string) {
   state.skillHubDetailError = null;
   state.skillHubDetail = null;
   try {
-    const result = await state.client.request<{ detail: SkillHubDetail | null }>("skillhub.detail", {
-      slug,
-    });
+    const result = await state.client.request<{ detail: SkillHubDetail | null }>(
+      "skillhub.detail",
+      {
+        slug,
+      },
+    );
     if (state.skillHubDetailSlug !== slug) {
       return;
     }
@@ -177,7 +238,8 @@ export async function resolveExistingSkillHubPromptsForSkillName(
       query: normalizedName,
     });
     slug =
-      result?.entries?.find((entry) => entry.uploadedByYou && entry.displayName === normalizedName)?.slug ?? null;
+      result?.entries?.find((entry) => entry.uploadedByYou && entry.displayName === normalizedName)
+        ?.slug ?? null;
   }
   if (!slug) {
     return null;
@@ -190,8 +252,14 @@ export async function resolveExistingSkillHubPromptsForSkillName(
     };
   }
 
-  const result = await state.client.request<{ detail: SkillHubDetail | null }>("skillhub.detail", { slug });
-  if (!result?.detail || !result.detail.uploadedByYou || result.detail.displayName !== normalizedName) {
+  const result = await state.client.request<{ detail: SkillHubDetail | null }>("skillhub.detail", {
+    slug,
+  });
+  if (
+    !result?.detail ||
+    !result.detail.uploadedByYou ||
+    result.detail.displayName !== normalizedName
+  ) {
     return null;
   }
   return {
@@ -208,6 +276,7 @@ async function runMutation(
   state: SkillHubState,
   slug: string,
   request: Promise<{ message?: string; version?: string }>,
+  options?: { clearDetailOnSuccess?: boolean },
 ) {
   state.skillHubBusySlug = slug;
   state.skillHubMessage = null;
@@ -217,8 +286,13 @@ async function runMutation(
       kind: "success",
       text: result?.message ?? slug,
     };
-    await loadSkillHub(state);
-    if (state.skillHubDetailSlug === slug) {
+    if (options?.clearDetailOnSuccess && state.skillHubDetailSlug === slug) {
+      state.skillHubDetailSlug = null;
+      state.skillHubDetail = null;
+      state.skillHubDetailError = null;
+    }
+    await Promise.allSettled([loadSkillHub(state), loadSkillHubWorkspacePublish(state)]);
+    if (!options?.clearDetailOnSuccess && state.skillHubDetailSlug === slug) {
       await loadSkillHubDetail(state, slug);
     }
   } catch (err) {
@@ -235,7 +309,11 @@ function patchEntryLike(entry: SkillHubEntry, liked: boolean, likeCount: number)
   return { ...entry, likedByYou: liked, likeCount };
 }
 
-function patchDetailLike(detail: SkillHubDetail, liked: boolean, likeCount: number): SkillHubDetail {
+function patchDetailLike(
+  detail: SkillHubDetail,
+  liked: boolean,
+  likeCount: number,
+): SkillHubDetail {
   return { ...detail, likedByYou: liked, likeCount };
 }
 
@@ -260,15 +338,13 @@ export async function deleteSkillHubSkill(state: SkillHubState, slug: string) {
   await runMutation(state, slug, state.client.request("skillhub.delete", { slug }));
 }
 
-export async function hideSkillHubSkill(state: SkillHubState, slug: string, hidden = true) {
+export async function deleteSkillHubEntry(state: SkillHubState, slug: string) {
   if (!state.client || !state.connected) {
     return;
   }
-  await runMutation(
-    state,
-    slug,
-    state.client.request("skillhub.visibility.update", { slug, hidden }),
-  );
+  await runMutation(state, slug, state.client.request("skillhub.hardDelete", { slug }), {
+    clearDetailOnSuccess: true,
+  });
 }
 
 export async function toggleLikeSkillHubSkill(state: SkillHubState, slug: string) {
@@ -331,27 +407,48 @@ export async function toggleLikeSkillHubSkill(state: SkillHubState, slug: string
 
 export async function publishWorkspaceSkillWithPrompts(
   state: SkillHubState,
-  skillName: string,
+  entry: WorkspacePublishEntry,
   examplePrompts: string[],
 ) {
   if (!state.client || !state.connected) {
     return;
   }
+  if (state.skillHubWorkspacePendingKeys.includes(entry.skillKey)) {
+    return;
+  }
+  if (!entry.localChecksum) {
+    throw new Error("로컬 스킬 checksum을 확인할 수 없습니다. 목록을 새로고침해주세요.");
+  }
   state.skillHubWorkspacePublishing = true;
+  state.skillHubWorkspacePendingKeys = [...state.skillHubWorkspacePendingKeys, entry.skillKey];
   try {
     const result = await state.client.request<{ message?: string }>("skillhub.publish", {
-      skillName,
+      skillName: entry.skillName,
+      intent: entry.state === "new_local_skill" ? "create" : "update",
+      ...(entry.matchedHubSlug ? { expectedSlug: entry.matchedHubSlug } : {}),
+      expectedLocalChecksum: entry.localChecksum,
+      expectedHubChecksum: entry.hubChecksum ?? null,
       examplePrompts,
     });
     state.skillHubMessage = {
       kind: "success",
-      text: result?.message ?? `Published ${skillName}`,
+      text: result?.message ?? `Published ${entry.skillName}`,
     };
-    await loadSkillHub(state);
-  } catch (err) {
-    throw err;
+    const refreshes = await Promise.allSettled([
+      loadSkillHub(state),
+      loadSkillHubWorkspacePublish(state),
+    ]);
+    if (refreshes.some((refresh) => refresh.status === "rejected" || !refresh.value)) {
+      state.skillHubMessage = {
+        kind: "success",
+        text: `${result?.message ?? `Published ${entry.skillName}`} 새로고침에 실패했습니다. 다시 시도해주세요.`,
+      };
+    }
   } finally {
     state.skillHubWorkspacePublishing = false;
+    state.skillHubWorkspacePendingKeys = state.skillHubWorkspacePendingKeys.filter(
+      (skillKey) => skillKey !== entry.skillKey,
+    );
   }
 }
 
@@ -382,9 +479,16 @@ export async function uploadSkillHubPackageWithPrompts(
       kind: "success",
       text: result?.message ?? `Uploaded ${file.name}`,
     };
-    await loadSkillHub(state);
-  } catch (err) {
-    throw err;
+    const refreshes = await Promise.allSettled([
+      loadSkillHub(state),
+      loadSkillHubWorkspacePublish(state),
+    ]);
+    if (refreshes.some((refresh) => refresh.status === "rejected" || !refresh.value)) {
+      state.skillHubMessage = {
+        kind: "success",
+        text: `${result?.message ?? `Uploaded ${file.name}`} 새로고침에 실패했습니다. 다시 시도해주세요.`,
+      };
+    }
   } finally {
     state.skillHubUploading = false;
   }

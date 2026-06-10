@@ -14,7 +14,7 @@ function createRespond() {
   return vi.fn();
 }
 
-describe("skillhub metadata and visibility gateway handlers", () => {
+describe("skillhub metadata and hard-delete gateway handlers", () => {
   let tempDir = "";
 
   afterEach(async () => {
@@ -27,7 +27,7 @@ describe("skillhub metadata and visibility gateway handlers", () => {
     }
   });
 
-  it("allows admins to edit metadata and toggle visibility without changing uploader or owner", async () => {
+  it("allows admins to edit metadata and hard-delete without changing uploader or owner", async () => {
     vi.resetModules();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-gateway-skill-metadata-"));
     process.env.OPENCLAW_STATE_DIR = tempDir;
@@ -69,6 +69,29 @@ describe("skillhub metadata and visibility gateway handlers", () => {
     });
 
     const metadataPath = path.join(tempDir, "skill-hub", "metadata", "demo-skill.json");
+    const installedSkillPath = path.join(
+      workspaceRoot,
+      "owner",
+      "skills",
+      "demo-skill",
+      "SKILL.md",
+    );
+    const installStatePath = path.join(workspaceRoot, "owner", ".skill-hub-installed.json");
+    await fs.mkdir(path.dirname(installedSkillPath), { recursive: true });
+    await fs.writeFile(installedSkillPath, "# Demo Skill\n", "utf8");
+    await writeJson(installStatePath, {
+      skills: {
+        "demo-skill": {
+          slug: "demo-skill",
+          displayName: "Demo Skill",
+          installedVersion: "1.0.0",
+          source: "hub",
+          installedAt: "2026-05-21T00:00:00.000Z",
+          updatedAt: "2026-05-21T00:00:00.000Z",
+          installedPath: path.dirname(installedSkillPath),
+        },
+      },
+    });
     await writeJson(metadataPath, {
       slug: "demo-skill",
       displayName: "Demo Skill",
@@ -116,50 +139,6 @@ describe("skillhub metadata and visibility gateway handlers", () => {
       undefined,
     );
 
-    respond = createRespond();
-    await skillsHandlers["skillhub.visibility.update"]({
-      params: {
-        slug: "demo-skill",
-        hidden: true,
-      },
-      respond,
-      client: {
-        connect: { role: "employee" },
-        internal: { employee: { employeeId: "admin", agentId: "admin", name: "Admin" } },
-      },
-    } as never);
-    expect(respond).toHaveBeenCalledWith(
-      true,
-      expect.objectContaining({
-        ok: true,
-        slug: "demo-skill",
-        message: "Hidden from Skill Hub: demo-skill",
-      }),
-      undefined,
-    );
-
-    respond = createRespond();
-    await skillsHandlers["skillhub.visibility.update"]({
-      params: {
-        slug: "demo-skill",
-        hidden: false,
-      },
-      respond,
-      client: {
-        connect: { role: "employee" },
-        internal: { employee: { employeeId: "admin", agentId: "admin", name: "Admin" } },
-      },
-    } as never);
-    expect(respond).toHaveBeenCalledWith(
-      true,
-      expect.objectContaining({
-        ok: true,
-        slug: "demo-skill",
-        message: "Visible in Skill Hub: demo-skill",
-      }),
-      undefined,
-    );
-
     const updated = JSON.parse(await fs.readFile(metadataPath, "utf8")) as {
       summary: string;
       hidden: boolean;
@@ -172,5 +151,32 @@ describe("skillhub metadata and visibility gateway handlers", () => {
     expect(updated.hidden).toBe(false);
     expect(updated.uploader.employeeId).toBe("owner");
     expect(updated.owner.accountId).toBe("owner");
+
+    respond = createRespond();
+    await skillsHandlers["skillhub.hardDelete"]({
+      params: {
+        slug: "demo-skill",
+      },
+      respond,
+      client: {
+        connect: { role: "employee" },
+        internal: { employee: { employeeId: "admin", agentId: "admin", name: "Admin" } },
+      },
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        ok: true,
+        slug: "demo-skill",
+        message: "Deleted from Skill Hub: demo-skill",
+      }),
+      undefined,
+    );
+    await expect(fs.access(metadataPath)).rejects.toThrow();
+    const installState = JSON.parse(await fs.readFile(installStatePath, "utf8")) as {
+      skills: Record<string, unknown>;
+    };
+    expect(installState.skills).not.toHaveProperty("demo-skill");
+    await expect(fs.access(installedSkillPath)).resolves.toBeUndefined();
   });
 });

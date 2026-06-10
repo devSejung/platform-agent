@@ -1,12 +1,9 @@
 import path from "node:path";
-import {
-  resolveInstalledHubVersionForSkill,
-  readSkillHubMetadataSync,
-} from "./skill-hub.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { evaluateEntryRequirementsForCurrentPlatform } from "../shared/entry-status.js";
 import type { RequirementConfigCheck, Requirements } from "../shared/requirements.js";
 import { CONFIG_DIR } from "../utils.js";
+import { resolveInstalledHubVersionForSkill, readSkillHubMetadataSync } from "./skill-hub.js";
 import {
   hasBinary,
   isBundledSkillAllowed,
@@ -219,9 +216,9 @@ function buildSkillStatus(
     skillName: entry.skill.name,
     baseDir: entry.skill.baseDir,
   });
-  const latestVersion = installedHubState
-    ? readSkillHubMetadataSync(installedHubState.slug)?.latestVersion ?? null
-    : null;
+  const hubMetadata = installedHubState ? readSkillHubMetadataSync(installedHubState.slug) : null;
+  const activeInstalledHubState = hubMetadata ? installedHubState : null;
+  const latestVersion = hubMetadata?.latestVersion ?? null;
   const canDelete =
     skillSource === "openclaw-workspace" || Boolean(installedHubState?.installedPath);
 
@@ -244,14 +241,14 @@ function buildSkillStatus(
     missing,
     configChecks,
     install: normalizeInstallOptions(entry, prefs ?? resolveSkillsInstallPreferences(config)),
-    ...(installedHubState
+    ...(activeInstalledHubState
       ? {
-          hubSlug: installedHubState.slug,
-          installedVersion: installedHubState.installedVersion,
+          hubSlug: activeInstalledHubState.slug,
+          installedVersion: activeInstalledHubState.installedVersion,
           ...(latestVersion ? { latestVersion } : {}),
           updateAvailable:
             Boolean(latestVersion) &&
-            compareVersions(latestVersion!, installedHubState.installedVersion) > 0,
+            compareVersions(latestVersion!, activeInstalledHubState.installedVersion) > 0,
         }
       : {}),
     canDelete,

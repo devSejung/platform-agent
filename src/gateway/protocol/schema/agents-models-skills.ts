@@ -368,6 +368,66 @@ const SkillHubWarningFlagsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const WorkspacePublishStateSchema = Type.Union([
+  Type.Literal("new_local_skill"),
+  Type.Literal("update_available_from_local"),
+  Type.Literal("up_to_date"),
+  Type.Literal("existing_skill_non_owner"),
+  Type.Literal("conflict_or_unknown"),
+]);
+
+export const SkillHubWorkspacePublishListParamsSchema = Type.Object(
+  {},
+  { additionalProperties: false },
+);
+
+export const SkillHubWorkspacePublishListResultSchema = Type.Object(
+  {
+    entries: Type.Array(
+      Type.Object(
+        {
+          skillName: NonEmptyString,
+          skillKey: NonEmptyString,
+          description: Type.String(),
+          matchedHubSlug: Type.Optional(NonEmptyString),
+          hubVersion: Type.Optional(NonEmptyString),
+          ownerAccountId: Type.Optional(NonEmptyString),
+          installedFromHub: Type.Boolean(),
+          localChecksum: Type.Optional(NonEmptyString),
+          hubChecksum: Type.Optional(NonEmptyString),
+          flags: Type.Optional(SkillHubWarningFlagsSchema),
+          state: WorkspacePublishStateSchema,
+          actionLabel: NonEmptyString,
+          disabled: Type.Boolean(),
+          reason: NonEmptyString,
+        },
+        { additionalProperties: false },
+      ),
+    ),
+    overview: Type.Object(
+      {
+        sharedSkillCount: Type.Integer({ minimum: 0 }),
+        updateAvailableCount: Type.Integer({ minimum: 0 }),
+        localSkillCount: Type.Integer({ minimum: 0 }),
+        installedSkillCount: Type.Integer({ minimum: 0 }),
+        recentUpdates: Type.Array(
+          Type.Object(
+            {
+              slug: NonEmptyString,
+              displayName: NonEmptyString,
+              latestVersion: NonEmptyString,
+              updatedAt: NonEmptyString,
+            },
+            { additionalProperties: false },
+          ),
+        ),
+      },
+      { additionalProperties: false },
+    ),
+  },
+  { additionalProperties: false },
+);
+
 export const SkillHubListResultSchema = Type.Object(
   {
     entries: Type.Array(
@@ -467,6 +527,10 @@ export const SkillHubDetailResultSchema = Type.Object(
 export const SkillHubPublishParamsSchema = Type.Object(
   {
     skillName: NonEmptyString,
+    intent: Type.Union([Type.Literal("create"), Type.Literal("update")]),
+    expectedSlug: Type.Optional(NonEmptyString),
+    expectedLocalChecksum: NonEmptyString,
+    expectedHubChecksum: Type.Optional(Type.Union([NonEmptyString, Type.Null()])),
     examplePrompts: Type.Optional(SkillHubExamplePromptsSchema),
   },
   { additionalProperties: false },
@@ -476,6 +540,7 @@ export const SkillHubUploadParamsSchema = Type.Object(
   {
     filename: NonEmptyString,
     contentBase64: NonEmptyString,
+    expectedHubChecksum: Type.Optional(Type.Union([NonEmptyString, Type.Null()])),
     examplePrompts: Type.Optional(SkillHubExamplePromptsSchema),
   },
   { additionalProperties: false },

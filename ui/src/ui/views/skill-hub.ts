@@ -5,10 +5,11 @@ import type { AccountDirectoryEntry } from "../controllers/accounts.ts";
 import type {
   SkillHubDetail,
   SkillHubEntry,
+  SkillHubOverview,
   SkillHubScope,
   SkillHubSort,
+  WorkspacePublishEntry,
 } from "../controllers/skill-hub.ts";
-import type { SkillStatusReport } from "../types.ts";
 
 export type SkillHubProps = {
   loading: boolean;
@@ -24,9 +25,11 @@ export type SkillHubProps = {
   busySlug: string | null;
   message: { kind: "success" | "error"; text: string } | null;
   workspacePublishing: boolean;
+  workspacePendingKeys: string[];
+  workspacePublishEntries: WorkspacePublishEntry[];
+  overview: SkillHubOverview | null;
   uploading: boolean;
   workspacePanelOpen: boolean;
-  workspaceSkillsReport: SkillStatusReport | null;
   editorOpen: boolean;
   editorMode: "publish" | "upload" | "edit-metadata" | null;
   editorTitle: string | null;
@@ -53,13 +56,19 @@ export type SkillHubProps = {
   onInstall: (slug: string) => void;
   onUpdate: (slug: string) => void;
   onDelete: (slug: string) => void;
-  onSetVisibility: (slug: string, hidden: boolean) => void;
+  onDeleteFromHub: (slug: string) => void;
   onLike: (slug: string) => void;
   onCopy: (text: string, successText: string) => void;
   onOpenPublishEditor: (skillName: string, title: string) => void;
+  onOpenWorkspaceSkillDetail: (skillKey: string) => void;
   onOpenUploadEditor: () => void;
   onToggleWorkspacePanel: () => void;
-  onOpenEditMetadataEditor: (slug: string, title: string, summary: string, prompts: string[]) => void;
+  onOpenEditMetadataEditor: (
+    slug: string,
+    title: string,
+    summary: string,
+    prompts: string[],
+  ) => void;
   onEditorClose: () => void;
   onEditorDescriptionChange: (value: string) => void;
   onEditorPromptChange: (index: number, value: string) => void;
@@ -139,10 +148,7 @@ function renderFlagBadges(entry: SkillHubEntry | SkillHubDetail) {
 
 function renderMetaRow(entry: SkillHubEntry | SkillHubDetail) {
   return html`
-    <div
-      class="muted"
-      style="margin-top:12px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; font-size:13px;"
-    >
+    <div class="skillhub-card__meta">
       <span>${t("skillHub.meta.by")} ${entry.uploaderName}</span>
       <span>♡ ${entry.likeCount}</span>
       <span>↓ ${entry.installCount}</span>
@@ -167,18 +173,20 @@ function renderLikeButton(entry: SkillHubEntry | SkillHubDetail, props: SkillHub
 function renderEntryCard(entry: SkillHubEntry, props: SkillHubProps) {
   const busy = props.busySlug === entry.slug;
   return html`
-    <article class="card skillhub-card">
-      <div style="display:flex; justify-content:space-between; gap:20px; align-items:flex-start;">
-        <div style="min-width:0; flex:1;">
-          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-            <div class="card-title" style="margin:0;">${entry.displayName}</div>
+    <article class="skillhub-card">
+      <div class="skillhub-card__body">
+        <div class="skillhub-card__header">
+          <div class="skillhub-card__title-group">
+            <div class="skillhub-card__title">${entry.displayName}</div>
             <code class="chip">${entry.slug}</code>
           </div>
-          <div class="card-sub" style="margin-top:6px;">${entry.summary}</div>
-          ${renderFlagBadges(entry)} ${renderMetaRow(entry)}
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
           ${renderLikeButton(entry, props)}
+        </div>
+        <div class="skillhub-card__summary">${entry.summary}</div>
+        ${renderFlagBadges(entry)} ${renderMetaRow(entry)}
+      </div>
+      <div class="skillhub-card__actions">
+        <div class="skillhub-card__main-actions">
           <button class="btn btn--sm" @click=${() => props.onOpenDetail(entry.slug)}>
             ${t("skillHub.actions.details")}
           </button>
@@ -189,9 +197,15 @@ function renderEntryCard(entry: SkillHubEntry, props: SkillHubProps) {
                   ?disabled=${busy || !entry.updateAvailable}
                   @click=${() => props.onUpdate(entry.slug)}
                 >
-                  ${busy && entry.updateAvailable ? t("skillHub.actions.updating") : t("skillHub.actions.update")}
+                  ${busy && entry.updateAvailable
+                    ? t("skillHub.actions.updating")
+                    : t("skillHub.actions.update")}
                 </button>
-                <button class="btn btn--sm" ?disabled=${busy} @click=${() => props.onDelete(entry.slug)}>
+                <button
+                  class="btn btn--sm"
+                  ?disabled=${busy}
+                  @click=${() => props.onDelete(entry.slug)}
+                >
                   ${t("skillHub.actions.delete")}
                 </button>
               `
@@ -204,20 +218,73 @@ function renderEntryCard(entry: SkillHubEntry, props: SkillHubProps) {
                   ${busy ? t("skillHub.actions.installing") : t("skillHub.actions.install")}
                 </button>
               `}
-          ${entry.canManageVisibility
-            ? html`
-                <button
-                  class="btn btn--sm"
-                  ?disabled=${busy}
-                  @click=${() => props.onSetVisibility(entry.slug, !entry.hidden)}
-                >
-                  ${entry.hidden ? t("skillHub.actions.unhide") : t("skillHub.actions.hide")}
-                </button>
-              `
-            : nothing}
         </div>
+        ${entry.canManageVisibility
+          ? html`
+              <details class="skillhub-more">
+                <summary class="btn btn--sm" aria-label=${t("skillHub.actions.more")}>⋯</summary>
+                <div class="skillhub-more__menu">
+                  <button
+                    class="btn btn--sm skillhub-danger-action"
+                    ?disabled=${busy}
+                    @click=${() => props.onDeleteFromHub(entry.slug)}
+                  >
+                    ${t("skillHub.actions.deleteFromHub")}
+                  </button>
+                </div>
+              </details>
+            `
+          : nothing}
       </div>
     </article>
+  `;
+}
+
+function renderStatusPanel(props: SkillHubProps) {
+  const overview = props.overview;
+  return html`
+    <section class="skillhub-side-card">
+      <div class="skillhub-side-card__title">${t("skillHub.status.title")}</div>
+      <div class="skillhub-status-grid">
+        <div>
+          <strong>${overview?.sharedSkillCount ?? 0}</strong
+          ><span>${t("skillHub.status.shared")}</span>
+        </div>
+        <div>
+          <strong>${overview?.updateAvailableCount ?? 0}</strong
+          ><span>${t("skillHub.status.updates")}</span>
+        </div>
+        <div>
+          <strong>${overview?.localSkillCount ?? 0}</strong
+          ><span>${t("skillHub.status.local")}</span>
+        </div>
+        <div>
+          <strong>${overview?.installedSkillCount ?? 0}</strong
+          ><span>${t("skillHub.status.installed")}</span>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderRecentUpdatesPanel(props: SkillHubProps) {
+  const recent = props.overview?.recentUpdates ?? [];
+  return html`
+    <section class="skillhub-side-card">
+      <div class="skillhub-side-card__title">${t("skillHub.recent.title")}</div>
+      ${recent.length === 0
+        ? html`<div class="muted">${t("skillHub.recent.empty")}</div>`
+        : html`<div class="skillhub-recent-list">
+            ${recent.map(
+              (entry) => html`
+                <button class="skillhub-recent-item" @click=${() => props.onOpenDetail(entry.slug)}>
+                  <span>${entry.displayName}</span>
+                  <small> v${entry.latestVersion} · ${relativeDate(entry.updatedAt)} </small>
+                </button>
+              `,
+            )}
+          </div>`}
+    </section>
   `;
 }
 
@@ -271,44 +338,55 @@ function renderExamplePrompts(detail: SkillHubDetail, props: SkillHubProps) {
 }
 
 function renderWorkspacePublishPanel(props: SkillHubProps) {
-  const workspaceSkills = (props.workspaceSkillsReport?.skills ?? []).filter(
-    (skill) => skill.source === "openclaw-workspace" && !skill.hubSlug,
-  );
+  const workspaceSkills = props.workspacePublishEntries;
   return html`
-    <section class="card" style="display:grid; gap:14px;">
-      <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+    <section class="skillhub-side-card skillhub-publish-panel">
+      <div class="skillhub-side-card__header">
         <div style="min-width:0;">
-          <div class="card-title">${t("skillHub.publish.title")}</div>
-          <div class="card-sub">${t("skillHub.publish.subtitle")}</div>
+          <div class="skillhub-side-card__title">${t("skillHub.publish.title")}</div>
+          <div class="skillhub-side-card__sub">${t("skillHub.publish.subtitle")}</div>
         </div>
         <button class="btn btn--sm" @click=${props.onToggleWorkspacePanel}>
-          ${props.workspacePanelOpen ? t("skillHub.actions.collapse") : t("skillHub.actions.expand")}
+          ${props.workspacePanelOpen
+            ? t("skillHub.actions.collapse")
+            : t("skillHub.actions.expand")}
         </button>
       </div>
-      <div class="muted">${t("skillHub.publish.collapsedHint", { count: String(workspaceSkills.length) })}</div>
+      <div class="muted">
+        ${t("skillHub.publish.collapsedHint", { count: String(workspaceSkills.length) })}
+      </div>
       ${props.workspacePanelOpen
         ? html`
-            <div style="display:grid; gap:12px;">
+            <div class="skillhub-publish-list">
               ${workspaceSkills.length === 0
                 ? html`<div class="skills-empty-state__body">${t("skillHub.publish.empty")}</div>`
                 : workspaceSkills.map(
                     (skill) => html`
-                      <article class="card" style="padding:18px;">
-                        <div
-                          style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; flex-wrap:wrap;"
-                        >
-                          <div style="min-width:0; flex:1;">
-                            <div class="card-title" style="margin:0;">${skill.name}</div>
-                            <div class="card-sub" style="margin-top:6px;">${skill.description || skill.skillKey}</div>
+                      <article class="skillhub-publish-item">
+                        <div class="skillhub-publish-item__body">
+                          <div class="skillhub-publish-item__title">${skill.skillName}</div>
+                          <div class="skillhub-publish-item__desc">
+                            ${skill.description || skill.skillKey}
                           </div>
+                          <div class="skillhub-publish-item__reason">${skill.reason}</div>
+                        </div>
+                        <div class="skillhub-publish-item__actions">
+                          <button
+                            class="btn btn--sm"
+                            @click=${() => props.onOpenWorkspaceSkillDetail(skill.skillKey)}
+                          >
+                            ${t("skillHub.actions.details")}
+                          </button>
                           <button
                             class="btn btn--sm primary"
-                            ?disabled=${props.workspacePublishing}
-                            @click=${() => props.onOpenPublishEditor(skill.name, skill.name)}
+                            ?disabled=${skill.disabled ||
+                            props.workspacePendingKeys.includes(skill.skillKey)}
+                            @click=${() =>
+                              props.onOpenPublishEditor(skill.skillName, skill.skillName)}
                           >
-                            ${props.workspacePublishing
+                            ${props.workspacePendingKeys.includes(skill.skillKey)
                               ? t("skillHub.publish.publishing")
-                              : t("skillHub.publish.action")}
+                              : skill.actionLabel}
                           </button>
                         </div>
                       </article>
@@ -368,7 +446,9 @@ function renderDetailDialog(props: SkillHubProps) {
                         <code class="chip">${detail.slug}</code>
                         <div class="muted">v${detail.latestVersion}</div>
                       </div>
-                      <div style="margin-top:10px; font-size:14px; line-height:1.7;">${detail.summary}</div>
+                      <div style="margin-top:10px; font-size:14px; line-height:1.7;">
+                        ${detail.summary}
+                      </div>
                       ${renderFlagBadges(detail)} ${renderMetaRow(detail)}
                     </div>
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -423,17 +503,17 @@ function renderDetailDialog(props: SkillHubProps) {
                         : nothing}
                       ${detail.canManageVisibility
                         ? html`
-                            <button
-                              class="btn"
-                              @click=${() => props.onSetVisibility(detail.slug, !detail.hidden)}
-                            >
-                              ${detail.hidden ? t("skillHub.actions.unhide") : t("skillHub.actions.hide")}
+                            <button class="btn" @click=${() => props.onDeleteFromHub(detail.slug)}>
+                              ${t("skillHub.actions.deleteFromHub")}
                             </button>
                           `
                         : nothing}
                       ${detail.canTransferOwnership
                         ? html`
-                            <button class="btn" @click=${() => props.onOpenTransfer(detail.slug, detail.displayName)}>
+                            <button
+                              class="btn"
+                              @click=${() => props.onOpenTransfer(detail.slug, detail.displayName)}
+                            >
                               ${t("skillHub.actions.transferOwnership")}
                             </button>
                           `
@@ -444,24 +524,54 @@ function renderDetailDialog(props: SkillHubProps) {
                         <span>${t("skillHub.detail.uploader")}</span>
                         <code>${detail.uploaderName} (${detail.uploaderEmployeeId})</code>
                       </div>
-                      <div><span>${t("skillHub.detail.published")}</span><code>${relativeDate(detail.publishedAt)}</code></div>
-                      <div><span>${t("skillHub.detail.updated")}</span><code>${relativeDate(detail.updatedAt)}</code></div>
-                      <div><span>${t("skillHub.detail.usage")}</span><code>${detail.installCount} ${t("skillHub.meta.installs")} / ${detail.installerCount} ${t("skillHub.meta.users")}</code></div>
-                      <div><span>${t("skillHub.detail.knoxInstall")}</span><code>/skillhub install ${detail.slug}</code></div>
-                      <div><span>${t("skillHub.detail.knoxUpdate")}</span><code>/skillhub update ${detail.slug}</code></div>
-                      <div><span>${t("skillHub.detail.knoxDelete")}</span><code>/skillhub delete ${detail.slug}</code></div>
+                      <div>
+                        <span>${t("skillHub.detail.published")}</span
+                        ><code>${relativeDate(detail.publishedAt)}</code>
+                      </div>
+                      <div>
+                        <span>${t("skillHub.detail.updated")}</span
+                        ><code>${relativeDate(detail.updatedAt)}</code>
+                      </div>
+                      <div>
+                        <span>${t("skillHub.detail.usage")}</span
+                        ><code
+                          >${detail.installCount} ${t("skillHub.meta.installs")} /
+                          ${detail.installerCount} ${t("skillHub.meta.users")}</code
+                        >
+                      </div>
+                      <div>
+                        <span>${t("skillHub.detail.knoxInstall")}</span
+                        ><code>/skillhub install ${detail.slug}</code>
+                      </div>
+                      <div>
+                        <span>${t("skillHub.detail.knoxUpdate")}</span
+                        ><code>/skillhub update ${detail.slug}</code>
+                      </div>
+                      <div>
+                        <span>${t("skillHub.detail.knoxDelete")}</span
+                        ><code>/skillhub delete ${detail.slug}</code>
+                      </div>
                     </div>
                     ${renderExamplePrompts(detail, props)}
                     ${detail.canAdminManage && !detail.uploadedByYou
                       ? html`
-                          <section class="card" style="padding:16px; border-style:dashed; background:var(--surface-muted);">
-                            <div class="card-title" style="margin:0;">${t("skillHub.detail.adminControls")}</div>
-                            <div class="card-sub" style="margin-top:6px;">${t("skillHub.detail.adminControlsHelp")}</div>
+                          <section
+                            class="card"
+                            style="padding:16px; border-style:dashed; background:var(--surface-muted);"
+                          >
+                            <div class="card-title" style="margin:0;">
+                              ${t("skillHub.detail.adminControls")}
+                            </div>
+                            <div class="card-sub" style="margin-top:6px;">
+                              ${t("skillHub.detail.adminControlsHelp")}
+                            </div>
                           </section>
                         `
                       : nothing}
                     <div>
-                      <div class="card-title" style="margin-bottom:10px;">${t("skillHub.detail.versionHistory")}</div>
+                      <div class="card-title" style="margin-bottom:10px;">
+                        ${t("skillHub.detail.versionHistory")}
+                      </div>
                       <div class="list">
                         ${detail.versions.map(
                           (version) => html`
@@ -469,7 +579,8 @@ function renderDetailDialog(props: SkillHubProps) {
                               <div class="list-main">
                                 <div class="list-title">v${version.version}</div>
                                 <div class="list-sub">
-                                  ${version.uploadedBy.name ?? version.uploadedBy.employeeId} • ${relativeDate(version.uploadedAt)}
+                                  ${version.uploadedBy.name ?? version.uploadedBy.employeeId} •
+                                  ${relativeDate(version.uploadedAt)}
                                 </div>
                               </div>
                             </div>
@@ -500,6 +611,10 @@ function renderEditorDialog(props: SkillHubProps) {
     }
   };
   let fileInput: HTMLInputElement | null = null;
+  const publishEntry =
+    props.editorMode === "publish"
+      ? props.workspacePublishEntries.find((entry) => entry.skillName === props.editorSkillName)
+      : null;
   return html`
     <dialog
       class="md-preview-dialog"
@@ -532,7 +647,9 @@ function renderEditorDialog(props: SkillHubProps) {
         </div>
         <div class="md-preview-dialog__body" style="display:grid; gap:16px;">
           <div class="muted">${t("skillHub.editor.help")}</div>
-          ${props.editorLoading ? html`<div class="muted">${t("skillHub.editor.prefillLoading")}</div>` : nothing}
+          ${props.editorLoading
+            ? html`<div class="muted">${t("skillHub.editor.prefillLoading")}</div>`
+            : nothing}
           ${props.editorMode === "upload"
             ? html`
                 <input
@@ -561,7 +678,9 @@ function renderEditorDialog(props: SkillHubProps) {
                 <label class="field">
                   <div class="field__label">
                     ${t("skillHub.editor.descriptionLabel")}
-                    <span class="muted" style="margin-left:8px;">${props.editorDescription.length}/220</span>
+                    <span class="muted" style="margin-left:8px;"
+                      >${props.editorDescription.length}/220</span
+                    >
                   </div>
                   <textarea
                     rows="4"
@@ -595,7 +714,9 @@ function renderEditorDialog(props: SkillHubProps) {
               `,
             )}
           </div>
-          ${props.editorError ? html`<div class="callout danger">${props.editorError}</div>` : nothing}
+          ${props.editorError
+            ? html`<div class="callout danger">${props.editorError}</div>`
+            : nothing}
           <div style="display:flex; justify-content:flex-end; gap:10px;">
             <button class="btn" @click=${props.onEditorClose}>${t("cron.form.cancel")}</button>
             <button
@@ -616,7 +737,7 @@ function renderEditorDialog(props: SkillHubProps) {
                     : t("skillHub.editor.uploadAction")
                   : props.workspacePublishing
                     ? t("skillHub.publish.publishing")
-                    : t("skillHub.editor.publishAction")}
+                    : (publishEntry?.actionLabel ?? t("skillHub.editor.publishAction"))}
             </button>
           </div>
         </div>
@@ -644,21 +765,25 @@ function renderTransferDialog(props: SkillHubProps) {
             class="input"
             .value=${props.transferQuery}
             placeholder=${t("skillHub.transfer.searchPlaceholder")}
-            @input=${(e: Event) => props.onTransferQueryChange((e.target as HTMLInputElement).value)}
+            @input=${(e: Event) =>
+              props.onTransferQueryChange((e.target as HTMLInputElement).value)}
           />
           <div class="list">
             ${props.transferResults.map(
               (entry) => html`
                 <button
                   class="list-item"
-                  style="text-align:left; width:100%; ${props.transferTargetAccountId === entry.accountId
+                  style="text-align:left; width:100%; ${props.transferTargetAccountId ===
+                  entry.accountId
                     ? "outline:2px solid var(--accent);"
                     : ""}"
                   @click=${() => props.onTransferTargetSelect(entry.accountId)}
                 >
                   <div class="list-main">
                     <div class="list-title">${entry.displayName}</div>
-                    <div class="list-sub">${entry.employeeId}${entry.email ? ` · ${entry.email}` : ""}</div>
+                    <div class="list-sub">
+                      ${entry.employeeId}${entry.email ? ` · ${entry.email}` : ""}
+                    </div>
                   </div>
                 </button>
               `,
@@ -669,9 +794,12 @@ function renderTransferDialog(props: SkillHubProps) {
             rows="3"
             .value=${props.transferReason}
             placeholder=${t("skillHub.transfer.reasonPlaceholder")}
-            @input=${(e: Event) => props.onTransferReasonChange((e.target as HTMLTextAreaElement).value)}
+            @input=${(e: Event) =>
+              props.onTransferReasonChange((e.target as HTMLTextAreaElement).value)}
           ></textarea>
-          ${props.transferError ? html`<div class="callout danger">${props.transferError}</div>` : nothing}
+          ${props.transferError
+            ? html`<div class="callout danger">${props.transferError}</div>`
+            : nothing}
           <div style="display:flex; justify-content:flex-end; gap:10px;">
             <button class="btn" @click=${props.onCloseTransfer}>${t("common.cancel")}</button>
             <button
@@ -692,78 +820,86 @@ function renderTransferDialog(props: SkillHubProps) {
 
 export function renderSkillHub(props: SkillHubProps) {
   return html`
-    <section style="display:grid; gap:18px;">
-      <section>
-        <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; flex-wrap:wrap;">
-          <div style="min-width:0;">
-            <div class="card-title" style="font-size: 20px;">${t("skillHub.title")}</div>
-            <div class="card-sub">${t("skillHub.subtitleShort")}</div>
-          </div>
-          <button class="btn primary" @click=${props.onOpenUploadEditor}>
-            ${t("skillHub.actions.upload")}
-          </button>
+    <section class="skillhub-page">
+      <section class="skillhub-page__header">
+        <div style="min-width:0;">
+          <div class="card-title skillhub-page__title">${t("skillHub.title")}</div>
+          <div class="card-sub">${t("skillHub.subtitleShort")}</div>
         </div>
+        <button class="btn primary" @click=${props.onOpenUploadEditor}>
+          ${t("skillHub.actions.upload")}
+        </button>
       </section>
 
-      <section class="card skillhub-hero">
-        <div style="display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap;">
-          <div style="min-width:0;">
-            <div class="card-title">${t("skillHub.heroTitle")}</div>
-            <div class="card-sub">${t("skillHub.subtitle")}</div>
+      <div class="skillhub-market-layout">
+        <main class="skillhub-catalog">
+          <section class="skillhub-catalog__header">
+            <div style="min-width:0;">
+              <div class="card-title">${t("skillHub.heroTitle")}</div>
+              <div class="card-sub">${t("skillHub.subtitle")}</div>
+            </div>
+            <button class="btn" ?disabled=${props.loading} @click=${props.onRefresh}>
+              ${props.loading ? t("common.refreshing") : t("common.refresh")}
+            </button>
+          </section>
+          <div class="agent-tabs">
+            ${SCOPE_TABS.map(
+              (scope) => html`
+                <button
+                  class="agent-tab ${props.scope === scope.id ? "active" : ""}"
+                  @click=${() => props.onScopeChange(scope.id)}
+                >
+                  ${t(scope.labelKey)}
+                </button>
+              `,
+            )}
           </div>
-          <button class="btn" ?disabled=${props.loading} @click=${props.onRefresh}>
-            ${props.loading ? t("common.refreshing") : t("common.refresh")}
-          </button>
-        </div>
-        <div class="agent-tabs" style="margin-top:16px;">
-          ${SCOPE_TABS.map(
-            (scope) => html`
-              <button
-                class="agent-tab ${props.scope === scope.id ? "active" : ""}"
-                @click=${() => props.onScopeChange(scope.id)}
+          <div class="skillhub-filter-row">
+            <label class="field skillhub-search-field">
+              <input
+                .value=${props.query}
+                placeholder=${t("skillHub.searchPlaceholder")}
+                @input=${(e: Event) => props.onQueryChange((e.target as HTMLInputElement).value)}
+              />
+            </label>
+            <label class="field skillhub-sort-field">
+              <select
+                .value=${props.sort}
+                @change=${(e: Event) =>
+                  props.onSortChange((e.target as HTMLSelectElement).value as SkillHubSort)}
               >
-                ${t(scope.labelKey)}
-              </button>
-            `,
-          )}
-        </div>
-        <div style="margin-top:14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-          <label class="field" style="flex:1; min-width:220px;">
-            <input
-              .value=${props.query}
-              placeholder=${t("skillHub.searchPlaceholder")}
-              @input=${(e: Event) => props.onQueryChange((e.target as HTMLInputElement).value)}
-            />
-          </label>
-          <label class="field" style="width:220px;">
-            <select .value=${props.sort} @change=${(e: Event) => props.onSortChange((e.target as HTMLSelectElement).value as SkillHubSort)}>
-              ${SORT_OPTIONS.map(
-                (option) => html`<option value=${option.id}>${t(option.labelKey)}</option>`,
-              )}
-            </select>
-          </label>
-          <div class="muted">${props.entries.length} ${t("skillHub.shown")}</div>
-        </div>
-        ${props.message
-          ? html`<div class="callout ${props.message.kind === "error" ? "danger" : "success"}" style="margin-top:14px;">
-              ${props.message.text}
-            </div>`
-          : nothing}
-        ${props.error ? html`<div class="callout danger" style="margin-top:14px;">${props.error}</div>` : nothing}
-      </section>
+                ${SORT_OPTIONS.map(
+                  (option) => html`<option value=${option.id}>${t(option.labelKey)}</option>`,
+                )}
+              </select>
+            </label>
+            <div class="muted skillhub-shown-count">
+              ${props.entries.length} ${t("skillHub.shown")}
+            </div>
+          </div>
+          ${props.message
+            ? html`<div class="callout ${props.message.kind === "error" ? "danger" : "success"}">
+                ${props.message.text}
+              </div>`
+            : nothing}
+          ${props.error ? html`<div class="callout danger">${props.error}</div>` : nothing}
+          <section class="skillhub-card-grid">
+            ${props.entries.length === 0
+              ? html`
+                  <div class="skills-empty-state skillhub-empty">
+                    <div class="skills-empty-state__title">${t("skillHub.empty.title")}</div>
+                    <div class="skills-empty-state__body">${t("skillHub.empty.body")}</div>
+                  </div>
+                `
+              : props.entries.map((entry) => renderEntryCard(entry, props))}
+          </section>
+        </main>
 
-      ${renderWorkspacePublishPanel(props)}
-
-      <section style="display:grid; gap:14px;">
-        ${props.entries.length === 0
-          ? html`
-              <div class="skills-empty-state">
-                <div class="skills-empty-state__title">${t("skillHub.empty.title")}</div>
-                <div class="skills-empty-state__body">${t("skillHub.empty.body")}</div>
-              </div>
-            `
-          : props.entries.map((entry) => renderEntryCard(entry, props))}
-      </section>
+        <aside class="skillhub-side-rail">
+          ${renderWorkspacePublishPanel(props)} ${renderStatusPanel(props)}
+          ${renderRecentUpdatesPanel(props)}
+        </aside>
+      </div>
       ${props.detailSlug ? renderDetailDialog(props) : nothing}
       ${props.editorOpen ? renderEditorDialog(props) : nothing}
       ${props.transferOpen ? renderTransferDialog(props) : nothing}

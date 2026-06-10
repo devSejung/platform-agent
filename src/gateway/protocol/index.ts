@@ -252,6 +252,8 @@ import {
   SkillHubMutationResultSchema,
   SkillHubPublishParamsSchema,
   SkillHubUploadParamsSchema,
+  SkillHubWorkspacePublishListParamsSchema,
+  SkillHubWorkspacePublishListResultSchema,
   SkillsDeleteParamsSchema,
   SkillsDeleteResultSchema,
   type SkillsInstallParams,
@@ -318,7 +320,6 @@ import {
   GroupDetailParamsSchema,
   GroupMembershipAddParamsSchema,
   GroupMembershipRemoveParamsSchema,
-  GroupMutationResultSchema,
   GroupPartCreateParamsSchema,
   type GroupPartUpdateParams,
   GroupPartUpdateParamsSchema,
@@ -482,6 +483,9 @@ export const validateSkillHubListParams = ajv.compile(SkillHubListParamsSchema);
 export const validateSkillHubDetailParams = ajv.compile(SkillHubDetailParamsSchema);
 export const validateSkillHubPublishParams = ajv.compile(SkillHubPublishParamsSchema);
 export const validateSkillHubUploadParams = ajv.compile(SkillHubUploadParamsSchema);
+export const validateSkillHubWorkspacePublishListParams = ajv.compile(
+  SkillHubWorkspacePublishListParamsSchema,
+);
 export const validateSkillHubHideParams = ajv.compile(SkillHubHideParamsSchema);
 export const validateSkillHubInstallParams = ajv.compile(SkillHubInstallParamsSchema);
 export const validateSkillHubDeleteParams = ajv.compile(SkillHubDeleteParamsSchema);
@@ -493,7 +497,9 @@ export const validateSkillHubMetadataUpdateParams = ajv.compile(SkillHubMetadata
 export const validateSkillHubTransferOwnershipParams = ajv.compile<SkillHubTransferOwnershipParams>(
   SkillHubTransferOwnershipParamsSchema,
 );
-export const validateAccountsSearchParams = ajv.compile<AccountsSearchParams>(AccountsSearchParamsSchema);
+export const validateAccountsSearchParams = ajv.compile<AccountsSearchParams>(
+  AccountsSearchParamsSchema,
+);
 export const validateAdminAccountsListParams = ajv.compile<AdminAccountsListParams>(
   AdminAccountsListParamsSchema,
 );
@@ -508,7 +514,9 @@ export const validateGroupDetailParams = ajv.compile<GroupDetailParams>(GroupDet
 export const validateGroupCreateParams = ajv.compile(GroupCreateParamsSchema);
 export const validateGroupPartCreateParams = ajv.compile(GroupPartCreateParamsSchema);
 export const validateGroupUpdateParams = ajv.compile<GroupUpdateParams>(GroupUpdateParamsSchema);
-export const validateGroupPartUpdateParams = ajv.compile<GroupPartUpdateParams>(GroupPartUpdateParamsSchema);
+export const validateGroupPartUpdateParams = ajv.compile<GroupPartUpdateParams>(
+  GroupPartUpdateParamsSchema,
+);
 export const validateGroupScopesListParams = ajv.compile(GroupScopesListParamsSchema);
 export const validateGroupMembershipAddParams = ajv.compile(GroupMembershipAddParamsSchema);
 export const validateGroupMembershipRemoveParams = ajv.compile(GroupMembershipRemoveParamsSchema);
@@ -719,6 +727,8 @@ export {
   SkillHubMetadataUpdateParamsSchema,
   SkillHubPublishParamsSchema,
   SkillHubUploadParamsSchema,
+  SkillHubWorkspacePublishListParamsSchema,
+  SkillHubWorkspacePublishListResultSchema,
   SkillHubHideParamsSchema,
   SkillHubInstallParamsSchema,
   SkillHubDeleteParamsSchema,

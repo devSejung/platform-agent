@@ -10,28 +10,33 @@ import {
 } from "./app-polling.ts";
 import { scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
 import type { OpenClawApp } from "./app.ts";
+import { loadAdminAccounts } from "./controllers/admin-accounts.ts";
 import { loadAgentFiles } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
-import { loadSkillHub } from "./controllers/skill-hub.ts";
 import { loadAgents } from "./controllers/agents.ts";
 import { loadChannels } from "./controllers/channels.ts";
 import { loadConfig, loadConfigSchema } from "./controllers/config.ts";
-import { loadCronJobs, loadCronModelSuggestions, loadCronRuns, loadCronStatus } from "./controllers/cron.ts";
+import {
+  loadCronJobs,
+  loadCronModelSuggestions,
+  loadCronRuns,
+  loadCronStatus,
+} from "./controllers/cron.ts";
 import { loadDebug } from "./controllers/debug.ts";
 import { loadDevices } from "./controllers/devices.ts";
 import { loadDreamDiary, loadDreamingStatus } from "./controllers/dreaming.ts";
-import { loadEmployeeHeartbeat } from "./controllers/heartbeat.ts";
-import { loadWorkspaceFiles } from "./controllers/workspace-files.ts";
-import { loadAdminAccounts } from "./controllers/admin-accounts.ts";
 import { loadExecApprovals } from "./controllers/exec-approvals.ts";
 import { loadGroups, loadGroupDetail, loadGroupScopeOptions } from "./controllers/groups.ts";
+import { loadEmployeeHeartbeat } from "./controllers/heartbeat.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
 import { loadSessions } from "./controllers/sessions.ts";
+import { loadSkillHub, loadSkillHubWorkspacePublish } from "./controllers/skill-hub.ts";
 import { loadSkills } from "./controllers/skills.ts";
 import { loadUsage } from "./controllers/usage.ts";
+import { loadWorkspaceFiles } from "./controllers/workspace-files.ts";
 import {
   inferBasePathFromPathname,
   normalizeBasePath,
@@ -307,6 +312,7 @@ export async function refreshActiveTab(host: SettingsHost) {
         await loadAgentSkills(host as unknown as OpenClawApp, agentId);
       }
       await loadSkillHub(host as unknown as OpenClawApp);
+      await loadSkillHubWorkspacePublish(host as unknown as OpenClawApp);
     }
     if (host.tab === "groups") {
       await loadGroups(host as unknown as OpenClawApp);
@@ -351,6 +357,7 @@ export async function refreshActiveTab(host: SettingsHost) {
   if (host.tab === "skillHub") {
     await loadSkills(host as unknown as OpenClawApp);
     await loadSkillHub(host as unknown as OpenClawApp);
+    await loadSkillHubWorkspacePublish(host as unknown as OpenClawApp);
   }
   if (host.tab === "agents") {
     await loadAgents(host as unknown as OpenClawApp);

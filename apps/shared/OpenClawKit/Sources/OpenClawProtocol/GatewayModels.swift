@@ -3211,6 +3211,716 @@ public struct SkillsDetailResult: Codable, Sendable {
     }
 }
 
+public struct SkillHubListParams: Codable, Sendable {
+    public let query: String?
+    public let scope: AnyCodable?
+    public let sort: AnyCodable?
+
+    public init(
+        query: String?,
+        scope: AnyCodable?,
+        sort: AnyCodable?)
+    {
+        self.query = query
+        self.scope = scope
+        self.sort = sort
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case query
+        case scope
+        case sort
+    }
+}
+
+public struct SkillHubListResult: Codable, Sendable {
+    public let entries: [[String: AnyCodable]]
+
+    public init(
+        entries: [[String: AnyCodable]])
+    {
+        self.entries = entries
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case entries
+    }
+}
+
+public struct SkillHubDetailParams: Codable, Sendable {
+    public let slug: String
+
+    public init(
+        slug: String)
+    {
+        self.slug = slug
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case slug
+    }
+}
+
+public struct SkillHubDetailResult: Codable, Sendable {
+    public let detail: AnyCodable
+
+    public init(
+        detail: AnyCodable)
+    {
+        self.detail = detail
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case detail
+    }
+}
+
+public struct SkillHubPublishParams: Codable, Sendable {
+    public let skillname: String
+    public let intent: AnyCodable
+    public let expectedslug: String?
+    public let expectedlocalchecksum: String
+    public let expectedhubchecksum: AnyCodable?
+    public let exampleprompts: [String]?
+
+    public init(
+        skillname: String,
+        intent: AnyCodable,
+        expectedslug: String?,
+        expectedlocalchecksum: String,
+        expectedhubchecksum: AnyCodable?,
+        exampleprompts: [String]?)
+    {
+        self.skillname = skillname
+        self.intent = intent
+        self.expectedslug = expectedslug
+        self.expectedlocalchecksum = expectedlocalchecksum
+        self.expectedhubchecksum = expectedhubchecksum
+        self.exampleprompts = exampleprompts
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case skillname = "skillName"
+        case intent
+        case expectedslug = "expectedSlug"
+        case expectedlocalchecksum = "expectedLocalChecksum"
+        case expectedhubchecksum = "expectedHubChecksum"
+        case exampleprompts = "examplePrompts"
+    }
+}
+
+public struct SkillHubUploadParams: Codable, Sendable {
+    public let filename: String
+    public let contentbase64: String
+    public let expectedhubchecksum: AnyCodable?
+    public let exampleprompts: [String]?
+
+    public init(
+        filename: String,
+        contentbase64: String,
+        expectedhubchecksum: AnyCodable?,
+        exampleprompts: [String]?)
+    {
+        self.filename = filename
+        self.contentbase64 = contentbase64
+        self.expectedhubchecksum = expectedhubchecksum
+        self.exampleprompts = exampleprompts
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case filename
+        case contentbase64 = "contentBase64"
+        case expectedhubchecksum = "expectedHubChecksum"
+        case exampleprompts = "examplePrompts"
+    }
+}
+
+public struct SkillHubWorkspacePublishListParams: Codable, Sendable {}
+
+public struct SkillHubWorkspacePublishListResult: Codable, Sendable {
+    public let entries: [[String: AnyCodable]]
+    public let overview: [String: AnyCodable]
+
+    public init(
+        entries: [[String: AnyCodable]],
+        overview: [String: AnyCodable])
+    {
+        self.entries = entries
+        self.overview = overview
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case entries
+        case overview
+    }
+}
+
+public struct SkillHubHideParams: Codable, Sendable {
+    public let slug: String
+    public let hidden: Bool?
+
+    public init(
+        slug: String,
+        hidden: Bool?)
+    {
+        self.slug = slug
+        self.hidden = hidden
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case slug
+        case hidden
+    }
+}
+
+public struct SkillHubInstallParams: Codable, Sendable {
+    public let slug: String
+
+    public init(
+        slug: String)
+    {
+        self.slug = slug
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case slug
+    }
+}
+
+public struct SkillHubDeleteParams: Codable, Sendable {
+    public let slug: String
+
+    public init(
+        slug: String)
+    {
+        self.slug = slug
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case slug
+    }
+}
+
+public struct SkillHubLikeParams: Codable, Sendable {
+    public let slug: String
+
+    public init(
+        slug: String)
+    {
+        self.slug = slug
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case slug
+    }
+}
+
+public struct SkillHubExamplePromptsUpdateParams: Codable, Sendable {
+    public let slug: String
+    public let exampleprompts: [String]
+
+    public init(
+        slug: String,
+        exampleprompts: [String])
+    {
+        self.slug = slug
+        self.exampleprompts = exampleprompts
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case slug
+        case exampleprompts = "examplePrompts"
+    }
+}
+
+public struct SkillHubMetadataUpdateParams: Codable, Sendable {
+    public let slug: String
+    public let summary: String
+    public let exampleprompts: [String]
+
+    public init(
+        slug: String,
+        summary: String,
+        exampleprompts: [String])
+    {
+        self.slug = slug
+        self.summary = summary
+        self.exampleprompts = exampleprompts
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case slug
+        case summary
+        case exampleprompts = "examplePrompts"
+    }
+}
+
+public struct SkillHubTransferOwnershipParams: Codable, Sendable {
+    public let slug: String
+    public let targetaccountid: String
+    public let reason: String?
+
+    public init(
+        slug: String,
+        targetaccountid: String,
+        reason: String?)
+    {
+        self.slug = slug
+        self.targetaccountid = targetaccountid
+        self.reason = reason
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case slug
+        case targetaccountid = "targetAccountId"
+        case reason
+    }
+}
+
+public struct SkillHubMutationResult: Codable, Sendable {
+    public let ok: Bool
+    public let slug: String
+    public let version: String?
+    public let liked: Bool?
+    public let likecount: Int?
+    public let exampleprompts: [String]?
+    public let message: String
+
+    public init(
+        ok: Bool,
+        slug: String,
+        version: String?,
+        liked: Bool?,
+        likecount: Int?,
+        exampleprompts: [String]?,
+        message: String)
+    {
+        self.ok = ok
+        self.slug = slug
+        self.version = version
+        self.liked = liked
+        self.likecount = likecount
+        self.exampleprompts = exampleprompts
+        self.message = message
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case slug
+        case version
+        case liked
+        case likecount = "likeCount"
+        case exampleprompts = "examplePrompts"
+        case message
+    }
+}
+
+public struct AccountsSearchParams: Codable, Sendable {
+    public let query: String?
+    public let limit: Int?
+
+    public init(
+        query: String?,
+        limit: Int?)
+    {
+        self.query = query
+        self.limit = limit
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case query
+        case limit
+    }
+}
+
+public struct AccountsSearchResult: Codable, Sendable {
+    public let entries: [[String: AnyCodable]]
+
+    public init(
+        entries: [[String: AnyCodable]])
+    {
+        self.entries = entries
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case entries
+    }
+}
+
+public struct AdminAccountsListParams: Codable, Sendable {
+    public let query: String?
+
+    public init(
+        query: String?)
+    {
+        self.query = query
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case query
+    }
+}
+
+public struct AdminAccountsListResult: Codable, Sendable {
+    public let entries: [[String: AnyCodable]]
+
+    public init(
+        entries: [[String: AnyCodable]])
+    {
+        self.entries = entries
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case entries
+    }
+}
+
+public struct AdminAccountDetailParams: Codable, Sendable {
+    public let accountid: String
+
+    public init(
+        accountid: String)
+    {
+        self.accountid = accountid
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case accountid = "accountId"
+    }
+}
+
+public struct AdminAccountDetailResult: Codable, Sendable {
+    public let detail: AnyCodable
+
+    public init(
+        detail: AnyCodable)
+    {
+        self.detail = detail
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case detail
+    }
+}
+
+public struct AdminAccountRoleUpdateParams: Codable, Sendable {
+    public let accountid: String
+    public let globalrole: AnyCodable
+
+    public init(
+        accountid: String,
+        globalrole: AnyCodable)
+    {
+        self.accountid = accountid
+        self.globalrole = globalrole
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case accountid = "accountId"
+        case globalrole = "globalRole"
+    }
+}
+
+public struct GroupsListParams: Codable, Sendable {
+    public let includearchived: Bool?
+
+    public init(
+        includearchived: Bool?)
+    {
+        self.includearchived = includearchived
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case includearchived = "includeArchived"
+    }
+}
+
+public struct GroupsListResult: Codable, Sendable {
+    public let entries: [[String: AnyCodable]]
+
+    public init(
+        entries: [[String: AnyCodable]])
+    {
+        self.entries = entries
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case entries
+    }
+}
+
+public struct GroupDetailParams: Codable, Sendable {
+    public let groupid: String
+    public let includearchived: Bool?
+
+    public init(
+        groupid: String,
+        includearchived: Bool?)
+    {
+        self.groupid = groupid
+        self.includearchived = includearchived
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case groupid = "groupId"
+        case includearchived = "includeArchived"
+    }
+}
+
+public struct GroupDetailResult: Codable, Sendable {
+    public let detail: AnyCodable
+
+    public init(
+        detail: AnyCodable)
+    {
+        self.detail = detail
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case detail
+    }
+}
+
+public struct GroupCreateParams: Codable, Sendable {
+    public let name: String
+    public let description: String?
+
+    public init(
+        name: String,
+        description: String?)
+    {
+        self.name = name
+        self.description = description
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name
+        case description
+    }
+}
+
+public struct GroupPartCreateParams: Codable, Sendable {
+    public let groupid: String
+    public let name: String
+    public let description: String?
+
+    public init(
+        groupid: String,
+        name: String,
+        description: String?)
+    {
+        self.groupid = groupid
+        self.name = name
+        self.description = description
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case groupid = "groupId"
+        case name
+        case description
+    }
+}
+
+public struct GroupUpdateParams: Codable, Sendable {
+    public let groupid: String
+    public let name: String
+    public let description: String?
+
+    public init(
+        groupid: String,
+        name: String,
+        description: String?)
+    {
+        self.groupid = groupid
+        self.name = name
+        self.description = description
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case groupid = "groupId"
+        case name
+        case description
+    }
+}
+
+public struct GroupPartUpdateParams: Codable, Sendable {
+    public let partid: String
+    public let name: String
+    public let description: String?
+
+    public init(
+        partid: String,
+        name: String,
+        description: String?)
+    {
+        self.partid = partid
+        self.name = name
+        self.description = description
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case partid = "partId"
+        case name
+        case description
+    }
+}
+
+public struct GroupScopesListParams: Codable, Sendable {
+    public let includearchived: Bool?
+
+    public init(
+        includearchived: Bool?)
+    {
+        self.includearchived = includearchived
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case includearchived = "includeArchived"
+    }
+}
+
+public struct GroupScopesListResult: Codable, Sendable {
+    public let entries: [[String: AnyCodable]]
+
+    public init(
+        entries: [[String: AnyCodable]])
+    {
+        self.entries = entries
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case entries
+    }
+}
+
+public struct GroupMembershipAddParams: Codable, Sendable {
+    public let scopetype: AnyCodable
+    public let scopeid: String
+    public let accountid: String
+    public let grouprole: AnyCodable?
+
+    public init(
+        scopetype: AnyCodable,
+        scopeid: String,
+        accountid: String,
+        grouprole: AnyCodable?)
+    {
+        self.scopetype = scopetype
+        self.scopeid = scopeid
+        self.accountid = accountid
+        self.grouprole = grouprole
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case scopetype = "scopeType"
+        case scopeid = "scopeId"
+        case accountid = "accountId"
+        case grouprole = "groupRole"
+    }
+}
+
+public struct GroupMembershipRemoveParams: Codable, Sendable {
+    public let scopetype: AnyCodable
+    public let scopeid: String
+    public let accountid: String
+
+    public init(
+        scopetype: AnyCodable,
+        scopeid: String,
+        accountid: String)
+    {
+        self.scopetype = scopetype
+        self.scopeid = scopeid
+        self.accountid = accountid
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case scopetype = "scopeType"
+        case scopeid = "scopeId"
+        case accountid = "accountId"
+    }
+}
+
+public struct GroupArchiveParams: Codable, Sendable {
+    public let scopeid: String
+
+    public init(
+        scopeid: String)
+    {
+        self.scopeid = scopeid
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case scopeid = "scopeId"
+    }
+}
+
+public struct GroupMutationResult: Codable, Sendable {
+    public let ok: Bool
+    public let message: String
+
+    public init(
+        ok: Bool,
+        message: String)
+    {
+        self.ok = ok
+        self.message = message
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case message
+    }
+}
+
+public struct SkillsDeleteParams: Codable, Sendable {
+    public let skillkey: String
+    public let slug: String?
+
+    public init(
+        skillkey: String,
+        slug: String?)
+    {
+        self.skillkey = skillkey
+        self.slug = slug
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case skillkey = "skillKey"
+        case slug
+    }
+}
+
+public struct SkillsDeleteResult: Codable, Sendable {
+    public let ok: Bool
+    public let kind: AnyCodable
+    public let skillkey: String?
+    public let slug: String?
+    public let message: String
+
+    public init(
+        ok: Bool,
+        kind: AnyCodable,
+        skillkey: String?,
+        slug: String?,
+        message: String)
+    {
+        self.ok = ok
+        self.kind = kind
+        self.skillkey = skillkey
+        self.slug = slug
+        self.message = message
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case kind
+        case skillkey = "skillKey"
+        case slug
+        case message
+    }
+}
+
 public struct CronJob: Codable, Sendable {
     public let id: String
     public let agentid: String?
@@ -3332,6 +4042,7 @@ public struct CronAddParams: Codable, Sendable {
     public let description: String?
     public let enabled: Bool?
     public let deleteafterrun: Bool?
+    public let global: Bool?
     public let schedule: AnyCodable
     public let sessiontarget: AnyCodable
     public let wakemode: AnyCodable
@@ -3346,6 +4057,7 @@ public struct CronAddParams: Codable, Sendable {
         description: String?,
         enabled: Bool?,
         deleteafterrun: Bool?,
+        global: Bool?,
         schedule: AnyCodable,
         sessiontarget: AnyCodable,
         wakemode: AnyCodable,
@@ -3359,6 +4071,7 @@ public struct CronAddParams: Codable, Sendable {
         self.description = description
         self.enabled = enabled
         self.deleteafterrun = deleteafterrun
+        self.global = global
         self.schedule = schedule
         self.sessiontarget = sessiontarget
         self.wakemode = wakemode
@@ -3374,6 +4087,7 @@ public struct CronAddParams: Codable, Sendable {
         case description
         case enabled
         case deleteafterrun = "deleteAfterRun"
+        case global
         case schedule
         case sessiontarget = "sessionTarget"
         case wakemode = "wakeMode"
@@ -4064,6 +4778,7 @@ public struct ChatHistoryParams: Codable, Sendable {
 public struct ChatSendParams: Codable, Sendable {
     public let sessionkey: String
     public let message: String
+    public let commandbody: String?
     public let thinking: String?
     public let deliver: Bool?
     public let originatingchannel: String?
@@ -4079,6 +4794,7 @@ public struct ChatSendParams: Codable, Sendable {
     public init(
         sessionkey: String,
         message: String,
+        commandbody: String?,
         thinking: String?,
         deliver: Bool?,
         originatingchannel: String?,
@@ -4093,6 +4809,7 @@ public struct ChatSendParams: Codable, Sendable {
     {
         self.sessionkey = sessionkey
         self.message = message
+        self.commandbody = commandbody
         self.thinking = thinking
         self.deliver = deliver
         self.originatingchannel = originatingchannel
@@ -4109,6 +4826,7 @@ public struct ChatSendParams: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case sessionkey = "sessionKey"
         case message
+        case commandbody = "commandBody"
         case thinking
         case deliver
         case originatingchannel = "originatingChannel"

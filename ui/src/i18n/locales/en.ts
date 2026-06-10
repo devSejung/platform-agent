@@ -741,8 +741,10 @@ export const en: TranslationMap = {
       updating: "Updating...",
       delete: "Delete",
       edit: "Edit",
-      hide: "Hide from Hub",
+      hide: "Delete from Skill Hub",
       unhide: "Show in Hub",
+      deleteFromHub: "Delete from Skill Hub",
+      more: "More actions",
       upload: "Upload",
       collapse: "Collapse",
       expand: "Expand",
@@ -764,8 +766,20 @@ export const en: TranslationMap = {
       examplePrompts: "Example prompts",
       examplePromptsEmpty: "No example prompts have been added yet.",
       adminControls: "Admin controls",
-      adminControlsHelp: "You can manage this skill as an admin without changing the original uploader or owner.",
+      adminControlsHelp:
+        "You can manage this skill as an admin without changing the original uploader or owner.",
       versionHistory: "Version History",
+    },
+    status: {
+      title: "Current status",
+      shared: "Shared skills",
+      updates: "Updates",
+      local: "Local skills",
+      installed: "Installed",
+    },
+    recent: {
+      title: "Recent updates",
+      empty: "No recent updates.",
     },
     editor: {
       publishTitle: "Publish skill",
@@ -879,7 +893,8 @@ export const en: TranslationMap = {
     roleChange: {
       title: "Change role",
       fieldLabel: "Global role",
-      memberHint: "Standard access for daily work, Skill Hub usage, and personal workspace actions.",
+      memberHint:
+        "Standard access for daily work, Skill Hub usage, and personal workspace actions.",
       adminHint: "Administrative access for accounts, Groups, Parts, and ownership changes.",
       confirmHint: "Confirm carefully. Global role changes affect admin access immediately.",
     },

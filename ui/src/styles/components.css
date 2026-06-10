@@ -18,8 +18,16 @@
   position: relative;
   overflow: hidden;
   background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 13%, transparent), transparent 36%),
-    radial-gradient(circle at bottom right, color-mix(in srgb, var(--accent-2) 10%, transparent), transparent 32%),
+    radial-gradient(
+      circle at top left,
+      color-mix(in srgb, var(--accent) 13%, transparent),
+      transparent 36%
+    ),
+    radial-gradient(
+      circle at bottom right,
+      color-mix(in srgb, var(--accent-2) 10%, transparent),
+      transparent 32%
+    ),
     linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 92%, var(--bg) 8%), var(--bg));
 }
 
@@ -90,8 +98,11 @@
   width: 100%;
   position: relative;
   align-self: center;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, var(--bg-elevated) 4%), var(--card));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card) 96%, var(--bg-elevated) 4%),
+    var(--card)
+  );
   box-shadow: var(--shadow-md);
 }
 
@@ -154,7 +165,11 @@
 
 .btn--sso {
   border-color: transparent;
-  background: linear-gradient(135deg, var(--dark-surface, #161b1a), var(--dark-surface-elevated, #1f2a28));
+  background: linear-gradient(
+    135deg,
+    var(--dark-surface, #161b1a),
+    var(--dark-surface-elevated, #1f2a28)
+  );
   color: var(--on-dark-text, #f7f6f1);
   box-shadow: none;
 }
@@ -250,8 +265,16 @@
   min-height: 100dvh;
   height: auto;
   background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 22%),
-    radial-gradient(circle at top right, color-mix(in srgb, var(--accent-2) 10%, transparent), transparent 24%),
+    radial-gradient(
+      circle at top left,
+      color-mix(in srgb, var(--accent) 12%, transparent),
+      transparent 22%
+    ),
+    radial-gradient(
+      circle at top right,
+      color-mix(in srgb, var(--accent-2) 10%, transparent),
+      transparent 24%
+    ),
     linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 90%, var(--bg) 10%), var(--bg));
   overflow: auto;
 }
@@ -411,8 +434,11 @@
 }
 
 .employee-nav-item--active {
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--card) 88%), color-mix(in srgb, var(--card) 98%, var(--bg-elevated) 2%));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 12%, var(--card) 88%),
+    color-mix(in srgb, var(--card) 98%, var(--bg-elevated) 2%)
+  );
   border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
   box-shadow: inset 3px 0 0 var(--accent);
 }
@@ -482,8 +508,11 @@
   gap: 18px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--border);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, white 4%), color-mix(in srgb, var(--card) 92%, transparent 8%));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card) 96%, white 4%),
+    color-mix(in srgb, var(--card) 92%, transparent 8%)
+  );
 }
 
 .employee-main__header-copy {
@@ -515,8 +544,11 @@
   border-radius: 24px;
   min-height: 620px;
   padding: 12px 16px 8px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, var(--bg-elevated) 4%), color-mix(in srgb, var(--bg) 98%, transparent 2%)) !important;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card) 96%, var(--bg-elevated) 4%),
+    color-mix(in srgb, var(--bg) 98%, transparent 2%)
+  ) !important;
   border: 1px solid var(--border) !important;
   box-shadow: none !important;
 }
@@ -586,8 +618,16 @@
 
 .employee-heartbeat-details__section--hero {
   background:
-    radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 12%, transparent), transparent 42%),
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 92%, white 8%), var(--bg-elevated));
+    radial-gradient(
+      circle at top right,
+      color-mix(in srgb, var(--accent) 12%, transparent),
+      transparent 42%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--bg-elevated) 92%, white 8%),
+      var(--bg-elevated)
+    );
   overflow: hidden;
 }
 
@@ -603,7 +643,11 @@
   border-radius: 16px;
   border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border));
   background:
-    radial-gradient(circle at top left, color-mix(in srgb, white 55%, transparent), transparent 38%),
+    radial-gradient(
+      circle at top left,
+      color-mix(in srgb, white 55%, transparent),
+      transparent 38%
+    ),
     linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, white 8%), var(--bg));
   display: inline-flex;
   align-items: center;
@@ -2051,7 +2095,11 @@
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent-subtle) 72%, transparent) 0%, transparent 46%),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent-subtle) 72%, transparent) 0%,
+      transparent 46%
+    ),
     color-mix(in srgb, var(--card) 94%, var(--bg-muted) 6%);
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 52%, transparent);
   color: var(--text);
@@ -2068,7 +2116,11 @@
   z-index: -1;
   border-radius: calc(var(--radius-lg) - 4px);
   background:
-    radial-gradient(circle at 36% 48%, color-mix(in srgb, var(--accent) 11%, transparent) 0 18%, transparent 54%),
+    radial-gradient(
+      circle at 36% 48%,
+      color-mix(in srgb, var(--accent) 11%, transparent) 0 18%,
+      transparent 54%
+    ),
     linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent);
   opacity: 0.65;
   mask-image: linear-gradient(90deg, black 0%, black 62%, transparent 100%);
@@ -2080,9 +2132,20 @@
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(circle at 12% 50%, color-mix(in srgb, var(--accent) 12%, transparent) 0 18%, transparent 36%),
-    linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 7%, transparent), transparent);
-  background-size: 100% 100%, 220% 100%;
+    radial-gradient(
+      circle at 12% 50%,
+      color-mix(in srgb, var(--accent) 12%, transparent) 0 18%,
+      transparent 36%
+    ),
+    linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--accent) 7%, transparent),
+      transparent
+    );
+  background-size:
+    100% 100%,
+    220% 100%;
   opacity: 0.86;
   animation: live-status-sheen 3.2s var(--ease-in-out) infinite;
 }
@@ -2093,7 +2156,11 @@
   top: 0;
   bottom: 0;
   width: 3px;
-  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent-2) 72%, var(--accent)));
+  background: linear-gradient(
+    180deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent-2) 72%, var(--accent))
+  );
 }
 
 .live-run-status__icon {
@@ -2360,7 +2427,11 @@
 .live-run-status--tool {
   border-color: color-mix(in srgb, var(--accent-2) 26%, var(--border));
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent-2-subtle) 72%, transparent) 0%, transparent 44%),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent-2-subtle) 72%, transparent) 0%,
+      transparent 44%
+    ),
     color-mix(in srgb, var(--card) 94%, var(--bg-muted) 6%);
 }
 
@@ -2370,7 +2441,11 @@
 
 .live-run-status--tool::after {
   background:
-    radial-gradient(circle at 38% 48%, color-mix(in srgb, var(--accent-2) 9%, transparent) 0 17%, transparent 54%),
+    radial-gradient(
+      circle at 38% 48%,
+      color-mix(in srgb, var(--accent-2) 9%, transparent) 0 17%,
+      transparent 54%
+    ),
     linear-gradient(90deg, color-mix(in srgb, var(--accent-2) 5%, transparent), transparent);
   opacity: 0.5;
 }
@@ -2390,13 +2465,19 @@
 
 @keyframes live-status-sheen {
   0% {
-    background-position: 0 0, 120% 0;
+    background-position:
+      0 0,
+      120% 0;
   }
   50% {
-    background-position: 0 0, 0 0;
+    background-position:
+      0 0,
+      0 0;
   }
   100% {
-    background-position: 0 0, -120% 0;
+    background-position:
+      0 0,
+      -120% 0;
   }
 }
 
@@ -2624,7 +2705,11 @@
 .compaction-indicator--active {
   color: var(--info);
   border-color: rgba(59, 130, 246, 0.35);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--info) 12%, var(--dark-surface)) 0%, var(--dark-surface-elevated) 100%);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--info) 12%, var(--dark-surface)) 0%,
+    var(--dark-surface-elevated) 100%
+  );
 }
 
 .compaction-indicator--active svg {
@@ -2634,7 +2719,11 @@
 .compaction-indicator--complete {
   color: var(--ok);
   border-color: rgba(34, 197, 94, 0.35);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--ok) 10%, var(--dark-surface)) 0%, var(--dark-surface-elevated) 100%);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ok) 10%, var(--dark-surface)) 0%,
+    var(--dark-surface-elevated) 100%
+  );
 }
 
 .compaction-indicator--fallback {
@@ -5197,7 +5286,11 @@ td.data-table-key-col {
   border-radius: 10px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, white 4%), var(--card)),
-    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 10%, transparent 90%), transparent 42%);
+    radial-gradient(
+      circle at top left,
+      color-mix(in srgb, var(--accent) 10%, transparent 90%),
+      transparent 42%
+    );
   box-shadow: inset 0 1px 0 var(--card-highlight);
 }
 
@@ -5439,16 +5532,364 @@ td.data-table-key-col {
   font-size: 12px;
 }
 
-.skillhub-primary-grid {
+.skillhub-page {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 18px;
 }
 
-.skillhub-panel,
-.skillhub-card,
-.skillhub-hero {
-  border-color: color-mix(in srgb, var(--border) 76%, var(--brand, #26796b) 24%);
+.skillhub-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.skillhub-page__title {
+  font-size: 20px;
+}
+
+.skillhub-market-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+
+.skillhub-catalog,
+.skillhub-side-card {
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--border) 78%, var(--brand, #26796b) 22%);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.skillhub-side-card {
+  background: color-mix(in srgb, var(--card) 97%, var(--bg-muted) 3%);
+  border-color: color-mix(in srgb, var(--border) 90%, transparent 10%);
+  box-shadow: none;
+}
+
+.skillhub-catalog {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  min-width: 0;
+}
+
+.skillhub-catalog__header,
+.skillhub-side-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.skillhub-side-card__header > .btn {
+  flex: 0 0 auto;
+  min-width: 64px;
+  white-space: nowrap;
+}
+
+.skillhub-filter-row {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) 220px auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.skillhub-search-field,
+.skillhub-sort-field {
+  margin: 0;
+}
+
+.skillhub-shown-count {
+  white-space: nowrap;
+}
+
+.skillhub-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.skillhub-empty {
+  grid-column: 1 / -1;
+}
+
+.skillhub-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  width: 100%;
+  min-height: 220px;
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.skillhub-card__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.skillhub-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.skillhub-card__title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.skillhub-card__title {
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.skillhub-card__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.skillhub-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px 14px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.skillhub-card__actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-end;
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.skillhub-card__main-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.skillhub-more {
+  position: relative;
+}
+
+.skillhub-more > summary {
+  list-style: none;
+}
+
+.skillhub-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.skillhub-more__menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 10;
+  display: grid;
+  min-width: 150px;
+  padding: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.skillhub-danger-action {
+  color: var(--danger);
+}
+
+.skillhub-side-rail {
+  display: grid;
+  gap: 14px;
+  position: sticky;
+  top: 16px;
+}
+
+.skillhub-side-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.skillhub-side-card__title {
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.skillhub-side-card__sub {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.skillhub-publish-list {
+  display: grid;
+  gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;
+  scrollbar-color: color-mix(in srgb, var(--accent) 48%, var(--border) 52%)
+    color-mix(in srgb, var(--bg-muted) 72%, transparent 28%);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.skillhub-publish-list::-webkit-scrollbar {
+  width: 9px;
+}
+
+.skillhub-publish-list::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--bg-muted) 72%, transparent 28%);
+  border-radius: 999px;
+}
+
+.skillhub-publish-list::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  background: color-mix(in srgb, var(--accent) 48%, var(--border) 52%);
+  border: 2px solid color-mix(in srgb, var(--card) 94%, transparent 6%);
+  border-radius: 999px;
+}
+
+.skillhub-publish-list::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 66%, var(--border) 34%);
+}
+
+.skillhub-publish-item {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--card) 90%, var(--bg-muted) 10%);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent 28%);
+  border-radius: var(--radius-md);
+}
+
+.skillhub-publish-item__body {
+  min-width: 0;
+}
+
+.skillhub-publish-item__title {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.skillhub-publish-item__desc {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.skillhub-publish-item__reason {
+  margin-top: 7px;
+  color: color-mix(in srgb, var(--muted) 88%, var(--text) 12%);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.skillhub-publish-item__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.skillhub-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.skillhub-status-grid div {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--card) 91%, var(--bg-muted) 9%);
+  border: 1px solid color-mix(in srgb, var(--border) 68%, transparent 32%);
+  border-radius: var(--radius-md);
+}
+
+.skillhub-status-grid strong {
+  color: var(--text-strong);
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.skillhub-status-grid span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.skillhub-recent-list {
+  display: grid;
+  gap: 8px;
+}
+
+.skillhub-recent-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 9px 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  text-align: left;
+}
+
+.skillhub-recent-item:last-child {
+  border-bottom: 0;
+}
+
+.skillhub-recent-item span {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skillhub-recent-item small {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 @container (min-width: 900px) {
@@ -5478,11 +5919,21 @@ td.data-table-key-col {
   }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1200px) {
   .skillhub-primary-grid {
     grid-template-columns: 1fr;
   }
 
+  .skillhub-market-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .skillhub-side-rail {
+    position: static;
+  }
+}
+
+@media (max-width: 980px) {
   .agent-header {
     grid-template-columns: 1fr;
   }
@@ -5493,6 +5944,30 @@ td.data-table-key-col {
 
   .agent-tools-list {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .skillhub-filter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .skillhub-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .skillhub-card__actions,
+  .skillhub-card__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .skillhub-card__main-actions {
+    justify-content: flex-start;
+  }
+
+  .skillhub-shown-count {
+    white-space: normal;
   }
 }
 

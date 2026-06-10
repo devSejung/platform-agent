@@ -647,7 +647,8 @@ export const ko: TranslationMap = {
       disconnectedBody: "Gateway에 연결한 뒤 스킬 상태를 새로고침하세요.",
       noMatchTitle: "현재 조건과 일치하는 스킬이 없습니다.",
       filteredBody: "상태 필터나 검색어를 지우면 전체 병합 스킬 목록을 볼 수 있습니다.",
-      setupBody: "각 스킬 폴더 바로 아래에 SKILL.md가 있고 name, description frontmatter가 포함되어 있는지 확인하세요.",
+      setupBody:
+        "각 스킬 폴더 바로 아래에 SKILL.md가 있고 name, description frontmatter가 포함되어 있는지 확인하세요.",
     },
     clawhub: {
       empty: "ClawHub에서 스킬을 찾지 못했습니다.",
@@ -687,7 +688,8 @@ export const ko: TranslationMap = {
     composer: {
       title: "Skill Hub 업로드",
       subtitle: "패키지 업로드를 먼저 두고, 그 아래에 내 워크스페이스 스킬 발행 목록을 배치합니다.",
-      collapsedHint: "패키지를 올리거나, 내 로컬 워크스페이스 스킬 {count}개 중 하나를 발행할 수 있습니다.",
+      collapsedHint:
+        "패키지를 올리거나, 내 로컬 워크스페이스 스킬 {count}개 중 하나를 발행할 수 있습니다.",
     },
     tabs: {
       discover: "탐색",
@@ -742,8 +744,10 @@ export const ko: TranslationMap = {
       updating: "업데이트 중...",
       delete: "삭제",
       edit: "Edit",
-      hide: "허브에서 숨기기",
+      hide: "Skill Hub에서 삭제",
       unhide: "허브에 다시 표시",
+      deleteFromHub: "Skill Hub에서 삭제",
+      more: "추가 작업",
       upload: "Upload",
       collapse: "접기",
       expand: "펼치기",
@@ -765,8 +769,20 @@ export const ko: TranslationMap = {
       examplePrompts: "예시 프롬프트",
       examplePromptsEmpty: "아직 등록된 예시 프롬프트가 없습니다.",
       adminControls: "Admin controls",
-      adminControlsHelp: "이 영역은 관리자 권한으로 관리할 수 있으며, 원래 업로더나 owner 정보는 바뀌지 않습니다.",
+      adminControlsHelp:
+        "이 영역은 관리자 권한으로 관리할 수 있으며, 원래 업로더나 owner 정보는 바뀌지 않습니다.",
       versionHistory: "버전 기록",
+    },
+    status: {
+      title: "현재 상태",
+      shared: "공유 스킬",
+      updates: "업데이트 가능",
+      local: "로컬 스킬",
+      installed: "설치됨",
+    },
+    recent: {
+      title: "최근 업데이트",
+      empty: "최근 업데이트가 없습니다.",
     },
     editor: {
       publishTitle: "스킬 발행",

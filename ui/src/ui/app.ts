@@ -1,5 +1,9 @@
 import { LitElement } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import type {
+  EmployeeUiAccountSummary,
+  EmployeeUiLoginNotice,
+} from "../../../src/gateway/employee-ui-contract.ts";
 import { i18n, I18nController, isSupportedLocale } from "../i18n/index.ts";
 import {
   handleChannelConfigReload as handleChannelConfigReloadInternal,
@@ -28,29 +32,7 @@ import {
   handleFirstUpdated,
   handleUpdated,
 } from "./app-lifecycle.ts";
-import {
-  logoutEmployee,
-  submitEmployeeAdSso,
-  submitEmployeeLogin,
-} from "./controllers/employee-login.ts";
-import {
-  closeWorkspaceFilePreview,
-  createWorkspaceFolderAction,
-  deleteWorkspaceEntriesAction,
-  downloadWorkspaceFiles,
-  loadWorkspaceFiles,
-  openWorkspaceFilePreview,
-  renameWorkspaceEntryAction,
-  setAllWorkspaceFileSelections,
-  toggleWorkspaceFileSelection,
-  uploadWorkspaceFilesAction,
-  type WorkspaceFileUploadItem,
-} from "./controllers/workspace-files.ts";
 import { renderApp } from "./app-render.ts";
-import type {
-  EmployeeUiAccountSummary,
-  EmployeeUiLoginNotice,
-} from "../../../src/gateway/employee-ui-contract.ts";
 import {
   exportLogs as exportLogsInternal,
   handleChatScroll as handleChatScrollInternal,
@@ -77,6 +59,8 @@ import {
 import type { AppViewState } from "./app-view-state.ts";
 import { normalizeAssistantIdentity } from "./assistant-identity.ts";
 import { exportChatMarkdown } from "./chat/export.ts";
+import type { AccountDirectoryEntry } from "./controllers/accounts.ts";
+import type { AdminAccountDetail, AdminAccountEntry } from "./controllers/admin-accounts.ts";
 import {
   loadToolsEffective as loadToolsEffectiveInternal,
   refreshVisibleToolsEffectiveForCurrentSession as refreshVisibleToolsEffectiveForCurrentSessionInternal,
@@ -84,17 +68,33 @@ import {
 import { loadAssistantIdentity as loadAssistantIdentityInternal } from "./controllers/assistant-identity.ts";
 import type { DevicePairingList } from "./controllers/devices.ts";
 import type { DreamingStatus } from "./controllers/dreaming.ts";
+import {
+  logoutEmployee,
+  submitEmployeeAdSso,
+  submitEmployeeLogin,
+} from "./controllers/employee-login.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
+import type { GroupDetail, GroupEntry, GroupScopeOption } from "./controllers/groups.ts";
+import type { SkillHubDetail, SkillHubEntry, SkillHubScope } from "./controllers/skill-hub.ts";
 import type {
   ClawHubSearchResult,
   ClawHubSkillDetail,
   SkillMessage,
 } from "./controllers/skills.ts";
-import type { SkillHubDetail, SkillHubEntry, SkillHubScope } from "./controllers/skill-hub.ts";
-import type { AccountDirectoryEntry } from "./controllers/accounts.ts";
-import type { AdminAccountDetail, AdminAccountEntry } from "./controllers/admin-accounts.ts";
-import type { GroupDetail, GroupEntry, GroupScopeOption } from "./controllers/groups.ts";
+import {
+  closeWorkspaceFilePreview,
+  createWorkspaceFolderAction,
+  deleteWorkspaceEntriesAction,
+  downloadWorkspaceFiles,
+  loadWorkspaceFiles,
+  openWorkspaceFilePreview,
+  renameWorkspaceEntryAction,
+  setAllWorkspaceFileSelections,
+  toggleWorkspaceFileSelection,
+  uploadWorkspaceFilesAction,
+  type WorkspaceFileUploadItem,
+} from "./controllers/workspace-files.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import { resolveAgentIdFromSessionKey } from "./session-key.ts";
@@ -250,13 +250,19 @@ export class OpenClawApp extends LitElement {
   @state() workspaceFilesMessage: { kind: "success" | "error"; text: string } | null = null;
   @state() workspaceFilesCurrentPath = "";
   @state() workspaceFilesParentPath: string | null = null;
-  @state() workspaceFilesBreadcrumbs: import("../../../src/gateway/employee-workspace-files-contract.ts").WorkspaceFilesBreadcrumbEntry[] = [];
-  @state() workspaceFilesEntries: import("../../../src/gateway/employee-workspace-files-contract.ts").WorkspaceFilesEntry[] = [];
+  @state()
+  workspaceFilesBreadcrumbs: import("../../../src/gateway/employee-workspace-files-contract.ts").WorkspaceFilesBreadcrumbEntry[] =
+    [];
+  @state()
+  workspaceFilesEntries: import("../../../src/gateway/employee-workspace-files-contract.ts").WorkspaceFilesEntry[] =
+    [];
   @state() workspaceFilesSelectedPaths: string[] = [];
   @state() workspaceFilesUploads: WorkspaceFileUploadItem[] = [];
   @state() workspaceFilesPreviewLoading = false;
   @state() workspaceFilesPreviewError: string | null = null;
-  @state() workspaceFilesPreview: import("../../../src/gateway/employee-workspace-files-contract.ts").WorkspaceFilePreviewResponse | null = null;
+  @state() workspaceFilesPreview:
+    | import("../../../src/gateway/employee-workspace-files-contract.ts").WorkspaceFilePreviewResponse
+    | null = null;
   @state() navDrawerOpen = false;
 
   onSlashAction?: (action: string) => void;
@@ -535,6 +541,11 @@ export class OpenClawApp extends LitElement {
   @state() skillHubBusySlug: string | null = null;
   @state() skillHubMessage: { kind: "success" | "error"; text: string } | null = null;
   @state() skillHubWorkspacePublishing = false;
+  @state() skillHubWorkspacePendingKeys: string[] = [];
+  @state()
+  skillHubWorkspacePublishEntries: import("./controllers/skill-hub.ts").WorkspacePublishEntry[] =
+    [];
+  @state() skillHubOverview: import("./controllers/skill-hub.ts").SkillHubOverview | null = null;
   @state() skillHubUploading = false;
   @state() skillHubWorkspacePanelOpen = false;
   @state() skillHubEditorOpen = false;
@@ -842,9 +853,7 @@ export class OpenClawApp extends LitElement {
   }
 
   closeWorkspaceFilePreview() {
-    closeWorkspaceFilePreview(
-      this as unknown as Parameters<typeof closeWorkspaceFilePreview>[0],
-    );
+    closeWorkspaceFilePreview(this as unknown as Parameters<typeof closeWorkspaceFilePreview>[0]);
   }
 
   toggleWorkspaceFileSelection(relativePath: string, selected: boolean) {

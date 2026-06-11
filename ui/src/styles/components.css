@@ -3709,36 +3709,49 @@ td.data-table-key-col {
 
 /* Chat queue */
 .chat-queue {
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: var(--card);
+  margin-top: 10px;
+  padding: 0 4px;
   display: grid;
   gap: 8px;
 }
 
+.chat-queue__header {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  text-align: right;
+  padding-right: 4px;
+}
+
 .chat-queue__title {
-  font-family: var(--mono);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--chat-text);
+}
+
+.chat-queue__description {
   color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .chat-queue__list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .chat-queue__item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  border: 1px dashed var(--border-strong);
-  background: var(--secondary);
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chat-queue__bubble {
+  max-width: min(620px, 82%);
+  border-style: solid;
+  opacity: 0.82;
 }
 
 .chat-queue__text {
@@ -3755,9 +3768,11 @@ td.data-table-key-col {
 
 .chat-queue__remove {
   align-self: start;
-  padding: 4px 10px;
+  margin-top: 2px;
+  padding: 5px 10px;
   font-size: 12px;
   line-height: 1;
+  white-space: nowrap;
 }
 
 /* New messages indicator */

@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  hasUnsentQueuedChatMessages,
   isCronSessionKey,
   parseSessionKey,
   resolveSidebarChatSessionKey,
   resolveSessionDisplayName,
+  switchChatSession,
 } from "./app-render.helpers.ts";
 import type { SessionsListResult } from "./types.ts";
 
@@ -12,6 +14,57 @@ type SessionRow = SessionsListResult["sessions"][number];
 function row(overrides: Partial<SessionRow> & { key: string }): SessionRow {
   return { kind: "direct", updatedAt: 0, ...overrides };
 }
+
+function createSwitchState(overrides: Record<string, unknown> = {}) {
+  const request = vi.fn(async (method: string) => {
+    if (method === "chat.history") {
+      return { messages: [], thinkingLevel: null };
+    }
+    if (method === "sessions.list") {
+      return {
+        ts: 0,
+        path: "",
+        count: 0,
+        defaults: { modelProvider: null, model: null, contextTokens: null },
+        sessions: [],
+      };
+    }
+    return {};
+  });
+  const state = {
+    client: { request },
+    connected: true,
+    sessionKey: "session-a",
+    chatMessage: "draft",
+    chatStream: "partial",
+    chatStreamStartedAt: 123,
+    chatRunId: "run-a",
+    chatQueue: [],
+    chatSendDrafts: { "run-a": { message: "draft", attachments: [] } },
+    chatSendFailures: {},
+    chatMessages: [],
+    chatThinkingLevel: null,
+    chatLoading: false,
+    settings: { sessionKey: "session-a", lastActiveSessionKey: "session-a" },
+    applySettings: vi.fn(function applySettings(this: { settings: unknown }, next: unknown) {
+      this.settings = next;
+    }),
+    loadAssistantIdentity: vi.fn(),
+    resetToolStream: vi.fn(),
+    resetChatScroll: vi.fn(),
+    ...overrides,
+  } as never;
+  return { state, request };
+}
+
+function getQueuedMessageDialog() {
+  return document.querySelector<HTMLElement>(".chat-session-leave-confirm");
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  document.querySelectorAll(".chat-session-leave-confirm").forEach((el) => el.remove());
+});
 
 describe("resolveSidebarChatSessionKey", () => {
   it("keeps employee chat pinned to the employee agent main session", () => {
@@ -50,6 +103,91 @@ describe("resolveSidebarChatSessionKey", () => {
         },
       } as never),
     ).toBe("main");
+  });
+});
+
+describe("chat session switch queued-message guard", () => {
+  it("treats normal queued messages as unsent but excludes pending run indicators", () => {
+    expect(
+      hasUnsentQueuedChatMessages([
+        { id: "queued", text: "follow up", createdAt: 1 },
+        { id: "pending", text: "/steer tighten", createdAt: 2, pendingRunId: "run-a" },
+      ]),
+    ).toBe(true);
+    expect(
+      hasUnsentQueuedChatMessages([
+        { id: "pending", text: "/steer tighten", createdAt: 2, pendingRunId: "run-a" },
+      ]),
+    ).toBe(false);
+  });
+
+  it("opens a custom dialog instead of native confirm for unsent queued messages", async () => {
+    const nativeConfirm = vi.spyOn(window, "confirm");
+    const { state } = createSwitchState({
+      chatQueue: [{ id: "queued", text: "follow up", createdAt: 1 }],
+    });
+
+    const result = switchChatSession(state, "session-b");
+    const dialog = getQueuedMessageDialog();
+
+    expect(dialog).not.toBeNull();
+    expect(dialog?.getAttribute("role")).toBe("dialog");
+    expect(dialog?.textContent).toContain("전송 대기 중인 메시지가 있습니다");
+    expect(dialog?.textContent).toContain("다른 대화로 이동하면 이 메시지는 전송되지 않습니다");
+    expect(nativeConfirm).not.toHaveBeenCalled();
+
+    dialog?.querySelector<HTMLButtonElement>("button")?.click();
+    expect(await result).toBe(false);
+  });
+
+  it("cancels session switch and preserves queued message when the user rejects discard", async () => {
+    const { state } = createSwitchState({
+      chatQueue: [{ id: "queued", text: "follow up", createdAt: 1 }],
+    });
+
+    const result = switchChatSession(state, "session-b");
+    getQueuedMessageDialog()
+      ?.querySelectorAll<HTMLButtonElement>("button")
+      .item(0)
+      .click();
+
+    expect(await result).toBe(false);
+    expect((state as { sessionKey: string }).sessionKey).toBe("session-a");
+    expect((state as { chatQueue: unknown[] }).chatQueue).toHaveLength(1);
+    expect((state as { chatRunId: string | null }).chatRunId).toBe("run-a");
+    expect((state as { chatStream: string | null }).chatStream).toBe("partial");
+  });
+
+  it("switches sessions and explicitly discards queued messages when the user confirms", async () => {
+    const { state } = createSwitchState({
+      chatQueue: [{ id: "queued", text: "follow up", createdAt: 1 }],
+    });
+
+    const result = switchChatSession(state, "session-b");
+    getQueuedMessageDialog()
+      ?.querySelectorAll<HTMLButtonElement>("button")
+      .item(1)
+      .click();
+
+    expect(await result).toBe(true);
+    expect((state as { sessionKey: string }).sessionKey).toBe("session-b");
+    expect((state as { chatQueue: unknown[] }).chatQueue).toEqual([]);
+    expect((state as { chatRunId: string | null }).chatRunId).toBeNull();
+    expect((state as { chatStream: string | null }).chatStream).toBeNull();
+  });
+
+  it("does not warn for /steer pending indicators even though session switch cleanup removes them", async () => {
+    const nativeConfirm = vi.spyOn(window, "confirm");
+    const { state } = createSwitchState({
+      chatQueue: [{ id: "pending", text: "/steer tighten", createdAt: 1, pendingRunId: "run-a" }],
+    });
+
+    expect(await switchChatSession(state, "session-b")).toBe(true);
+
+    expect(getQueuedMessageDialog()).toBeNull();
+    expect(nativeConfirm).not.toHaveBeenCalled();
+    expect((state as { sessionKey: string }).sessionKey).toBe("session-b");
+    expect((state as { chatQueue: unknown[] }).chatQueue).toEqual([]);
   });
 });
 

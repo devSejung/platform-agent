@@ -24,6 +24,7 @@ import {
   resolveThinkingDefaultForModel,
 } from "./thinking.ts";
 import type { SessionsListResult } from "./types.ts";
+import type { ChatQueueItem } from "./ui-types.ts";
 
 type SessionDefaultsSnapshot = {
   mainSessionKey?: string;
@@ -74,6 +75,98 @@ function resetChatStateForSessionSwitch(state: AppViewState, sessionKey: string)
   });
 }
 
+export function isUnsentQueuedChatMessage(item: ChatQueueItem): boolean {
+  return !item.pendingRunId;
+}
+
+export function hasUnsentQueuedChatMessages(queue: readonly ChatQueueItem[] | undefined): boolean {
+  return Boolean(queue?.some(isUnsentQueuedChatMessage));
+}
+
+function requestQueuedMessageDiscardConfirmation(): Promise<boolean> {
+  if (typeof document === "undefined") {
+    return Promise.resolve(true);
+  }
+
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "exec-approval-overlay chat-session-leave-confirm";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-labelledby", "chat-session-leave-confirm-title");
+
+    const card = document.createElement("div");
+    card.className = "exec-approval-card";
+
+    const header = document.createElement("div");
+    header.className = "exec-approval-header";
+
+    const headerText = document.createElement("div");
+    const title = document.createElement("div");
+    title.id = "chat-session-leave-confirm-title";
+    title.className = "exec-approval-title";
+    title.textContent = "전송 대기 중인 메시지가 있습니다";
+
+    const subtitle = document.createElement("div");
+    subtitle.className = "exec-approval-sub";
+    subtitle.textContent = "현재 대화에 아직 전송되지 않은 메시지가 있습니다.";
+
+    headerText.append(title, subtitle);
+    header.append(headerText);
+
+    const body = document.createElement("div");
+    body.className = "callout danger";
+    body.style.marginTop = "12px";
+    body.textContent =
+      "다른 대화로 이동하면 이 메시지는 전송되지 않습니다. 이동하시겠습니까?";
+
+    const actions = document.createElement("div");
+    actions.className = "exec-approval-actions";
+
+    const cancel = document.createElement("button");
+    cancel.className = "btn";
+    cancel.type = "button";
+    cancel.textContent = "취소";
+
+    const leave = document.createElement("button");
+    leave.className = "btn danger";
+    leave.type = "button";
+    leave.textContent = "이동";
+
+    const cleanup = (value: boolean) => {
+      overlay.remove();
+      resolve(value);
+    };
+
+    cancel.addEventListener("click", () => cleanup(false), { once: true });
+    leave.addEventListener("click", () => cleanup(true), { once: true });
+    overlay.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cleanup(false);
+      }
+    });
+
+    actions.append(cancel, leave);
+    card.append(header, body, actions);
+    overlay.append(card);
+    document.body.append(overlay);
+    cancel.focus();
+  });
+}
+
+async function confirmDiscardUnsentQueueIfNeeded(state: AppViewState): Promise<boolean> {
+  if (!hasUnsentQueuedChatMessages(state.chatQueue)) {
+    return true;
+  }
+  return requestQueuedMessageDiscardConfirmation();
+}
+
+function discardChatQueueForSessionSwitch(state: AppViewState) {
+  // TODO: Replace this guard with session-aware queued message persistence/background flush.
+  state.chatQueue = [];
+}
+
 export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: boolean }) {
   const href = pathForTab(tab, state.basePath);
   const isActive = state.tab === tab;
@@ -82,7 +175,7 @@ export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: bo
     <a
       href=${href}
       class="nav-item ${isActive ? "nav-item--active" : ""}"
-      @click=${(event: MouseEvent) => {
+      @click=${async (event: MouseEvent) => {
         if (
           event.defaultPrevented ||
           event.button !== 0 ||
@@ -97,6 +190,10 @@ export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: bo
         if (tab === "chat") {
           const mainSessionKey = resolveSidebarChatSessionKey(state);
           if (state.sessionKey !== mainSessionKey) {
+            if (!(await confirmDiscardUnsentQueueIfNeeded(state))) {
+              return;
+            }
+            discardChatQueueForSessionSwitch(state);
             resetChatStateForSessionSwitch(state, mainSessionKey);
             void state.loadAssistantIdentity();
           }
@@ -163,12 +260,15 @@ export function renderChatSessionSelect(state: AppViewState) {
           .value=${state.sessionKey}
           title=${selectedSessionLabel}
           ?disabled=${!state.connected || sessionGroups.length === 0}
-          @change=${(e: Event) => {
-            const next = (e.target as HTMLSelectElement).value;
+          @change=${async (e: Event) => {
+            const select = e.target as HTMLSelectElement;
+            const next = select.value;
             if (state.sessionKey === next) {
               return;
             }
-            switchChatSession(state, next);
+            if (!(await switchChatSession(state, next))) {
+              select.value = state.sessionKey;
+            }
           }}
         >
           ${repeat(
@@ -448,9 +548,12 @@ export function renderChatMobileToggle(state: AppViewState) {
           <label class="field chat-controls__session">
             <select
               .value=${state.sessionKey}
-              @change=${(e: Event) => {
-                const next = (e.target as HTMLSelectElement).value;
-                switchChatSession(state, next);
+              @change=${async (e: Event) => {
+                const select = e.target as HTMLSelectElement;
+                const next = select.value;
+                if (!(await switchChatSession(state, next))) {
+                  select.value = state.sessionKey;
+                }
               }}
             >
               ${sessionGroups.map(
@@ -523,12 +626,20 @@ export function renderChatMobileToggle(state: AppViewState) {
   `;
 }
 
-export function switchChatSession(state: AppViewState, nextSessionKey: string) {
+export async function switchChatSession(
+  state: AppViewState,
+  nextSessionKey: string,
+): Promise<boolean> {
+  if (state.sessionKey === nextSessionKey) {
+    return true;
+  }
+  if (!(await confirmDiscardUnsentQueueIfNeeded(state))) {
+    return false;
+  }
   state.sessionKey = nextSessionKey;
   state.chatMessage = "";
   state.chatStream = null;
-  // P1: Clear queued chat items from the previous session
-  (state as unknown as { chatQueue: unknown[] }).chatQueue = [];
+  discardChatQueueForSessionSwitch(state);
   state.chatSendDrafts = {};
   state.chatSendFailures = {};
   (state as unknown as OpenClawApp).chatStreamStartedAt = null;
@@ -548,6 +659,7 @@ export function switchChatSession(state: AppViewState, nextSessionKey: string) {
   );
   void loadChatHistory(state as unknown as ChatState);
   void refreshSessionOptions(state);
+  return true;
 }
 
 async function refreshSessionOptions(state: AppViewState) {

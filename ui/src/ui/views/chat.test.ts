@@ -372,6 +372,37 @@ describe("chat view", () => {
     });
   });
 
+  it("renders queued messages as compact pending user bubbles", () => {
+    const onQueueRemove = vi.fn();
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          queue: [
+            { id: "q1", text: "ㅎㅎ", createdAt: 1 },
+            { id: "q2", text: "/steer 더 짧게", createdAt: 2, pendingRunId: "run-1" },
+          ],
+          onQueueRemove,
+        }),
+      ),
+      container,
+    );
+
+    const queue = container.querySelector(".chat-queue");
+    expect(queue).not.toBeNull();
+    expect(queue?.textContent).toContain("전송 대기 중 (2)");
+    expect(queue?.textContent).toContain("현재 응답이 끝나면 자동으로 전송됩니다.");
+    expect(queue?.querySelectorAll(".chat-queue__item.chat-line.user")).toHaveLength(2);
+    expect(queue?.querySelector(".chat-queue__bubble.chat-bubble")?.textContent).toContain("ㅎㅎ");
+
+    const cancel = queue?.querySelector<HTMLButtonElement>(".chat-queue__remove");
+    expect(cancel?.textContent?.trim()).toBe("취소");
+    expect(cancel?.getAttribute("aria-label")).toBe("전송 대기 취소");
+    expect(cancel?.getAttribute("title")).toBe("전송 대기 취소");
+    cancel?.click();
+    expect(onQueueRemove).toHaveBeenCalledWith("q1");
+  });
+
   it("renders memory flushing status in Korean through the live run status bar", () => {
     withDocumentLang("ko-KR", () => {
       const container = document.createElement("div");

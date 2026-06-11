@@ -630,9 +630,6 @@ function renderRequestStatus(props: ChatProps) {
       </div>
       <div class="live-run-status__meta">
         <span>${status.meta}</span>
-        ${status.queueDepth > 0 && status.phase !== "queued"
-          ? html`<span>${status.queueDepth} queued</span>`
-          : nothing}
       </div>
     </div>
   `;
@@ -1760,22 +1757,30 @@ export function renderChat(props: ChatProps) {
       ${props.queue.length
         ? html`
             <div class="chat-queue" role="status" aria-live="polite">
-              <div class="chat-queue__title">Queued (${props.queue.length})</div>
+              <div class="chat-queue__header">
+                <div class="chat-queue__title">전송 대기 중 (${props.queue.length})</div>
+                <div class="chat-queue__description">현재 응답이 끝나면 자동으로 전송됩니다.</div>
+              </div>
               <div class="chat-queue__list">
                 ${props.queue.map(
                   (item) => html`
-                    <div class="chat-queue__item">
-                      <div class="chat-queue__text">
-                        ${item.text ||
-                        (item.attachments?.length ? `Attachment (${item.attachments.length})` : "")}
+                    <div class="chat-queue__item chat-line user">
+                      <div class="chat-queue__bubble chat-bubble">
+                        <div class="chat-queue__text">
+                          ${item.text ||
+                          (item.attachments?.length
+                            ? `첨부 파일 ${item.attachments.length}개`
+                            : "")}
+                        </div>
                       </div>
                       <button
                         class="btn chat-queue__remove"
                         type="button"
-                        aria-label="Remove queued message"
+                        aria-label="전송 대기 취소"
+                        title="전송 대기 취소"
                         @click=${() => props.onQueueRemove(item.id)}
                       >
-                        ${icons.x}
+                        취소
                       </button>
                     </div>
                   `,

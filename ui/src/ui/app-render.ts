@@ -826,26 +826,11 @@ export function renderApp(state: AppViewState) {
       ? renderChat({
           employeeMode: state.employeeMode,
           sessionKey: state.sessionKey,
-          onSessionKeyChange: (next) => {
-            state.sessionKey = next;
-            state.chatMessage = "";
-            state.chatAttachments = [];
-            state.chatStream = null;
-            state.chatStreamStartedAt = null;
-            state.chatRunId = null;
-            state.chatQueue = [];
-            state.chatSendDrafts = {};
-            state.chatSendFailures = {};
-            state.resetToolStream();
-            state.resetChatScroll();
-            state.applySettings({
-              ...state.settings,
-              sessionKey: next,
-              lastActiveSessionKey: next,
-            });
-            void state.loadAssistantIdentity();
-            void loadChatHistory(state);
-            void refreshChatAvatar(state);
+          onSessionKeyChange: async (next) => {
+            if (await switchChatSession(state, next)) {
+              state.chatAttachments = [];
+              void refreshChatAvatar(state);
+            }
           },
           thinkingLevel: state.chatThinkingLevel,
           showThinking,
@@ -939,8 +924,8 @@ export function renderApp(state: AppViewState) {
               },
           onSessionSelect: state.employeeMode
             ? undefined
-            : (key: string) => {
-                switchChatSession(state, key);
+            : async (key: string) => {
+                await switchChatSession(state, key);
               },
           showNewMessages: state.chatNewMessagesBelow && !state.chatManualRefreshInFlight,
           onScrollToBottom: () => state.scrollToBottom(),
@@ -1082,9 +1067,10 @@ export function renderApp(state: AppViewState) {
               }
               await loadCronRuns(state, state.cronRunsJobId);
             },
-            onNavigateToChat: (sessionKey) => {
-              switchChatSession(state, sessionKey);
-              state.setTab("chat" as import("./navigation.ts").Tab);
+            onNavigateToChat: async (sessionKey) => {
+              if (await switchChatSession(state, sessionKey)) {
+                state.setTab("chat" as import("./navigation.ts").Tab);
+              }
             },
           }),
         )
@@ -1593,9 +1579,10 @@ export function renderApp(state: AppViewState) {
                     state.sessionsSelectedKeys = next;
                   }
                 },
-                onNavigateToChat: (sessionKey) => {
-                  switchChatSession(state, sessionKey);
-                  state.setTab("chat" as import("./navigation.ts").Tab);
+                onNavigateToChat: async (sessionKey) => {
+                  if (await switchChatSession(state, sessionKey)) {
+                    state.setTab("chat" as import("./navigation.ts").Tab);
+                  }
                 },
                 onToggleCheckpointDetails: (sessionKey) =>
                   toggleSessionCompactionCheckpoints(state, sessionKey),
@@ -1606,8 +1593,9 @@ export function renderApp(state: AppViewState) {
                     checkpointId,
                   );
                   if (nextKey) {
-                    switchChatSession(state, nextKey);
-                    state.setTab("chat" as import("./navigation.ts").Tab);
+                    if (await switchChatSession(state, nextKey)) {
+                      state.setTab("chat" as import("./navigation.ts").Tab);
+                    }
                   }
                 },
                 onRestoreCheckpoint: (sessionKey, checkpointId) =>

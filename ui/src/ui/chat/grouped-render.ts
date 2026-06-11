@@ -8,6 +8,7 @@ import { toSanitizedMarkdownHtml } from "../markdown.ts";
 import { openExternalUrlSafe } from "../open-external-url.ts";
 import { detectTextDirection } from "../text-direction.ts";
 import type { MessageGroup, ToolCard } from "../types/chat-types.ts";
+import type { ChatSendFailure } from "../ui-types.ts";
 import { agentLogoUrl } from "../views/agents-utils.ts";
 import { renderCopyAsMarkdownButton } from "./copy-as-markdown.ts";
 import {
@@ -144,8 +145,7 @@ function extractAttachments(message: unknown): MessageAttachment[] {
         return null;
       }
       return {
-        type:
-          candidate.type === "image" || candidate.attachmentType === "image" ? "image" : "file",
+        type: candidate.type === "image" || candidate.attachmentType === "image" ? "image" : "file",
         fileName,
         workspacePath:
           typeof candidate.workspacePath === "string" ? candidate.workspacePath : undefined,
@@ -264,6 +264,10 @@ export function renderMessageGroup(
     basePath?: string;
     contextWindow?: number | null;
     onDelete?: () => void;
+    sendFailures?: Record<string, ChatSendFailure>;
+    retryDisabled?: boolean;
+    onRetrySend?: (runId: string) => void;
+    localizedKo?: boolean;
   },
 ) {
   const normalizedRole = normalizeRoleForGrouping(group.role);
@@ -304,17 +308,28 @@ export function renderMessageGroup(
         opts.basePath,
       )}
       <div class="chat-group-messages">
-        ${group.messages.map((item, index) =>
-          renderGroupedMessage(
-            item.message,
-            {
-              isStreaming: group.isStreaming && index === group.messages.length - 1,
-              showReasoning: opts.showReasoning,
-              showToolCalls: opts.showToolCalls ?? true,
-            },
-            opts.onOpenSidebar,
-          ),
-        )}
+        ${group.messages.map((item, index) => {
+          const runId = extractOutboundRunId(item.message);
+          const failure = runId ? opts.sendFailures?.[runId] : undefined;
+          return html`
+            ${renderGroupedMessage(
+              item.message,
+              {
+                isStreaming: group.isStreaming && index === group.messages.length - 1,
+                showReasoning: opts.showReasoning,
+                showToolCalls: opts.showToolCalls ?? true,
+              },
+              opts.onOpenSidebar,
+            )}
+            ${failure
+              ? renderSendFailure(failure, {
+                  disabled: Boolean(opts.retryDisabled),
+                  onRetry: opts.onRetrySend,
+                  localizedKo: opts.localizedKo === true,
+                })
+              : nothing}
+          `;
+        })}
         <div class="chat-group-footer">
           <span class="chat-sender-name">${who}</span>
           <span class="chat-group-timestamp">${timestamp}</span>
@@ -325,6 +340,51 @@ export function renderMessageGroup(
             : nothing}
         </div>
       </div>
+    </div>
+  `;
+}
+
+function extractOutboundRunId(message: unknown): string | null {
+  if (!message || typeof message !== "object") {
+    return null;
+  }
+  const marker = (message as Record<string, unknown>).__openclaw;
+  if (!marker || typeof marker !== "object") {
+    return null;
+  }
+  const value = marker as Record<string, unknown>;
+  return value.kind === "outbound" && typeof value.runId === "string" ? value.runId : null;
+}
+
+function renderSendFailure(
+  failure: ChatSendFailure,
+  opts: { disabled: boolean; localizedKo: boolean; onRetry?: (runId: string) => void },
+) {
+  const retryDisabled = opts.disabled || failure.retrying;
+  return html`
+    <div class="chat-send-failure" role="alert">
+      <div class="chat-send-failure__body">
+        <strong>${failure.title}</strong>
+        <span>${failure.detail}</span>
+      </div>
+      ${failure.retryable && opts.onRetry
+        ? html`
+            <button
+              type="button"
+              class="chat-send-failure__retry"
+              ?disabled=${retryDisabled}
+              @click=${() => opts.onRetry?.(failure.runId)}
+            >
+              ${failure.retrying
+                ? opts.localizedKo
+                  ? "다시 시도 중..."
+                  : "Retrying..."
+                : opts.localizedKo
+                  ? "다시 시도"
+                  : "Retry"}
+            </button>
+          `
+        : nothing}
     </div>
   `;
 }
@@ -867,7 +927,12 @@ function renderGroupedMessage(
   // Detect pure-JSON messages and render as collapsible block
   const jsonResult = markdown && !opts.isStreaming ? detectJson(markdown) : null;
 
-  const bubbleClasses = ["chat-bubble", opts.isStreaming ? "streaming" : "", "fade-in", canCopyMarkdown ? "has-copy" : ""]
+  const bubbleClasses = [
+    "chat-bubble",
+    opts.isStreaming ? "streaming" : "",
+    "fade-in",
+    canCopyMarkdown ? "has-copy" : "",
+  ]
     .filter(Boolean)
     .join(" ");
 

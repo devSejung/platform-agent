@@ -3,8 +3,9 @@ import path from "node:path";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
 import { resolveAccountTimezone } from "../../accounts/account-store.js";
-import { DEFAULT_PLATFORMCLAW_TIMEZONE } from "../../agents/date-time.js";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { DEFAULT_PLATFORMCLAW_TIMEZONE } from "../../agents/date-time.js";
+import { resolveFailoverReasonFromError } from "../../agents/failover-error.js";
 import { resolveThinkingDefault } from "../../agents/model-selection.js";
 import { rewriteTranscriptEntriesInSessionFile } from "../../agents/pi-embedded-runner/transcript-rewrite.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
@@ -491,9 +492,7 @@ async function rewriteChatSendUserTurnMediaPaths(params: {
     Array.isArray(transcriptMessage.content) &&
     transcriptMessage.content.some(
       (block) =>
-        block &&
-        typeof block === "object" &&
-        (block as { type?: unknown }).type === "attachment",
+        block && typeof block === "object" && (block as { type?: unknown }).type === "attachment",
     );
   if (!("MediaPath" in mediaFields) && !hasAttachmentContent) {
     return;
@@ -506,9 +505,7 @@ async function rewriteChatSendUserTurnMediaPaths(params: {
     if (!text) {
       return false;
     }
-    return matchTexts.some(
-      (candidate) => text === candidate || text.endsWith(`\n\n${candidate}`),
-    );
+    return matchTexts.some((candidate) => text === candidate || text.endsWith(`\n\n${candidate}`));
   };
   const sessionManager = SessionManager.open(params.transcriptPath);
   const branch = sessionManager.getBranch();
@@ -836,9 +833,7 @@ function extractHistoryText(message: unknown): string {
 
 function isUserHistoryMessage(message: unknown): boolean {
   return Boolean(
-    message &&
-      typeof message === "object" &&
-      (message as { role?: unknown }).role === "user",
+    message && typeof message === "object" && (message as { role?: unknown }).role === "user",
   );
 }
 
@@ -1422,6 +1417,7 @@ function broadcastChatError(params: {
   runId: string;
   sessionKey: string;
   errorMessage?: string;
+  errorCode?: string;
 }) {
   const seq = nextChatSeq({ agentRunSeq: params.context.agentRunSeq }, params.runId);
   const payload = {
@@ -1430,6 +1426,7 @@ function broadcastChatError(params: {
     seq,
     state: "error" as const,
     errorMessage: params.errorMessage,
+    errorCode: params.errorCode,
   };
   params.context.broadcast("chat", payload);
   params.context.nodeSendToSession(params.sessionKey, "chat", payload);
@@ -2206,6 +2203,7 @@ export const chatHandlers: GatewayRequestHandlers = {
             runId: clientRunId,
             sessionKey,
             errorMessage: String(err),
+            errorCode: resolveFailoverReasonFromError(err) ?? undefined,
           });
         })
         .finally(() => {

@@ -15,6 +15,36 @@ export type ChatAttachment = {
   file?: File;
 };
 
+export type ChatFailureCode =
+  | "timeout"
+  | "rate_limit"
+  | "overloaded"
+  | "auth"
+  | "auth_permanent"
+  | "billing"
+  | "format"
+  | "model_not_found"
+  | "session_expired"
+  | "network"
+  | "unknown";
+
+export type ChatSendFailure = {
+  runId: string;
+  message: string;
+  attachments: ChatAttachment[];
+  code: ChatFailureCode;
+  title: string;
+  detail: string;
+  retryable: boolean;
+  phase: "submit" | "run";
+  retrying: boolean;
+};
+
+export type ChatSendDraft = {
+  message: string;
+  attachments: ChatAttachment[];
+};
+
 export type ChatQueueItem = {
   id: string;
   text: string;

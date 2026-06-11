@@ -12,7 +12,7 @@ import { normalizeBasePath } from "./navigation.ts";
 import { parseAgentSessionKey } from "./session-key.ts";
 import type { ChatModelOverride, ModelCatalogEntry } from "./types.ts";
 import type { SessionsListResult } from "./types.ts";
-import type { ChatAttachment, ChatQueueItem } from "./ui-types.ts";
+import type { ChatAttachment, ChatQueueItem, ChatSendDraft, ChatSendFailure } from "./ui-types.ts";
 import { generateUUID } from "./uuid.ts";
 
 export type ChatHost = {
@@ -24,6 +24,8 @@ export type ChatHost = {
   chatMessage: string;
   chatAttachments: ChatAttachment[];
   chatQueue: ChatQueueItem[];
+  chatSendDrafts: Record<string, ChatSendDraft>;
+  chatSendFailures: Record<string, ChatSendFailure>;
   chatRunId: string | null;
   chatSending: boolean;
   lastError?: string | null;
@@ -142,12 +144,16 @@ async function sendChatMessageNow(
   resetToolStream(host as unknown as Parameters<typeof resetToolStream>[0]);
   // Reset scroll state before sending to ensure auto-scroll works for the response
   resetChatScroll(host as unknown as Parameters<typeof resetChatScroll>[0]);
-  const runId = await sendChatMessage(host as unknown as OpenClawApp, message, opts?.attachments);
+  const requestedRunId = generateUUID();
+  const runId = await sendChatMessage(host as unknown as OpenClawApp, message, opts?.attachments, {
+    runId: requestedRunId,
+  });
   const ok = Boolean(runId);
-  if (!ok && opts?.previousDraft != null) {
+  const hasVisibleFailure = requestedRunId in (host.chatSendFailures ?? {});
+  if (!ok && !hasVisibleFailure && opts?.previousDraft != null) {
     host.chatMessage = opts.previousDraft;
   }
-  if (!ok && opts?.previousAttachments) {
+  if (!ok && !hasVisibleFailure && opts?.previousAttachments) {
     host.chatAttachments = opts.previousAttachments;
   }
   if (ok) {
@@ -171,6 +177,54 @@ async function sendChatMessageNow(
     host.refreshSessionsAfterChat.add(runId);
   }
   return ok;
+}
+
+export async function retryFailedChatMessage(host: ChatHost, failedRunId: string) {
+  const failure = host.chatSendFailures?.[failedRunId];
+  if (!failure || failure.retrying || !failure.retryable || isChatBusy(host)) {
+    return;
+  }
+
+  host.chatSendFailures = {
+    ...(host.chatSendFailures ?? {}),
+    [failedRunId]: { ...failure, retrying: true },
+  };
+  const nextRunId = resolveChatRetryRunId(failure);
+  const result = await sendChatMessage(
+    host as unknown as OpenClawApp,
+    failure.message,
+    failure.attachments,
+    {
+      runId: nextRunId,
+      replaceRunId: failedRunId,
+    },
+  );
+
+  if (nextRunId !== failedRunId) {
+    const { [failedRunId]: _oldFailure, ...remainingFailures } = host.chatSendFailures ?? {};
+    host.chatSendFailures = remainingFailures;
+    const { [failedRunId]: _oldDraft, ...remainingDrafts } = host.chatSendDrafts ?? {};
+    host.chatSendDrafts = remainingDrafts;
+  } else if (result) {
+    const { [failedRunId]: _oldFailure, ...remainingFailures } = host.chatSendFailures ?? {};
+    host.chatSendFailures = remainingFailures;
+  }
+}
+
+export function resolveChatRetryRunId(failure: ChatSendFailure): string {
+  // Submit-stage network/timeout failures have uncertain delivery: the server may have accepted
+  // the request before the acknowledgement was lost. Reuse the idempotency key so the gateway
+  // returns "in_flight" or its cached result without starting a second agent run.
+  const deliveryIsUncertain =
+    failure.phase === "submit" && (failure.code === "network" || failure.code === "timeout");
+  if (deliveryIsUncertain) {
+    return failure.runId;
+  }
+
+  // Runtime timeout/overloaded/rate-limit errors are emitted only after terminal lifecycle
+  // failure. That key now returns a cached error, so an intentional retry requires a new key.
+  // sendChatMessage replaces the existing optimistic message by run id in both cases.
+  return generateUUID();
 }
 
 async function flushChatQueue(host: ChatHost) {
@@ -229,7 +283,9 @@ export async function handleSendChat(
   const attachments = host.chatAttachments ?? [];
   const attachmentsToSend = messageOverride == null ? attachments : [];
   const hasAttachments = attachmentsToSend.length > 0;
-  const hasUploadingAttachments = attachmentsToSend.some((attachment) => attachment.status === "uploading");
+  const hasUploadingAttachments = attachmentsToSend.some(
+    (attachment) => attachment.status === "uploading",
+  );
 
   if (hasUploadingAttachments) {
     host.lastError = "Wait for file uploads to finish before sending.";
@@ -381,6 +437,8 @@ async function clearChatHistory(host: ChatHost) {
     host.chatMessages = [];
     host.chatStream = null;
     host.chatRunId = null;
+    host.chatSendDrafts = {};
+    host.chatSendFailures = {};
     await loadChatHistory(host as unknown as OpenClawApp);
   } catch (err) {
     host.lastError = String(err);

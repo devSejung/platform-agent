@@ -34,6 +34,8 @@ export type EmployeeLoginState = {
   chatToolMessages?: unknown[];
   chatQueue?: unknown[];
   chatRunId?: string | null;
+  chatSendDrafts?: Record<string, unknown>;
+  chatSendFailures?: Record<string, unknown>;
 } & Parameters<typeof loadEmployeeBootstrap>[0];
 
 export async function submitEmployeeLogin(state: EmployeeLoginState) {
@@ -71,7 +73,10 @@ export async function submitEmployeeLogin(state: EmployeeLoginState) {
     }
     if (!response.ok) {
       const message =
-        payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string"
+        payload &&
+        typeof payload === "object" &&
+        "message" in payload &&
+        typeof payload.message === "string"
           ? payload.message
           : `employee login failed (${response.status})`;
       throw new Error(message);
@@ -130,11 +135,11 @@ export async function submitEmployeeAdSso(state: EmployeeLoginState) {
     }
     const redirectUrl =
       payload && typeof payload === "object"
-        ? ("redirectUrl" in payload && typeof payload.redirectUrl === "string"
-            ? payload.redirectUrl
-            : "signInUrl" in payload && typeof payload.signInUrl === "string"
-              ? payload.signInUrl
-              : null)
+        ? "redirectUrl" in payload && typeof payload.redirectUrl === "string"
+          ? payload.redirectUrl
+          : "signInUrl" in payload && typeof payload.signInUrl === "string"
+            ? payload.signInUrl
+            : null
         : null;
     if (redirectUrl) {
       window.location.assign(redirectUrl);
@@ -142,7 +147,10 @@ export async function submitEmployeeAdSso(state: EmployeeLoginState) {
     }
     if (!response.ok) {
       const message =
-        payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string"
+        payload &&
+        typeof payload === "object" &&
+        "message" in payload &&
+        typeof payload.message === "string"
           ? payload.message
           : `employee AD SSO failed (${response.status})`;
       throw new Error(message);
@@ -205,6 +213,8 @@ export async function logoutEmployee(state: EmployeeLoginState) {
     state.chatToolMessages = [];
     state.chatQueue = [];
     state.chatRunId = null;
+    state.chatSendDrafts = {};
+    state.chatSendFailures = {};
     state.settings = {
       ...state.settings,
       token: "",

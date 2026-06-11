@@ -56,6 +56,59 @@
   opacity: 0.7;
 }
 
+.chat-send-failure {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 560px);
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 22%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--danger-subtle) 80%, var(--panel));
+  color: var(--text);
+}
+
+.chat-send-failure__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chat-send-failure__body strong {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.chat-send-failure__body span {
+  color: var(--muted);
+}
+
+.chat-send-failure__retry {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--border));
+  border-radius: var(--radius-sm);
+  padding: 5px 9px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chat-send-failure__retry:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger) 52%, var(--border));
+  background: var(--bg-hover);
+}
+
+.chat-send-failure__retry:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 /* ── Group footer action buttons (TTS, delete) ── */
 .chat-group-footer button {
   background: none;
@@ -487,6 +540,15 @@ img.chat-avatar {
 
   .chat-group-messages {
     max-width: 82%;
+  }
+
+  .chat-send-failure {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .chat-send-failure__retry {
+    align-self: flex-start;
   }
 }
 

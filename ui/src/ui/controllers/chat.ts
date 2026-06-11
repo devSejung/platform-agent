@@ -1,9 +1,10 @@
 import { EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH } from "../../../../src/gateway/employee-workspace-files-contract.ts";
 import { resetToolStream } from "../app-tool-stream.ts";
 import { extractText } from "../chat/message-extract.ts";
+import { describeChatFailure } from "../chat/send-failure.ts";
 import { formatConnectError } from "../connect-error.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
-import type { ChatAttachment } from "../ui-types.ts";
+import type { ChatAttachment, ChatSendDraft, ChatSendFailure } from "../ui-types.ts";
 import { generateUUID } from "../uuid.ts";
 import {
   formatMissingOperatorReadScopeMessage,
@@ -20,7 +21,9 @@ function resolveOutboundAttachmentKind(att: ChatAttachment): "image" | "file" {
   return isImageMimeType(att.mimeType) ? "image" : "file";
 }
 
-function shouldSendAttachmentAsImagePayload(att: ChatAttachment): att is ChatAttachment & { file: File } {
+function shouldSendAttachmentAsImagePayload(
+  att: ChatAttachment,
+): att is ChatAttachment & { file: File } {
   return att.status === "image" && isImageMimeType(att.mimeType) && att.file instanceof File;
 }
 
@@ -48,6 +51,7 @@ function isAssistantSilentReply(message: unknown): boolean {
 export type ChatState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
+  employeeMode?: boolean;
   sessionKey: string;
   chatLoading: boolean;
   chatMessages: unknown[];
@@ -58,6 +62,8 @@ export type ChatState = {
   chatRunId: string | null;
   chatStream: string | null;
   chatStreamStartedAt: number | null;
+  chatSendDrafts: Record<string, ChatSendDraft>;
+  chatSendFailures: Record<string, ChatSendFailure>;
   lastError: string | null;
 };
 
@@ -67,7 +73,65 @@ export type ChatEventPayload = {
   state: "delta" | "final" | "aborted" | "error";
   message?: unknown;
   errorMessage?: string;
+  errorCode?: string;
 };
+
+type SendChatMessageOptions = {
+  runId?: string;
+  replaceRunId?: string;
+};
+
+function buildLocalOutboundMarker(runId: string) {
+  return { kind: "outbound", runId };
+}
+
+function messageHasOutboundRunId(message: unknown, runId: string): boolean {
+  if (!message || typeof message !== "object") {
+    return false;
+  }
+  const marker = (message as Record<string, unknown>).__openclaw;
+  return (
+    Boolean(marker) &&
+    typeof marker === "object" &&
+    (marker as Record<string, unknown>).kind === "outbound" &&
+    (marker as Record<string, unknown>).runId === runId
+  );
+}
+
+function setChatSendFailure(params: {
+  state: ChatState;
+  runId: string;
+  message: string;
+  attachments?: ChatAttachment[];
+  phase: "submit" | "run";
+  errorCode?: string;
+  errorMessage?: string;
+}) {
+  const presentation = describeChatFailure(
+    params.errorCode,
+    params.errorMessage,
+    params.state.employeeMode === true,
+  );
+  const failures = params.state.chatSendFailures ?? {};
+  const drafts = params.state.chatSendDrafts ?? {};
+  const existing = failures[params.runId];
+  const draft = drafts[params.runId];
+  params.state.chatSendFailures = {
+    ...failures,
+    [params.runId]: {
+      runId: params.runId,
+      message: params.message || existing?.message || draft?.message || "",
+      attachments: (params.attachments ?? existing?.attachments ?? draft?.attachments ?? []).map(
+        (attachment) => ({
+          ...attachment,
+        }),
+      ),
+      phase: params.phase,
+      retrying: false,
+      ...presentation,
+    },
+  };
+}
 
 function maybeResetToolStream(state: ChatState) {
   const toolHost = state as ChatState & Partial<Parameters<typeof resetToolStream>[0]>;
@@ -125,12 +189,14 @@ function buildTranscriptAttachment(att: ChatAttachment) {
     workspacePath: att.workspacePath,
     mimeType: att.mimeType,
     sizeBytes: att.sizeBytes,
-    promptMode: att.status === "image" || att.status === "inline" || att.status === "workspace" ? att.status : undefined,
-    inlineTruncated: att.inlineTruncated === true,
-    downloadUrl:
-      att.workspacePath
-        ? `${EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH}?path=${encodeURIComponent(att.workspacePath)}`
+    promptMode:
+      att.status === "image" || att.status === "inline" || att.status === "workspace"
+        ? att.status
         : undefined,
+    inlineTruncated: att.inlineTruncated === true,
+    downloadUrl: att.workspacePath
+      ? `${EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH}?path=${encodeURIComponent(att.workspacePath)}`
+      : undefined,
   };
 }
 
@@ -198,6 +264,7 @@ export async function sendChatMessage(
   state: ChatState,
   message: string,
   attachments?: ChatAttachment[],
+  options: SendChatMessageOptions = {},
 ): Promise<string | null> {
   if (!state.client || !state.connected) {
     return null;
@@ -209,9 +276,17 @@ export async function sendChatMessage(
   }
 
   const now = Date.now();
+  const runId = options.runId ?? generateUUID();
+  state.chatSendDrafts = {
+    ...(state.chatSendDrafts ?? {}),
+    [runId]: {
+      message: msg,
+      attachments: (attachments ?? []).map((attachment) => ({ ...attachment })),
+    },
+  };
 
   // Build user message content blocks
-  const contentBlocks: Array<{ type: string; text?: string; source?: unknown }> = [];
+  const contentBlocks: Array<{ type: string; text?: string; source?: unknown; url?: string }> = [];
   if (msg) {
     contentBlocks.push({ type: "text", text: msg });
   }
@@ -228,63 +303,66 @@ export async function sendChatMessage(
     }
   }
 
-  state.chatMessages = [
-    ...state.chatMessages,
-    {
-      role: "user",
-      content: contentBlocks,
-      ...(hasAttachments ? { Attachments: attachments.map(buildTranscriptAttachment) } : {}),
-      timestamp: now,
-    },
-  ];
+  const optimisticMessage = {
+    role: "user",
+    content: contentBlocks,
+    ...(hasAttachments ? { Attachments: attachments.map(buildTranscriptAttachment) } : {}),
+    timestamp: now,
+    __openclaw: buildLocalOutboundMarker(runId),
+  };
+  state.chatMessages = options.replaceRunId
+    ? state.chatMessages.map((entry) =>
+        messageHasOutboundRunId(entry, options.replaceRunId!) ? optimisticMessage : entry,
+      )
+    : [...state.chatMessages, optimisticMessage];
 
   state.chatSending = true;
   state.lastError = null;
-  const runId = generateUUID();
   state.chatRunId = runId;
   state.chatStream = "";
   state.chatStreamStartedAt = now;
 
-  // Convert attachments to API format
-  const apiAttachments = hasAttachments
-    ? (
-        await Promise.all(
-          attachments.map(async (att) => {
-            if (att.status === "uploading") {
-              return null;
-            }
-            if (shouldSendAttachmentAsImagePayload(att)) {
+  try {
+    // Convert attachments to API format only after the optimistic message has a failure target.
+    const apiAttachments = hasAttachments
+      ? (
+          await Promise.all(
+            attachments.map(async (att) => {
+              if (att.status === "uploading") {
+                return null;
+              }
+              if (shouldSendAttachmentAsImagePayload(att)) {
+                return {
+                  type: "image",
+                  fileName: att.fileName,
+                  originalFileName: att.fileName,
+                  storedFileName: att.storedFileName,
+                  workspacePath: att.workspacePath,
+                  mimeType: att.mimeType,
+                  sizeBytes: att.sizeBytes,
+                  promptMode: "image",
+                  content: await fileToBase64(att.file),
+                };
+              }
+              const attachmentType = resolveOutboundAttachmentKind(att);
               return {
-                type: "image",
+                type: attachmentType,
                 fileName: att.fileName,
                 originalFileName: att.fileName,
                 storedFileName: att.storedFileName,
                 workspacePath: att.workspacePath,
                 mimeType: att.mimeType,
                 sizeBytes: att.sizeBytes,
-                promptMode: "image",
-                content: await fileToBase64(att.file),
+                promptMode:
+                  att.status === "inline" || att.status === "workspace" ? att.status : "workspace",
+                inlineContent: att.inlineContent ?? undefined,
+                inlineTruncated: att.inlineTruncated === true,
               };
-            }
-            const attachmentType = resolveOutboundAttachmentKind(att);
-            return {
-              type: attachmentType,
-              fileName: att.fileName,
-              originalFileName: att.fileName,
-              storedFileName: att.storedFileName,
-              workspacePath: att.workspacePath,
-              mimeType: att.mimeType,
-              sizeBytes: att.sizeBytes,
-              promptMode: att.status === "inline" || att.status === "workspace" ? att.status : "workspace",
-              inlineContent: att.inlineContent ?? undefined,
-              inlineTruncated: att.inlineTruncated === true,
-            };
-          }),
-        )
-      ).filter((a): a is NonNullable<typeof a> => a !== null)
-    : undefined;
+            }),
+          )
+        ).filter((a): a is NonNullable<typeof a> => a !== null)
+      : undefined;
 
-  try {
     await state.client.request("chat.send", {
       sessionKey: state.sessionKey,
       message: msg,
@@ -298,15 +376,15 @@ export async function sendChatMessage(
     state.chatRunId = null;
     state.chatStream = null;
     state.chatStreamStartedAt = null;
-    state.lastError = error;
-    state.chatMessages = [
-      ...state.chatMessages,
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "Error: " + error }],
-        timestamp: Date.now(),
-      },
-    ];
+    state.lastError = null;
+    setChatSendFailure({
+      state,
+      runId,
+      message: msg,
+      attachments,
+      phase: "submit",
+      errorMessage: error,
+    });
     return null;
   } finally {
     state.chatSending = false;
@@ -374,6 +452,14 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
+    if (payload.runId in (state.chatSendFailures ?? {})) {
+      const { [payload.runId]: _completed, ...remaining } = state.chatSendFailures;
+      state.chatSendFailures = remaining;
+    }
+    if (payload.runId in (state.chatSendDrafts ?? {})) {
+      const { [payload.runId]: _completed, ...remaining } = state.chatSendDrafts;
+      state.chatSendDrafts = remaining;
+    }
   } else if (payload.state === "aborted") {
     const normalizedMessage = normalizeAbortedAssistantMessage(payload.message);
     if (normalizedMessage && !isAssistantSilentReply(normalizedMessage)) {
@@ -394,11 +480,23 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
+    if (payload.runId in (state.chatSendDrafts ?? {})) {
+      const { [payload.runId]: _aborted, ...remaining } = state.chatSendDrafts;
+      state.chatSendDrafts = remaining;
+    }
   } else if (payload.state === "error") {
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
-    state.lastError = payload.errorMessage ?? "chat error";
+    state.lastError = null;
+    setChatSendFailure({
+      state,
+      runId: payload.runId,
+      message: "",
+      phase: "run",
+      errorCode: payload.errorCode,
+      errorMessage: payload.errorMessage,
+    });
   }
   return payload.state;
 }

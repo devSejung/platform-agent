@@ -697,7 +697,7 @@ describe("gateway server chat", () => {
     });
   });
 
-  test("smoke: supports abort and idempotent completion", async () => {
+  test("dedupes in-flight, completed, and terminal-failure chat retries by idempotency key", async () => {
     await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
       const spy = getReplyFromConfig;
       let aborted = false;
@@ -748,6 +748,8 @@ describe("gateway server chat", () => {
       });
       expect(inFlight.ok).toBe(true);
       expect(["started", "in_flight", "ok"]).toContain(inFlight.payload?.status ?? "");
+      // Reusing a key whose acknowledgement may have been lost must not start another agent run.
+      expect(spy).toHaveBeenCalledTimes(1);
 
       const abortRes = await rpcReq<{ aborted?: boolean }>(ws, "chat.abort", {
         sessionKey: "main",
@@ -777,6 +779,51 @@ describe("gateway server chat", () => {
         });
         expect(again.ok).toBe(true);
         expect(again.payload?.status).toBe("ok");
+      }, FAST_WAIT_OPTS);
+
+      spy.mockClear();
+      const timeoutError = Object.assign(new Error("upstream request timed out"), {
+        name: "TimeoutError",
+      });
+      spy.mockRejectedValueOnce(timeoutError);
+      const errorEventP = onceMessage(
+        ws,
+        (o) =>
+          o.type === "event" &&
+          o.event === "chat" &&
+          (o.payload as { runId?: string; state?: string } | undefined)?.runId ===
+            "idem-timeout-1" &&
+          (o.payload as { state?: string } | undefined)?.state === "error",
+        2_000,
+      );
+      const timeoutAck = await rpcReq<{ status?: string }>(ws, "chat.send", {
+        sessionKey: "main",
+        message: "timeout",
+        idempotencyKey: "idem-timeout-1",
+      });
+      expect(timeoutAck.ok).toBe(true);
+      await errorEventP;
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      const cachedTimeout = await rpcReq<{ status?: string }>(ws, "chat.send", {
+        sessionKey: "main",
+        message: "timeout",
+        idempotencyKey: "idem-timeout-1",
+      });
+      expect(cachedTimeout.ok).toBe(false);
+      // A terminal runtime failure is cached under the original key and is never re-executed.
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      spy.mockResolvedValueOnce(undefined);
+      // An explicit retry after terminal failure needs a new key to start a new agent run.
+      const retryAck = await rpcReq<{ status?: string }>(ws, "chat.send", {
+        sessionKey: "main",
+        message: "timeout",
+        idempotencyKey: "idem-timeout-2",
+      });
+      expect(retryAck.ok).toBe(true);
+      await vi.waitFor(() => {
+        expect(spy).toHaveBeenCalledTimes(2);
       }, FAST_WAIT_OPTS);
     });
   });

@@ -1,3 +1,4 @@
+import { resolveFailoverReasonFromError } from "../agents/failover-error.js";
 import { DEFAULT_HEARTBEAT_ACK_MAX_CHARS, stripHeartbeatToken } from "../auto-reply/heartbeat.js";
 import { normalizeVerboseLevel } from "../auto-reply/thinking.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
@@ -816,6 +817,7 @@ export function createAgentEventHandler({
       seq,
       state: "error" as const,
       errorMessage: error ? formatForLog(error) : undefined,
+      errorCode: error ? (resolveFailoverReasonFromError(error) ?? undefined) : undefined,
     };
     broadcast("chat", payload);
     nodeSendToSession(sessionKey, "chat", payload);

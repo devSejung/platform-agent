@@ -22,6 +22,7 @@ import {
   handleAbortChat as handleAbortChatInternal,
   handleSendChat as handleSendChatInternal,
   removeQueuedMessage as removeQueuedMessageInternal,
+  retryFailedChatMessage as retryFailedChatMessageInternal,
 } from "./app-chat.ts";
 import { DEFAULT_CRON_FORM, DEFAULT_LOG_LEVEL_FILTERS } from "./app-defaults.ts";
 import type { EventLogEntry } from "./app-events.ts";
@@ -124,7 +125,13 @@ import type {
   ToolsCatalogResult,
   ToolsEffectiveResult,
 } from "./types.ts";
-import { type ChatAttachment, type ChatQueueItem, type CronFormState } from "./ui-types.ts";
+import {
+  type ChatAttachment,
+  type ChatQueueItem,
+  type ChatSendDraft,
+  type ChatSendFailure,
+  type CronFormState,
+} from "./ui-types.ts";
 import { generateUUID } from "./uuid.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
 
@@ -243,6 +250,8 @@ export class OpenClawApp extends LitElement {
   @state() chatModelCatalog: ModelCatalogEntry[] = [];
   @state() chatQueue: ChatQueueItem[] = [];
   @state() chatAttachments: ChatAttachment[] = [];
+  @state() chatSendDrafts: Record<string, ChatSendDraft> = {};
+  @state() chatSendFailures: Record<string, ChatSendFailure> = {};
   @state() chatManualRefreshInFlight = false;
   @state() workspaceFilesLoading = false;
   @state() workspaceFilesUploading = false;
@@ -921,6 +930,13 @@ export class OpenClawApp extends LitElement {
       this as unknown as Parameters<typeof handleSendChatInternal>[0],
       messageOverride,
       opts,
+    );
+  }
+
+  async retryFailedChatMessage(runId: string) {
+    await retryFailedChatMessageInternal(
+      this as unknown as Parameters<typeof retryFailedChatMessageInternal>[0],
+      runId,
     );
   }
 

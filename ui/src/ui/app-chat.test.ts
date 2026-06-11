@@ -14,13 +14,20 @@ vi.mock("./app-settings.ts", () => ({
 let handleSendChat: typeof import("./app-chat.ts").handleSendChat;
 let refreshChatAvatar: typeof import("./app-chat.ts").refreshChatAvatar;
 let clearPendingQueueItemsForRun: typeof import("./app-chat.ts").clearPendingQueueItemsForRun;
+let retryFailedChatMessage: typeof import("./app-chat.ts").retryFailedChatMessage;
+let resolveChatRetryRunId: typeof import("./app-chat.ts").resolveChatRetryRunId;
 
 async function loadChatHelpers(params?: { reload?: boolean }): Promise<void> {
   if (params?.reload) {
     vi.resetModules();
   }
-  ({ handleSendChat, refreshChatAvatar, clearPendingQueueItemsForRun } =
-    await import("./app-chat.ts"));
+  ({
+    handleSendChat,
+    refreshChatAvatar,
+    clearPendingQueueItemsForRun,
+    retryFailedChatMessage,
+    resolveChatRetryRunId,
+  } = await import("./app-chat.ts"));
 }
 
 function makeHost(overrides?: Partial<ChatHost>): ChatHost {
@@ -32,6 +39,8 @@ function makeHost(overrides?: Partial<ChatHost>): ChatHost {
     chatMessage: "",
     chatAttachments: [],
     chatQueue: [],
+    chatSendDrafts: {},
+    chatSendFailures: {},
     chatRunId: null,
     chatSending: false,
     lastError: null,
@@ -221,6 +230,153 @@ describe("handleSendChat", () => {
         text: "follow up",
       }),
     ]);
+  });
+
+  it("uses a new key for a terminal runtime failure and replaces the existing user bubble", async () => {
+    const request = vi.fn().mockResolvedValue({ runId: "accepted", status: "ok" });
+    const host = makeHost({
+      client: { request } as unknown as ChatHost["client"],
+      chatMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          __openclaw: { kind: "outbound", runId: "failed-run" },
+        },
+      ],
+      chatSendDrafts: {
+        "failed-run": { message: "hello", attachments: [] },
+      },
+      chatSendFailures: {
+        "failed-run": {
+          runId: "failed-run",
+          message: "hello",
+          attachments: [],
+          code: "timeout",
+          title: "AI 서버가 제한 시간 내에 응답하지 않았습니다.",
+          detail: "일시적인 사용량 증가 또는 네트워크 지연일 수 있습니다.",
+          retryable: true,
+          phase: "run",
+          retrying: false,
+        },
+      },
+    });
+
+    await retryFailedChatMessage(host, "failed-run");
+
+    expect(request).toHaveBeenCalledWith(
+      "chat.send",
+      expect.objectContaining({
+        message: "hello",
+        idempotencyKey: expect.any(String),
+      }),
+    );
+    expect(host.chatMessages).toHaveLength(1);
+    expect(host.chatSendFailures["failed-run"]).toBeUndefined();
+    expect(host.chatRunId).not.toBe("failed-run");
+  });
+
+  it.each(["network", "timeout"] as const)(
+    "reuses the original idempotency key for submit-stage %s because server receipt is uncertain",
+    async (code) => {
+      const request = vi.fn().mockResolvedValue({ runId: "failed-run", status: "in_flight" });
+      const failure = {
+        runId: "failed-run",
+        message: "hello",
+        attachments: [],
+        code,
+        title: "Temporary failure",
+        detail: "Try again.",
+        retryable: true,
+        phase: "submit" as const,
+        retrying: false,
+      };
+      const host = makeHost({
+        client: { request } as unknown as ChatHost["client"],
+        chatMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "hello" }],
+            __openclaw: { kind: "outbound", runId: "failed-run" },
+          },
+        ],
+        chatSendDrafts: {
+          "failed-run": { message: "hello", attachments: [] },
+        },
+        chatSendFailures: { "failed-run": failure },
+      });
+
+      expect(resolveChatRetryRunId(failure)).toBe("failed-run");
+      await retryFailedChatMessage(host, "failed-run");
+
+      expect(request).toHaveBeenCalledWith(
+        "chat.send",
+        expect.objectContaining({ idempotencyKey: "failed-run" }),
+      );
+      expect(host.chatMessages).toHaveLength(1);
+      expect(host.chatSendFailures).toEqual({});
+    },
+  );
+
+  it.each(["timeout", "overloaded", "rate_limit"] as const)(
+    "uses a new key for terminal runtime %s because the original key returns a cached error",
+    (code) => {
+      const nextRunId = resolveChatRetryRunId({
+        runId: "failed-run",
+        message: "hello",
+        attachments: [],
+        code,
+        title: "Terminal failure",
+        detail: "Try again.",
+        retryable: true,
+        phase: "run",
+        retrying: false,
+      });
+
+      expect(nextRunId).not.toBe("failed-run");
+    },
+  );
+
+  it("keeps one user bubble and never accumulates assistant Error messages across retries", async () => {
+    const request = vi.fn().mockRejectedValue(new Error("gateway request timeout for chat.send"));
+    const host = makeHost({
+      client: { request } as unknown as ChatHost["client"],
+      chatMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          __openclaw: { kind: "outbound", runId: "failed-run" },
+        },
+      ],
+      chatSendDrafts: {
+        "failed-run": { message: "hello", attachments: [] },
+      },
+      chatSendFailures: {
+        "failed-run": {
+          runId: "failed-run",
+          message: "hello",
+          attachments: [],
+          code: "timeout",
+          title: "Timed out",
+          detail: "Try again.",
+          retryable: true,
+          phase: "run",
+          retrying: false,
+        },
+      },
+    });
+
+    await retryFailedChatMessage(host, "failed-run");
+    const nextFailure = Object.values(host.chatSendFailures)[0];
+    await retryFailedChatMessage(host, nextFailure.runId);
+
+    expect(host.chatMessages).toHaveLength(1);
+    expect((host.chatMessages[0] as { role?: string }).role).toBe("user");
+    expect(
+      host.chatMessages.some(
+        (message) => (message as { role?: string } | null)?.role === "assistant",
+      ),
+    ).toBe(false);
+    expect(Object.keys(host.chatSendFailures)).toHaveLength(1);
   });
 });
 

@@ -834,6 +834,8 @@ export function renderApp(state: AppViewState) {
             state.chatStreamStartedAt = null;
             state.chatRunId = null;
             state.chatQueue = [];
+            state.chatSendDrafts = {};
+            state.chatSendFailures = {};
             state.resetToolStream();
             state.resetChatScroll();
             state.applySettings({
@@ -861,6 +863,7 @@ export function renderApp(state: AppViewState) {
           streamStartedAt: state.chatStreamStartedAt,
           draft: state.chatMessage,
           queue: state.chatQueue,
+          sendFailures: state.chatSendFailures,
           connected: state.connected,
           canSend:
             state.connected &&
@@ -893,6 +896,7 @@ export function renderApp(state: AppViewState) {
           canAbort: Boolean(state.chatRunId),
           onAbort: () => void state.handleAbortChat(),
           onQueueRemove: (id) => state.removeQueuedMessage(id),
+          onRetrySend: (runId) => void state.retryFailedChatMessage(runId),
           onNewSession: () => state.handleSendChat("/new", { restoreDraft: true }),
           onClearHistory: async () => {
             if (!state.client || !state.connected) {
@@ -903,6 +907,8 @@ export function renderApp(state: AppViewState) {
               state.chatMessages = [];
               state.chatStream = null;
               state.chatRunId = null;
+              state.chatSendDrafts = {};
+              state.chatSendFailures = {};
               await loadChatHistory(state);
             } catch (err) {
               state.lastError = String(err);
@@ -915,6 +921,8 @@ export function renderApp(state: AppViewState) {
             state.chatMessages = [];
             state.chatStream = null;
             state.chatRunId = null;
+            state.chatSendDrafts = {};
+            state.chatSendFailures = {};
             state.applySettings({
               ...state.settings,
               sessionKey: state.sessionKey,

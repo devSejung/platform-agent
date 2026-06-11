@@ -301,6 +301,49 @@ function createOverviewProps(overrides: Partial<OverviewProps> = {}): OverviewPr
 }
 
 describe("chat view", () => {
+  it("renders a localized failure on the matching message and retries that run", () => {
+    const onRetrySend = vi.fn();
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          employeeMode: true,
+          messages: [
+            {
+              role: "user",
+              content: [{ type: "text", text: "보고서 요약해줘" }],
+              timestamp: 1,
+              __openclaw: { kind: "outbound", runId: "run-timeout" },
+            },
+          ],
+          sendFailures: {
+            "run-timeout": {
+              runId: "run-timeout",
+              message: "보고서 요약해줘",
+              attachments: [],
+              code: "timeout",
+              title: "AI 서버가 제한 시간 내에 응답하지 않았습니다.",
+              detail: "일시적인 사용량 증가 또는 네트워크 지연일 수 있습니다.",
+              retryable: true,
+              phase: "run",
+              retrying: false,
+            },
+          },
+          onRetrySend,
+        }),
+      ),
+      container,
+    );
+
+    expect(container.querySelector(".chat-send-failure")?.textContent).toContain(
+      "AI 서버가 제한 시간 내에 응답하지 않았습니다.",
+    );
+    const retry = container.querySelector<HTMLButtonElement>(".chat-send-failure__retry");
+    expect(retry?.textContent?.trim()).toBe("다시 시도");
+    retry?.click();
+    expect(onRetrySend).toHaveBeenCalledWith("run-timeout");
+  });
+
   it("renders queued follow-up status through the live run status bar", () => {
     withDocumentLang("en", () => {
       const container = document.createElement("div");
@@ -1234,7 +1277,10 @@ describe("chat view", () => {
 
   it("shows live run status while sending", () => {
     const container = document.createElement("div");
-    render(renderChat(createProps({ sending: true, streamStartedAt: Date.now() - 12_000 })), container);
+    render(
+      renderChat(createProps({ sending: true, streamStartedAt: Date.now() - 12_000 })),
+      container,
+    );
     expect(container.querySelector(".live-run-status")).not.toBeNull();
     expect(container.textContent).toContain("Sending request");
   });
@@ -1242,7 +1288,14 @@ describe("chat view", () => {
   it("shows live waiting status after the request is accepted and before streaming starts", () => {
     const container = document.createElement("div");
     render(
-      renderChat(createProps({ canAbort: true, stream: null, sending: false, streamStartedAt: Date.now() - 7_000 })),
+      renderChat(
+        createProps({
+          canAbort: true,
+          stream: null,
+          sending: false,
+          streamStartedAt: Date.now() - 7_000,
+        }),
+      ),
       container,
     );
     expect(container.querySelector('.live-run-status[data-phase="waiting"]')).not.toBeNull();

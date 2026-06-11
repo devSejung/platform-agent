@@ -46,7 +46,7 @@ import type {
   StatusSummary,
   ToolsCatalogResult,
 } from "./types.ts";
-import type { ChatAttachment, ChatQueueItem } from "./ui-types.ts";
+import type { ChatAttachment, ChatQueueItem, ChatSendDraft, ChatSendFailure } from "./ui-types.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
 import type { SessionLogEntry } from "./views/usage.ts";
 
@@ -112,6 +112,8 @@ export type AppViewState = {
   chatModelsLoading: boolean;
   chatModelCatalog: ModelCatalogEntry[];
   chatQueue: ChatQueueItem[];
+  chatSendDrafts: Record<string, ChatSendDraft>;
+  chatSendFailures: Record<string, ChatSendFailure>;
   chatManualRefreshInFlight: boolean;
   workspaceFilesLoading: boolean;
   workspaceFilesUploading: boolean;
@@ -540,6 +542,7 @@ export type AppViewState = {
     setPassword: (next: string) => void;
     setChatMessage: (next: string) => void;
     handleSendChat: (messageOverride?: string, opts?: { restoreDraft?: boolean }) => Promise<void>;
+    retryFailedChatMessage: (runId: string) => Promise<void>;
     handleAbortChat: () => Promise<void>;
     removeQueuedMessage: (id: string) => void;
     handleChatScroll: (event: Event) => void;

@@ -1,6 +1,11 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { repeat } from "lit/directives/repeat.js";
+import {
+  EMPLOYEE_CHAT_ATTACHMENTS_DELETE_PATH,
+  EMPLOYEE_CHAT_ATTACHMENTS_UPLOAD_PATH,
+  type EmployeeChatAttachmentUploadResponse,
+} from "../../../../src/gateway/employee-chat-attachments-contract.ts";
 import type {
   CompactionStatus as CompactionIndicatorStatus,
   FallbackStatus as FallbackIndicatorStatus,
@@ -36,14 +41,9 @@ import { renderEmployeeCrabMascot, type EmployeeCrabMascotPhase } from "../masco
 import { detectTextDirection } from "../text-direction.ts";
 import type { GatewaySessionRow, SessionsListResult } from "../types.ts";
 import type { ChatItem, MessageGroup } from "../types/chat-types.ts";
-import type { ChatAttachment, ChatQueueItem } from "../ui-types.ts";
+import type { ChatAttachment, ChatQueueItem, ChatSendFailure } from "../ui-types.ts";
 import { agentLogoUrl, employeeLogoUrl, resolveAgentAvatarUrl } from "./agents-utils.ts";
 import { renderMarkdownSidebar } from "./markdown-sidebar.ts";
-import {
-  EMPLOYEE_CHAT_ATTACHMENTS_DELETE_PATH,
-  EMPLOYEE_CHAT_ATTACHMENTS_UPLOAD_PATH,
-  type EmployeeChatAttachmentUploadResponse,
-} from "../../../../src/gateway/employee-chat-attachments-contract.ts";
 import "../components/resizable-divider.ts";
 
 export type ChatProps = {
@@ -67,6 +67,7 @@ export type ChatProps = {
   assistantAvatarUrl?: string | null;
   draft: string;
   queue: ChatQueueItem[];
+  sendFailures?: Record<string, ChatSendFailure>;
   connected: boolean;
   canSend: boolean;
   disabledReason: string | null;
@@ -92,6 +93,7 @@ export type ChatProps = {
   onSend: () => void;
   onAbort?: () => void;
   onQueueRemove: (id: string) => void;
+  onRetrySend?: (runId: string) => void;
   onNewSession: () => void;
   onClearHistory?: () => void;
   agentsList: {
@@ -778,16 +780,10 @@ function attachmentStatusLabel(att: ChatAttachment): string {
   }
 }
 
-function updateAttachment(
-  props: ChatProps,
-  attachmentId: string,
-  patch: Partial<ChatAttachment>,
-) {
+function updateAttachment(props: ChatProps, attachmentId: string, patch: Partial<ChatAttachment>) {
   const currentAttachments = props.getAttachments?.() ?? props.attachments ?? [];
   props.onAttachmentsChange?.(
-    currentAttachments.map((entry) =>
-      entry.id === attachmentId ? { ...entry, ...patch } : entry,
-    ),
+    currentAttachments.map((entry) => (entry.id === attachmentId ? { ...entry, ...patch } : entry)),
   );
 }
 
@@ -997,10 +993,9 @@ function renderAttachmentPreview(props: ChatProps): TemplateResult | typeof noth
                 } catch {
                   // Keep local removal responsive even if cleanup fails.
                 } finally {
-                  const next =
-                    (props.getAttachments?.() ?? props.attachments ?? []).filter(
-                      (a) => a.id !== att.id,
-                    );
+                  const next = (props.getAttachments?.() ?? props.attachments ?? []).filter(
+                    (a) => a.id !== att.id,
+                  );
                   props.onAttachmentsChange?.(next);
                 }
               }}
@@ -1577,6 +1572,10 @@ export function renderChat(props: ChatProps) {
                   deleted.delete(item.key);
                   requestUpdate();
                 },
+                sendFailures: props.sendFailures,
+                retryDisabled: !props.connected || isBusy,
+                onRetrySend: props.onRetrySend,
+                localizedKo: props.employeeMode === true,
               });
             }
             return nothing;

@@ -240,6 +240,16 @@ RUN set -eux; \
       nano-pdf --help >/dev/null 2>&1 || true; \
     fi
 
+# Keep common Python markdown helpers available in the runtime image for
+# operator workflows and skill/tooling that shell out to Python utilities.
+RUN set -eux; \
+    if python3 -m pip help install 2>/dev/null | grep -q -- '--break-system-packages'; then \
+      python3 -m pip install --no-cache-dir --break-system-packages markdown pygments; \
+    else \
+      python3 -m pip install --no-cache-dir markdown pygments; \
+    fi; \
+    python3 -c 'import markdown, pygments; print("markdown/pygments ok")'
+
 RUN groupadd -g 1000 node && \
     useradd -m -u 1000 -g 1000 -s /bin/bash node
 

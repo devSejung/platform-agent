@@ -16,6 +16,8 @@ function createState(overrides: Partial<ChatState> = {}): ChatState {
     chatMessage: "",
     chatMessages: [],
     chatRunId: null,
+    chatSendDrafts: {},
+    chatSendFailures: {},
     chatSending: false,
     chatStream: null,
     chatStreamStartedAt: null,
@@ -554,7 +556,7 @@ describe("loadChatHistory", () => {
 });
 
 describe("sendChatMessage", () => {
-  it("formats structured non-auth connect failures for chat send", async () => {
+  it("keeps submit failures on the original user bubble without adding assistant Error messages", async () => {
     const request = vi.fn().mockRejectedValue(
       new GatewayRequestError({
         code: "INVALID_REQUEST",
@@ -570,16 +572,53 @@ describe("sendChatMessage", () => {
     const result = await sendChatMessage(state, "hello");
 
     expect(result).toBeNull();
-    expect(state.lastError).toContain("origin not allowed");
-    expect(state.chatMessages.at(-1)).toMatchObject({
-      role: "assistant",
-      content: [
+    expect(state.lastError).toBeNull();
+    expect(state.chatMessages).toHaveLength(1);
+    expect(state.chatMessages[0]).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: "hello" }],
+    });
+    expect(Object.values(state.chatSendFailures)[0]).toMatchObject({
+      code: "auth",
+      message: "hello",
+      phase: "submit",
+      retryable: false,
+    });
+  });
+
+  it("attaches a terminal runtime timeout to the original user bubble without assistant Error messages", () => {
+    const state = createState({
+      chatMessages: [
         {
-          type: "text",
-          text: expect.stringContaining("origin not allowed"),
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          __openclaw: { kind: "outbound", runId: "run-1" },
         },
       ],
+      chatRunId: "run-1",
+      chatSendDrafts: {
+        "run-1": { message: "hello", attachments: [] },
+      },
     });
+
+    expect(
+      handleChatEvent(state, {
+        runId: "run-1",
+        sessionKey: "main",
+        state: "error",
+        errorCode: "timeout",
+        errorMessage: "upstream request timed out",
+      }),
+    ).toBe("error");
+
+    expect(state.chatMessages).toHaveLength(1);
+    expect(state.chatSendFailures["run-1"]).toMatchObject({
+      code: "timeout",
+      message: "hello",
+      phase: "run",
+      retryable: true,
+    });
+    expect(state.lastError).toBeNull();
   });
 
   it("sends uploaded PDFs as file attachments even if the local kind is wrong", async () => {

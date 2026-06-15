@@ -348,22 +348,16 @@ function normalizeChatErrorMessage(error: string): string {
   return `Request failed. ${trimmed}`;
 }
 
-function formatRunElapsed(startedAt: number | null): string {
-  if (!startedAt || !Number.isFinite(startedAt)) {
-    return "00:00";
-  }
-  const totalSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
-
 type LiveRunStatus = {
-  phase: "sending" | "waiting" | "streaming" | "tool" | "compacting" | "retrying" | "queued";
+  phase:
+    | "sending"
+    | "waiting"
+    | "streaming"
+    | "tool"
+    | "compacting"
+    | "retrying"
+    | "queued"
+    | "terminal";
   tone: "normal" | "attention" | "compaction" | "tool";
   title: string;
   body: string;
@@ -374,6 +368,43 @@ type LiveRunStatus = {
   elapsedMs: number;
   queueDepth: number;
 };
+
+type LiveRunViewKind =
+  | "idle"
+  | "queued"
+  | "sending"
+  | "waiting"
+  | "compacting"
+  | "retrying"
+  | "tool"
+  | "streaming"
+  | "terminal";
+
+type LiveRunViewState = Omit<LiveRunStatus, "phase"> & {
+  kind: LiveRunViewKind;
+};
+
+function formatElapsedMs(elapsedMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function resolveElapsedMs(startedAt: number | null, endedAt?: number | null, elapsedMs?: number) {
+  if (typeof elapsedMs === "number" && Number.isFinite(elapsedMs)) {
+    return Math.max(0, elapsedMs);
+  }
+  if (!startedAt || !Number.isFinite(startedAt)) {
+    return 0;
+  }
+  const end = typeof endedAt === "number" && Number.isFinite(endedAt) ? endedAt : Date.now();
+  return Math.max(0, end - startedAt);
+}
 
 function waitCopy(elapsedMs: number) {
   if (elapsedMs >= 180_000) {
@@ -404,29 +435,237 @@ function waitCopy(elapsedMs: number) {
   };
 }
 
-function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
+function compactionCopy(params: {
+  elapsedMs: number;
+  localizedKo: boolean;
+  subtype: "runtime" | "preflight" | "memory_flush";
+}) {
+  const { elapsedMs, localizedKo, subtype } = params;
+  if (subtype === "memory_flush") {
+    return {
+      title: localizedKo ? "기억 정리 중" : "Organizing memory",
+      body: localizedKo
+        ? "응답 전 필요한 기억을 정리하고 있습니다."
+        : "Organizing the memory needed before the response continues.",
+    };
+  }
+  if (subtype === "preflight") {
+    if (elapsedMs >= 60_000) {
+      return {
+        title: localizedKo ? "대화 정리 중" : "Compacting conversation",
+        body: localizedKo
+          ? "예상보다 오래 걸리고 있습니다. 잠시만 기다려주세요."
+          : "This is taking longer than expected. Please keep this tab open.",
+      };
+    }
+    if (elapsedMs >= 10_000) {
+      return {
+        title: localizedKo ? "대화 정리 중" : "Compacting conversation",
+        body: localizedKo
+          ? "대화가 길어 정리에 시간이 조금 걸리고 있습니다."
+          : "The conversation is long, so compaction is taking a little longer.",
+      };
+    }
+    return {
+      title: localizedKo ? "대화 정리 중" : "Compacting conversation",
+      body: localizedKo
+        ? "응답을 이어가기 전에 이전 대화를 정리하고 있습니다."
+        : "Compressing earlier conversation before the response continues.",
+    };
+  }
+  if (elapsedMs >= 60_000) {
+    return {
+      title: localizedKo ? "긴 대화 정리 중" : "Compacting context",
+      body: localizedKo
+        ? "예상보다 오래 걸리고 있습니다. 잠시만 기다려주세요."
+        : "This is taking longer than expected. Please keep this tab open.",
+    };
+  }
+  if (elapsedMs >= 10_000) {
+    return {
+      title: localizedKo ? "긴 대화 정리 중" : "Compacting context",
+      body: localizedKo
+        ? "대화가 길어 정리에 시간이 조금 걸리고 있습니다."
+        : "The conversation is long, so compaction is taking a little longer.",
+    };
+  }
+  if (elapsedMs >= 3_000) {
+    return {
+      title: localizedKo ? "긴 대화 정리 중" : "Compacting context",
+      body: localizedKo
+        ? "응답을 이어가기 위해 이전 대화를 정리하고 있습니다."
+        : "Organizing earlier conversation so the response can continue.",
+    };
+  }
+  return {
+    title: localizedKo ? "긴 대화 정리 중" : "Compacting context",
+    body: localizedKo
+      ? "긴 대화를 정리 중입니다."
+      : "Long conversation context is being organized.",
+  };
+}
+
+function terminalRunPhaseCopy(runPhase: RunPhaseStatus, localizedKo: boolean) {
+  if (runPhase.phase === "aborted") {
+    return {
+      title: localizedKo ? "응답이 중단되었습니다." : "Response stopped.",
+      body: localizedKo
+        ? "요청이 중단되어 더 이상 진행 중이 아닙니다."
+        : "The request was aborted and is no longer running.",
+    };
+  }
+  const code = runPhase.failedCode?.toLowerCase() ?? "";
+  if (code.includes("timeout")) {
+    return {
+      title: localizedKo
+        ? "AI 서버가 제한 시간 내에 응답하지 않았습니다."
+        : "The AI server did not respond in time.",
+      body: localizedKo
+        ? "실행이 종료되어 더 이상 대기 중이 아닙니다."
+        : "The run has ended and is no longer waiting for output.",
+    };
+  }
+  return {
+    title: localizedKo ? "응답 생성에 실패했습니다." : "Response failed.",
+    body: localizedKo
+      ? "실행이 실패하여 더 이상 진행 중이 아닙니다."
+      : "The run failed and is no longer active.",
+  };
+}
+
+function deriveLiveRunViewState(props: ChatProps): LiveRunViewState {
   const compaction = props.compactionStatus;
   const compactionActive = compaction?.phase === "active" || compaction?.phase === "retrying";
   const localizedKo = isKoreanLocale();
   const runPhase = props.runPhaseStatus;
+  const runPhaseCompacting =
+    runPhase?.phase === "preflight_compacting" || runPhase?.phase === "memory_flushing";
   const startedAt =
     runPhase?.startedAt ??
     (compactionActive ? (compaction.startedAt ?? props.streamStartedAt) : props.streamStartedAt);
-  const elapsedMs =
-    startedAt && Number.isFinite(startedAt) ? Math.max(0, Date.now() - startedAt) : 0;
-  const elapsed = formatRunElapsed(startedAt);
+  const elapsedMs = resolveElapsedMs(startedAt);
+  const elapsed = formatElapsedMs(elapsedMs);
   const queueDepth = props.queue.length;
+
+  if (!props.connected && (props.canAbort || props.stream !== null || props.sending)) {
+    return {
+      kind: "terminal",
+      tone: "attention",
+      title: localizedKo ? "연결이 끊겼습니다." : "Disconnected.",
+      body: localizedKo
+        ? "gateway 연결이 끊겨 현재 실행 상태를 확인할 수 없습니다."
+        : "The gateway connection was lost, so the current run state cannot be verified.",
+      meta: `${elapsed} elapsed`,
+      icon: icons.x,
+      mascotPhase: "attention",
+      startedAt,
+      elapsedMs,
+      queueDepth,
+    };
+  }
+
+  if (runPhase?.phase === "failed" || runPhase?.phase === "aborted") {
+    const terminalElapsedMs = resolveElapsedMs(
+      runPhase.startedAt,
+      runPhase.endedAt,
+      runPhase.elapsedMs,
+    );
+    const copy = terminalRunPhaseCopy(runPhase, localizedKo);
+    return {
+      kind: "terminal",
+      tone: "attention",
+      title: copy.title,
+      body: copy.body,
+      meta: `${formatElapsedMs(terminalElapsedMs)} elapsed`,
+      icon: icons.x,
+      mascotPhase: "attention",
+      startedAt: runPhase.startedAt,
+      elapsedMs: terminalElapsedMs,
+      queueDepth,
+    };
+  }
+
+  if (compaction?.phase === "retrying") {
+    const tokenDelta = formatTokenDeltaCompact(compaction.tokensBefore, compaction.tokensAfter);
+    return {
+      kind: "retrying",
+      tone: "compaction",
+      title: localizedKo ? "응답 이어가는 중" : "Resuming response",
+      body: localizedKo
+        ? "대화 정리가 끝나서 응답을 다시 이어가고 있습니다."
+        : "Compaction finished successfully. The assistant is resuming the response.",
+      meta: tokenDelta ?? `${elapsed} elapsed`,
+      icon: icons.check,
+      mascotPhase: "retrying",
+      startedAt,
+      elapsedMs,
+      queueDepth,
+    };
+  }
+
+  if (props.stream !== null && props.stream.trim().length > 0) {
+    return {
+      kind: "streaming",
+      tone: "normal",
+      title: localizedKo ? "응답 작성 중" : "Writing response",
+      body: localizedKo
+        ? "assistant 답변이 생성되고 있습니다."
+        : "Assistant output is arriving. The final message will settle when the run completes.",
+      meta: `${elapsed} elapsed`,
+      icon: icons.spark,
+      mascotPhase: "streaming",
+      startedAt,
+      elapsedMs,
+      queueDepth,
+    };
+  }
+
+  if (props.toolMessages.length > 0) {
+    return {
+      kind: "tool",
+      tone: "tool",
+      title: localizedKo ? "도구 실행 중" : "Running tools",
+      body: localizedKo
+        ? "도구 결과를 바탕으로 답변을 정리하고 있습니다."
+        : "Tool activity is streaming into the conversation. Results will be folded into the final answer.",
+      meta: `${elapsed} elapsed`,
+      icon: icons.terminal,
+      mascotPhase: "tool",
+      startedAt,
+      elapsedMs,
+      queueDepth,
+    };
+  }
+
+  if (compaction?.phase === "incomplete" && !runPhaseCompacting) {
+    const incompleteElapsedMs = resolveElapsedMs(compaction.startedAt, compaction.completedAt);
+    return {
+      kind: "compacting",
+      tone: "compaction",
+      title: localizedKo
+        ? "대화 정리를 완료하지 못했습니다."
+        : "Conversation cleanup was incomplete.",
+      body: localizedKo
+        ? "응답은 계속 진행될 수 있습니다."
+        : "The response may still continue.",
+      meta: `${formatElapsedMs(incompleteElapsedMs)} elapsed`,
+      icon: icons.brain,
+      mascotPhase: "attention",
+      startedAt: compaction.startedAt,
+      elapsedMs: incompleteElapsedMs,
+      queueDepth,
+    };
+  }
 
   if (runPhase) {
     const tokenDelta = formatTokenDeltaCompact(compaction?.tokensBefore, compaction?.tokensAfter);
     if (runPhase.phase === "preflight_compacting") {
+      const copy = compactionCopy({ elapsedMs, localizedKo, subtype: "preflight" });
       return {
-        phase: "compacting",
+        kind: "compacting",
         tone: "compaction",
-        title: localizedKo ? "대화 정리 중" : "Compacting conversation",
-        body: localizedKo
-          ? "응답을 이어가기 전에 이전 대화를 정리하고 있습니다."
-          : "Compressing earlier conversation before the response continues.",
+        title: copy.title,
+        body: copy.body,
         meta: tokenDelta ?? `${elapsed} elapsed`,
         icon: icons.loader,
         mascotPhase: "compacting",
@@ -436,16 +675,15 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
       };
     }
     if (runPhase.phase === "memory_flushing") {
+      const copy = compactionCopy({ elapsedMs, localizedKo, subtype: "memory_flush" });
       return {
-        phase: "waiting",
-        tone: "normal",
-        title: localizedKo ? "기억 정리 중" : "Organizing memory",
-        body: localizedKo
-          ? "응답 전에 대화 기억을 정리하고 있습니다."
-          : "Organizing conversation memory before resuming the response.",
+        kind: "compacting",
+        tone: "compaction",
+        title: copy.title,
+        body: copy.body,
         meta: `${elapsed} elapsed`,
         icon: icons.brain,
-        mascotPhase: "waiting",
+        mascotPhase: "compacting",
         startedAt,
         elapsedMs,
         queueDepth,
@@ -453,7 +691,7 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
     }
     if (runPhase.phase === "queued" && queueDepth > 0) {
       return {
-        phase: "queued",
+        kind: "queued",
         tone: "normal",
         title: localizedKo ? "후속 요청 대기 중" : "Pending follow-up",
         body: localizedKo
@@ -469,7 +707,7 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
     }
     if (runPhase.phase === "running" && props.stream === null && props.toolMessages.length === 0) {
       return {
-        phase: "waiting",
+        kind: "waiting",
         tone: "normal",
         title: localizedKo ? "응답 준비 중" : "Preparing response",
         body: localizedKo
@@ -486,62 +724,16 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
   }
 
   if (compactionActive) {
-    const retrying = compaction?.phase === "retrying";
     const tokenDelta = formatTokenDeltaCompact(compaction?.tokensBefore, compaction?.tokensAfter);
+    const copy = compactionCopy({ elapsedMs, localizedKo, subtype: "runtime" });
     return {
-      phase: retrying ? "retrying" : "compacting",
+      kind: "compacting",
       tone: "compaction",
-      title: retrying
-        ? localizedKo
-          ? "응답 이어가는 중"
-          : "Resuming response"
-        : localizedKo
-          ? "긴 대화 정리 중"
-          : "Compacting context",
-      body: retrying
-        ? localizedKo
-          ? "대화 정리가 끝나서 응답을 다시 이어가고 있습니다."
-          : "Compaction finished successfully. The assistant is resuming the response."
-        : localizedKo
-          ? "긴 대화를 압축한 뒤 응답을 이어갑니다."
-          : "Long conversation context is being compressed before the answer continues.",
+      title: copy.title,
+      body: copy.body,
       meta: tokenDelta ?? `${elapsed} elapsed`,
-      icon: retrying ? icons.check : icons.loader,
-      mascotPhase: retrying ? "retrying" : "compacting",
-      startedAt,
-      elapsedMs,
-      queueDepth,
-    };
-  }
-
-  if (props.toolMessages.length > 0) {
-    return {
-      phase: "tool",
-      tone: "tool",
-      title: localizedKo ? "도구 실행 중" : "Running tools",
-      body: localizedKo
-        ? "도구 결과를 바탕으로 답변을 정리하고 있습니다."
-        : "Tool activity is streaming into the conversation. Results will be folded into the final answer.",
-      meta: `${elapsed} elapsed`,
-      icon: icons.terminal,
-      mascotPhase: "tool",
-      startedAt,
-      elapsedMs,
-      queueDepth,
-    };
-  }
-
-  if (props.stream !== null && props.stream.trim().length > 0) {
-    return {
-      phase: "streaming",
-      tone: "normal",
-      title: localizedKo ? "응답 작성 중" : "Writing response",
-      body: localizedKo
-        ? "assistant 답변이 생성되고 있습니다."
-        : "Assistant output is arriving. The final message will settle when the run completes.",
-      meta: `${elapsed} elapsed`,
-      icon: icons.spark,
-      mascotPhase: "streaming",
+      icon: icons.loader,
+      mascotPhase: "compacting",
       startedAt,
       elapsedMs,
       queueDepth,
@@ -550,7 +742,7 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
 
   if (props.sending) {
     return {
-      phase: "sending",
+      kind: "sending",
       tone: "normal",
       title: localizedKo ? "요청 전송 중" : "Sending request",
       body: localizedKo
@@ -568,7 +760,7 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
   if (props.canAbort || props.stream !== null) {
     const copy = waitCopy(elapsedMs);
     return {
-      phase: "waiting",
+      kind: "waiting",
       tone: copy.tone,
       title: copy.title,
       body: copy.body,
@@ -583,7 +775,7 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
 
   if (queueDepth > 0) {
     return {
-      phase: "queued",
+      kind: "queued",
       tone: "normal",
       title: localizedKo ? "후속 요청 대기 중" : "Pending follow-up",
       body: localizedKo
@@ -598,28 +790,50 @@ function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
     };
   }
 
-  return null;
+  return {
+    kind: "idle",
+    tone: "normal",
+    title: "",
+    body: "",
+    meta: "",
+    icon: icons.loader,
+    mascotPhase: "idle",
+    startedAt: null,
+    elapsedMs: 0,
+    queueDepth,
+  };
 }
 
-function renderRequestStatus(props: ChatProps) {
-  if (props.error) {
-    return html`<div class="callout danger">${normalizeChatErrorMessage(props.error)}</div>`;
+function adaptLiveRunViewStateToLegacyStatus(state: LiveRunViewState): LiveRunStatus | null {
+  if (state.kind === "idle") {
+    return null;
   }
-  const status = deriveLiveRunStatus(props);
-  if (!status) {
-    return nothing;
-  }
-  const phaseLabel = status.phase.replace("-", " ");
+  return {
+    ...state,
+    phase: state.kind,
+  };
+}
+
+function deriveLiveRunStatus(props: ChatProps): LiveRunStatus | null {
+  return adaptLiveRunViewStateToLegacyStatus(deriveLiveRunViewState(props));
+}
+
+function renderLiveRunMascot(status: LiveRunViewState) {
+  return renderEmployeeCrabMascot(status.mascotPhase);
+}
+
+function renderLiveRunStatusBanner(status: LiveRunViewState) {
+  const phaseLabel = status.kind.replace("-", " ");
   return html`
     <div
       class="live-run-status live-run-status--${status.tone}"
       role="status"
       aria-live="polite"
-      data-phase=${status.phase}
+      data-phase=${status.kind}
     >
       <div class="live-run-status__rail" aria-hidden="true"></div>
       <div class="live-run-status__icon" aria-hidden="true">
-        ${renderEmployeeCrabMascot(status.mascotPhase)}
+        ${renderLiveRunMascot(status)}
       </div>
       <div class="live-run-status__main">
         <div class="live-run-status__topline">
@@ -633,6 +847,48 @@ function renderRequestStatus(props: ChatProps) {
       </div>
     </div>
   `;
+}
+
+function renderRequestStatus(props: ChatProps, viewState: LiveRunViewState) {
+  if (props.error) {
+    return html`<div class="callout danger">${normalizeChatErrorMessage(props.error)}</div>`;
+  }
+  if (viewState.kind === "idle") {
+    return nothing;
+  }
+  return renderLiveRunStatusBanner(viewState);
+}
+
+function shouldShowStopButton(props: ChatProps, viewState: LiveRunViewState): boolean {
+  if (!props.connected || !props.canAbort || !props.onAbort) {
+    return false;
+  }
+  return viewState.kind !== "idle" && viewState.kind !== "queued" && viewState.kind !== "terminal";
+}
+
+type ComposerSubmitMode = "send" | "queue";
+
+type ComposerControlState = {
+  inputDisabled: boolean;
+  submitDisabled: boolean;
+  submitMode: ComposerSubmitMode;
+  submitTitle: "Send" | "Queue";
+  submitAriaLabel: "Send message" | "Queue message";
+};
+
+function deriveComposerControlState(
+  props: ChatProps,
+  _viewState: LiveRunViewState,
+): ComposerControlState {
+  // Mirrors app-chat's transport-level queue decision: chatSending or an active chatRunId.
+  const submitMode: ComposerSubmitMode = props.sending || props.canAbort ? "queue" : "send";
+  return {
+    inputDisabled: !props.connected,
+    submitDisabled: !props.connected || props.sending || !props.canSend,
+    submitMode,
+    submitTitle: submitMode === "queue" ? "Queue" : "Send",
+    submitAriaLabel: submitMode === "queue" ? "Queue message" : "Send message",
+  };
 }
 
 /**
@@ -1423,9 +1679,11 @@ function renderSlashMenu(
 }
 
 export function renderChat(props: ChatProps) {
-  const canCompose = props.connected;
   const isBusy = props.sending || props.stream !== null || props.canAbort;
   const canAbort = Boolean(props.canAbort && props.onAbort);
+  const liveRunViewState = deriveLiveRunViewState(props);
+  const showStopButton = shouldShowStopButton(props, liveRunViewState);
+  const composerControls = deriveComposerControlState(props, liveRunViewState);
   const activeSession = props.sessions?.sessions?.find((row) => row.key === props.sessionKey);
   const reasoningLevel = activeSession?.reasoningLevel ?? "off";
   const showReasoning = props.showThinking && reasoningLevel !== "off";
@@ -1679,16 +1937,14 @@ export function renderChat(props: ChatProps) {
       if (e.isComposing || e.keyCode === 229) {
         return;
       }
-      if (!props.connected) {
+      if (composerControls.submitDisabled) {
         return;
       }
       e.preventDefault();
-      if (canCompose) {
-        if (props.draft.trim()) {
-          inputHistory.push(props.draft);
-        }
-        props.onSend();
+      if (props.draft.trim()) {
+        inputHistory.push(props.draft);
       }
+      props.onSend();
     }
   };
 
@@ -1707,7 +1963,7 @@ export function renderChat(props: ChatProps) {
       @dragover=${(e: DragEvent) => e.preventDefault()}
     >
       ${props.disabledReason ? html`<div class="callout">${props.disabledReason}</div>` : nothing}
-      ${renderRequestStatus(props)}
+      ${renderRequestStatus(props, liveRunViewState)}
       ${props.focusMode
         ? html`
             <button
@@ -1757,15 +2013,28 @@ export function renderChat(props: ChatProps) {
       ${props.queue.length
         ? html`
             <div class="chat-queue" role="status" aria-live="polite">
-              <div class="chat-queue__header">
-                <div class="chat-queue__title">전송 대기 중 (${props.queue.length})</div>
-                <div class="chat-queue__description">현재 응답이 끝나면 자동으로 전송됩니다.</div>
-              </div>
               <div class="chat-queue__list">
                 ${props.queue.map(
                   (item) => html`
                     <div class="chat-queue__item chat-line user">
                       <div class="chat-queue__bubble chat-bubble">
+                        <div class="chat-queue__meta">
+                          <span class="chat-queue__title">
+                            전송 대기 중${props.queue.length > 1 ? ` (${props.queue.length})` : ""}
+                          </span>
+                          <span class="chat-queue__description">
+                            현재 응답이 끝나면 자동으로 전송됩니다.
+                          </span>
+                          <button
+                            class="btn chat-queue__remove"
+                            type="button"
+                            aria-label="전송 대기 취소"
+                            title="전송 대기 취소"
+                            @click=${() => props.onQueueRemove(item.id)}
+                          >
+                            취소
+                          </button>
+                        </div>
                         <div class="chat-queue__text">
                           ${item.text ||
                           (item.attachments?.length
@@ -1773,15 +2042,6 @@ export function renderChat(props: ChatProps) {
                             : "")}
                         </div>
                       </div>
-                      <button
-                        class="btn chat-queue__remove"
-                        type="button"
-                        aria-label="전송 대기 취소"
-                        title="전송 대기 취소"
-                        @click=${() => props.onQueueRemove(item.id)}
-                      >
-                        취소
-                      </button>
                     </div>
                   `,
                 )}
@@ -1819,7 +2079,7 @@ export function renderChat(props: ChatProps) {
           ${ref((el) => el && adjustTextareaHeight(el as HTMLTextAreaElement))}
           .value=${props.draft}
           dir=${detectTextDirection(props.draft)}
-          ?disabled=${!props.connected}
+          ?disabled=${composerControls.inputDisabled}
           @keydown=${handleKeyDown}
           @input=${handleInput}
           @paste=${(e: ClipboardEvent) => handlePaste(e, props)}
@@ -1923,7 +2183,7 @@ export function renderChat(props: ChatProps) {
               ${icons.download}
             </button>
 
-            ${canAbort && (isBusy || props.sending)
+            ${showStopButton
               ? html`
                   <button
                     class="chat-send-btn chat-send-btn--stop"
@@ -1934,22 +2194,22 @@ export function renderChat(props: ChatProps) {
                     ${icons.stop}
                   </button>
                 `
-              : html`
-                  <button
-                    class="chat-send-btn"
-                    @click=${() => {
-                      if (props.draft.trim()) {
-                        inputHistory.push(props.draft);
-                      }
-                      props.onSend();
-                    }}
-                    ?disabled=${!props.connected || props.sending}
-                    title=${isBusy ? "Queue" : "Send"}
-                    aria-label=${isBusy ? "Queue message" : "Send message"}
-                  >
-                    ${icons.send}
-                  </button>
-                `}
+              : nothing}
+            <button
+              class="chat-send-btn"
+              @click=${() => {
+                if (props.draft.trim()) {
+                  inputHistory.push(props.draft);
+                }
+                props.onSend();
+              }}
+              ?disabled=${composerControls.submitDisabled}
+              title=${composerControls.submitTitle}
+              aria-label=${composerControls.submitAriaLabel}
+              data-submit-mode=${composerControls.submitMode}
+            >
+              ${icons.send}
+            </button>
           </div>
         </div>
       </div>
@@ -2116,3 +2376,7 @@ function messageKey(message: unknown, index: number): string {
   }
   return `msg:${role}:${index}`;
 }
+
+export const __test = {
+  deriveLiveRunStatus,
+};

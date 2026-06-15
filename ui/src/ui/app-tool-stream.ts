@@ -254,7 +254,7 @@ export function resetToolStream(host: ToolStreamHost) {
 }
 
 export type CompactionStatus = {
-  phase: "active" | "retrying" | "complete";
+  phase: "active" | "retrying" | "complete" | "incomplete";
   runId: string | null;
   startedAt: number | null;
   completedAt: number | null;
@@ -302,6 +302,32 @@ type CompactionHost = ToolStreamHost & {
 const COMPACTION_TOAST_DURATION_MS = 5000;
 const FALLBACK_TOAST_DURATION_MS = 8000;
 
+type CompactionEventOutcome =
+  | "success"
+  | "incomplete"
+  | "failed"
+  | "cancelled"
+  | "timeout"
+  | "skipped";
+
+function resolveCompactionEventOutcome(data: Record<string, unknown>): "success" | "incomplete" {
+  const outcome = toTrimmedString(data.outcome) as CompactionEventOutcome | null;
+  if (outcome === "success") {
+    return "success";
+  }
+  if (
+    outcome === "incomplete" ||
+    outcome === "cancelled" ||
+    outcome === "failed" ||
+    outcome === "timeout" ||
+    outcome === "skipped"
+  ) {
+    // Phase 6A intentionally avoids presenting new outcome metadata as a run failure.
+    return "incomplete";
+  }
+  return data.completed === true ? "success" : "incomplete";
+}
+
 function clearCompactionTimer(host: CompactionHost) {
   if (host.compactionClearTimer != null) {
     window.clearTimeout(host.compactionClearTimer);
@@ -347,6 +373,26 @@ function setCompactionComplete(host: CompactionHost, runId: string) {
   scheduleCompactionClear(host);
 }
 
+function setCompactionIncomplete(host: CompactionHost, runId: string) {
+  clearCompactionRefreshTimer(host);
+  host.compactionStatus = {
+    phase: "incomplete",
+    runId,
+    startedAt: host.compactionStatus?.startedAt ?? null,
+    completedAt: Date.now(),
+    tokensBefore: host.compactionStatus?.tokensBefore,
+    tokensAfter: host.compactionStatus?.tokensAfter,
+  };
+  scheduleCompactionClear(host);
+}
+
+function clearRetryingCompaction(host: CompactionHost) {
+  clearCompactionTimer(host);
+  clearCompactionRefreshTimer(host);
+  host.compactionStatus = null;
+  host.requestUpdate?.();
+}
+
 export function handleCompactionEvent(host: CompactionHost, payload: AgentEventPayload) {
   const accepted = resolveAcceptedSession(host, payload, { allowSessionScopedWhenIdle: true });
   if (!accepted.accepted) {
@@ -354,7 +400,8 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
   }
   const data = payload.data ?? {};
   const phase = typeof data.phase === "string" ? data.phase : "";
-  const completed = data.completed === true;
+  const outcome = resolveCompactionEventOutcome(data);
+  const completed = outcome === "success";
 
   clearCompactionTimer(host);
 
@@ -407,8 +454,7 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
       setCompactionComplete(host, payload.runId);
       return;
     }
-    host.compactionStatus = null;
-    clearCompactionRefreshTimer(host);
+    setCompactionIncomplete(host, payload.runId);
   }
 }
 
@@ -478,6 +524,10 @@ function handleLifecycleCompactionEvent(host: CompactionHost, payload: AgentEven
     return;
   }
 
+  if (phase === "error") {
+    clearRetryingCompaction(host);
+    return;
+  }
   setCompactionComplete(host, payload.runId);
 }
 

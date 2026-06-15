@@ -221,7 +221,9 @@ function emitCompactionAgentEvent(
     seq: number;
     phase: "start" | "end";
     completed?: boolean;
+    outcome?: "success" | "incomplete";
     trigger?: "manual";
+    reason?: string;
     tokensBefore?: number;
     tokensAfter?: number;
   },
@@ -237,7 +239,9 @@ function emitCompactionAgentEvent(
       data: {
         phase: payload.phase,
         completed: payload.completed === true,
+        ...(payload.outcome ? { outcome: payload.outcome } : {}),
         trigger: payload.trigger,
+        ...(payload.reason ? { reason: payload.reason } : {}),
         ...(typeof payload.tokensBefore === "number" ? { tokensBefore: payload.tokensBefore } : {}),
         ...(typeof payload.tokensAfter === "number" ? { tokensAfter: payload.tokensAfter } : {}),
       },
@@ -1703,7 +1707,12 @@ export const sessionsHandlers: GatewayRequestHandlers = {
             seq: 2,
             phase: "end",
             completed: result?.ok === true && result?.compacted,
+            outcome: result?.ok === true && result?.compacted ? "success" : "incomplete",
             trigger: "manual",
+            reason:
+              typeof result?.reason === "string" && result.reason.trim()
+                ? result.reason.trim()
+                : undefined,
             tokensBefore:
               typeof result?.result?.tokensBefore === "number" &&
               Number.isFinite(result.result.tokensBefore)

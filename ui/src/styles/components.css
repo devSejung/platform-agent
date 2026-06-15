@@ -3709,18 +3709,9 @@ td.data-table-key-col {
 
 /* Chat queue */
 .chat-queue {
-  margin-top: 10px;
-  padding: 0 4px;
+  margin: 8px 22px 10px 0;
   display: grid;
-  gap: 8px;
-}
-
-.chat-queue__header {
-  display: grid;
-  gap: 2px;
   justify-items: end;
-  text-align: right;
-  padding-right: 4px;
 }
 
 .chat-queue__title {
@@ -3732,26 +3723,40 @@ td.data-table-key-col {
 .chat-queue__description {
   color: var(--muted);
   font-size: 12px;
-  line-height: 1.35;
+  line-height: 1.3;
 }
 
 .chat-queue__list {
   display: grid;
   gap: 6px;
+  justify-items: end;
+  width: min(560px, 82%);
 }
 
 .chat-queue__item {
-  display: flex;
   justify-content: flex-end;
-  align-items: flex-start;
-  gap: 8px;
-  min-width: 0;
+  width: 100%;
 }
 
 .chat-queue__bubble {
-  max-width: min(620px, 82%);
+  width: fit-content;
+  max-width: 100%;
+  min-width: min(260px, 100%);
+  padding: 8px 10px 9px;
   border-style: solid;
-  opacity: 0.82;
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  background: color-mix(in srgb, var(--accent-subtle) 78%, var(--card));
+  opacity: 0.92;
+}
+
+.chat-queue__meta {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin-bottom: 6px;
+  text-align: right;
 }
 
 .chat-queue__text {
@@ -3764,12 +3769,13 @@ td.data-table-key-col {
   line-clamp: 3;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+  text-align: right;
 }
 
 .chat-queue__remove {
-  align-self: start;
-  margin-top: 2px;
-  padding: 5px 10px;
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 3px 8px;
   font-size: 12px;
   line-height: 1;
   white-space: nowrap;

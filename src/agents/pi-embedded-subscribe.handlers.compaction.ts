@@ -4,6 +4,18 @@ import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
 import { makeZeroUsageSnapshot } from "./usage.js";
 
+type RuntimeCompactionOutcome = "success" | "incomplete" | "cancelled";
+
+function resolveRuntimeCompactionOutcome(params: {
+  hasResult: boolean;
+  wasAborted: boolean;
+}): RuntimeCompactionOutcome {
+  if (params.wasAborted) {
+    return "cancelled";
+  }
+  return params.hasResult ? "success" : "incomplete";
+}
+
 export function handleAutoCompactionStart(ctx: EmbeddedPiSubscribeContext) {
   ctx.state.compactionInFlight = true;
   ctx.ensureCompactionPromise();
@@ -11,11 +23,11 @@ export function handleAutoCompactionStart(ctx: EmbeddedPiSubscribeContext) {
   emitAgentEvent({
     runId: ctx.params.runId,
     stream: "compaction",
-    data: { phase: "start" },
+    data: { phase: "start", trigger: "runtime" },
   });
   void ctx.params.onAgentEvent?.({
     stream: "compaction",
-    data: { phase: "start" },
+    data: { phase: "start", trigger: "runtime" },
   });
 
   // Run before_compaction plugin hook (fire-and-forget)
@@ -50,6 +62,7 @@ export function handleAutoCompactionEnd(
   // and context was trimmed — the counter must reflect that.  (#38905)
   const hasResult = evt.result != null;
   const wasAborted = Boolean(evt.aborted);
+  const outcome = resolveRuntimeCompactionOutcome({ hasResult, wasAborted });
   if (hasResult && !wasAborted) {
     ctx.incrementCompactionCount();
     const observedCompactionCount = ctx.getCompactionCount();
@@ -89,6 +102,8 @@ export function handleAutoCompactionEnd(
       phase: "end",
       willRetry,
       completed: hasResult && !wasAborted,
+      outcome,
+      trigger: "runtime",
       ...(tokensBefore !== undefined ? { tokensBefore } : {}),
       ...(tokensAfter !== undefined ? { tokensAfter } : {}),
     },
@@ -99,6 +114,8 @@ export function handleAutoCompactionEnd(
       phase: "end",
       willRetry,
       completed: hasResult && !wasAborted,
+      outcome,
+      trigger: "runtime",
       ...(tokensBefore !== undefined ? { tokensBefore } : {}),
       ...(tokensAfter !== undefined ? { tokensAfter } : {}),
     },

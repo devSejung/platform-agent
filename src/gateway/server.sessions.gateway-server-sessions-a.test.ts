@@ -1654,6 +1654,24 @@ describe("gateway server sessions", () => {
     });
 
     const { ws } = await openClient();
+    const agentEvents: Array<{
+      type?: string;
+      event?: string;
+      payload?: {
+        stream?: string;
+        data?: Record<string, unknown>;
+      };
+    }> = [];
+    ws.on("message", (raw) => {
+      try {
+        const message = JSON.parse(raw.toString()) as (typeof agentEvents)[number];
+        if (message.type === "event" && message.event === "agent") {
+          agentEvents.push(message);
+        }
+      } catch {
+        // Ignore non-JSON test harness messages.
+      }
+    });
     const compacted = await rpcReq<{
       ok: true;
       key: string;
@@ -1688,6 +1706,81 @@ describe("gateway server sessions", () => {
     expect(store["agent:main:main"]?.compactionCount).toBe(1);
     expect(store["agent:main:main"]?.totalTokens).toBe(80);
     expect(store["agent:main:main"]?.totalTokensFresh).toBe(true);
+    expect(
+      agentEvents.some(
+        (event) =>
+          event.payload?.stream === "compaction" &&
+          event.payload.data?.phase === "end" &&
+          event.payload.data?.completed === true &&
+          event.payload.data?.outcome === "success" &&
+          event.payload.data?.trigger === "manual",
+      ),
+    ).toBe(true);
+
+    ws.close();
+  });
+
+  test("sessions.compact emits incomplete outcome while preserving completed false", async () => {
+    const { dir } = await createSessionStoreDir();
+    await fs.writeFile(
+      path.join(dir, "sess-main.jsonl"),
+      `${JSON.stringify({ role: "user", content: "hello" })}\n`,
+      "utf-8",
+    );
+    await writeSessionStore({
+      entries: {
+        main: {
+          sessionId: "sess-main",
+          updatedAt: Date.now(),
+        },
+      },
+    });
+    embeddedRunMock.compactEmbeddedPiSession.mockResolvedValueOnce({
+      ok: true,
+      compacted: false,
+      reason: "not needed",
+    });
+
+    const { ws } = await openClient();
+    const agentEvents: Array<{
+      type?: string;
+      event?: string;
+      payload?: {
+        stream?: string;
+        data?: Record<string, unknown>;
+      };
+    }> = [];
+    ws.on("message", (raw) => {
+      try {
+        const message = JSON.parse(raw.toString()) as (typeof agentEvents)[number];
+        if (message.type === "event" && message.event === "agent") {
+          agentEvents.push(message);
+        }
+      } catch {
+        // Ignore non-JSON test harness messages.
+      }
+    });
+
+    const compacted = await rpcReq<{ ok: true; compacted: boolean; reason?: string }>(
+      ws,
+      "sessions.compact",
+      { key: "main" },
+    );
+
+    expect(compacted.payload).toEqual(
+      expect.objectContaining({ ok: true, compacted: false, reason: "not needed" }),
+    );
+    expect(
+      agentEvents.some(
+        (event) =>
+          event.payload?.stream === "compaction" &&
+          event.payload.data?.phase === "end" &&
+          event.payload.data?.completed === false &&
+          event.payload.data?.outcome === "incomplete" &&
+          event.payload.data?.trigger === "manual" &&
+          event.payload.data?.reason === "not needed",
+      ),
+    ).toBe(true);
 
     ws.close();
   });

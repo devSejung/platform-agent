@@ -18,6 +18,7 @@ function createCompactionContext(params: {
   sessionKey: string;
   agentId?: string;
   initialCount: number;
+  onAgentEvent?: EmbeddedPiSubscribeContext["params"]["onAgentEvent"];
 }): EmbeddedPiSubscribeContext {
   let compactionCount = params.initialCount;
   return {
@@ -28,7 +29,7 @@ function createCompactionContext(params: {
       sessionKey: params.sessionKey,
       sessionId: "session-1",
       agentId: params.agentId ?? "test-agent",
-      onAgentEvent: undefined,
+      onAgentEvent: params.onAgentEvent,
     },
     state: {
       compactionInFlight: true,
@@ -97,6 +98,54 @@ describe("reconcileSessionStoreCompactionCountAfterSuccess", () => {
 });
 
 describe("handleAutoCompactionEnd", () => {
+  it.each([
+    {
+      label: "successful",
+      event: { result: { kept: 12 }, aborted: false },
+      completed: true,
+      outcome: "success",
+    },
+    {
+      label: "incomplete",
+      event: { result: undefined, aborted: false },
+      completed: false,
+      outcome: "incomplete",
+    },
+    {
+      label: "cancelled",
+      event: { result: undefined, aborted: true },
+      completed: false,
+      outcome: "cancelled",
+    },
+  ])(
+    "adds backward-compatible outcome metadata for a $label runtime compaction",
+    ({ event, completed, outcome }) => {
+      const onAgentEvent = vi.fn();
+      const ctx = createCompactionContext({
+        storePath: "",
+        sessionKey: "main",
+        initialCount: 0,
+        onAgentEvent,
+      });
+
+      handleAutoCompactionEnd(ctx, {
+        type: "auto_compaction_end",
+        willRetry: false,
+        ...event,
+      } as never);
+
+      expect(onAgentEvent).toHaveBeenCalledWith({
+        stream: "compaction",
+        data: expect.objectContaining({
+          phase: "end",
+          completed,
+          outcome,
+          trigger: "runtime",
+        }),
+      });
+    },
+  );
+
   it("reconciles the session store after a successful compaction end event", async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-compaction-handler-"));
     const storePath = path.join(tmp, "sessions.json");

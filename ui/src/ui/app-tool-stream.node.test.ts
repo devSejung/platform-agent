@@ -228,7 +228,7 @@ describe("app-tool-stream fallback lifecycle handling", () => {
     vi.useRealTimers();
   });
 
-  it("treats lifecycle error as terminal for retry-pending compaction", () => {
+  it("clears retry-pending compaction on lifecycle error without showing completion", () => {
     vi.useFakeTimers();
     const host = createHost();
 
@@ -266,16 +266,6 @@ describe("app-tool-stream fallback lifecycle handling", () => {
       data: { phase: "error", error: "boom" },
     });
 
-    expect(host.compactionStatus).toEqual({
-      phase: "complete",
-      runId: "run-1",
-      startedAt: expect.any(Number),
-      completedAt: expect.any(Number),
-    });
-    expect(host.compactionClearTimer).not.toBeNull();
-    expect(host.compactionRefreshTimer).toBeNull();
-
-    vi.advanceTimersByTime(5_000);
     expect(host.compactionStatus).toBeNull();
     expect(host.compactionClearTimer).toBeNull();
     expect(host.compactionRefreshTimer).toBeNull();
@@ -283,7 +273,7 @@ describe("app-tool-stream fallback lifecycle handling", () => {
     vi.useRealTimers();
   });
 
-  it("does not surface retrying or complete when retry compaction failed", () => {
+  it("keeps completed false compaction as incomplete before clearing it", () => {
     vi.useFakeTimers();
     const host = createHost();
 
@@ -305,23 +295,196 @@ describe("app-tool-stream fallback lifecycle handling", () => {
       data: { phase: "end", willRetry: true, completed: false },
     });
 
+    expect(host.compactionStatus).toEqual({
+      phase: "incomplete",
+      runId: "run-1",
+      startedAt: expect.any(Number),
+      completedAt: expect.any(Number),
+    });
+    expect(host.compactionClearTimer).not.toBeNull();
+    expect(host.compactionRefreshTimer).toBeNull();
+
+    vi.advanceTimersByTime(4_999);
+    expect(host.compactionStatus).not.toBeNull();
+    vi.advanceTimersByTime(1);
     expect(host.compactionStatus).toBeNull();
     expect(host.compactionClearTimer).toBeNull();
     expect(host.compactionRefreshTimer).toBeNull();
+
+    vi.useRealTimers();
+  });
+
+  it.each([
+    {
+      outcome: "success",
+      completed: false,
+      expectedPhase: "complete",
+    },
+    {
+      outcome: "incomplete",
+      completed: true,
+      expectedPhase: "incomplete",
+    },
+    {
+      outcome: "cancelled",
+      completed: true,
+      expectedPhase: "incomplete",
+    },
+  ])(
+    "prefers additive $outcome outcome over legacy completed=$completed",
+    ({ outcome, completed, expectedPhase }) => {
+      vi.useFakeTimers();
+      const host = createHost();
+
+      handleAgentEvent(host, {
+        runId: "run-1",
+        seq: 1,
+        stream: "compaction",
+        ts: Date.now(),
+        sessionKey: "main",
+        data: { phase: "start", trigger: "runtime" },
+      });
+      handleAgentEvent(host, {
+        runId: "run-1",
+        seq: 2,
+        stream: "compaction",
+        ts: Date.now(),
+        sessionKey: "main",
+        data: {
+          phase: "end",
+          completed,
+          outcome,
+          trigger: "runtime",
+          futureField: "ignored",
+        },
+      });
+
+      expect(host.compactionStatus).toEqual(
+        expect.objectContaining({ phase: expectedPhase, runId: "run-1" }),
+      );
+      vi.useRealTimers();
+    },
+  );
+
+  it("falls back to completed when outcome is absent or unknown", () => {
+    vi.useFakeTimers();
+    const host = createHost();
+
+    handleAgentEvent(host, {
+      runId: "run-1",
+      seq: 1,
+      stream: "compaction",
+      ts: Date.now(),
+      sessionKey: "main",
+      data: { phase: "start" },
+    });
+    handleAgentEvent(host, {
+      runId: "run-1",
+      seq: 2,
+      stream: "compaction",
+      ts: Date.now(),
+      sessionKey: "main",
+      data: { phase: "end", completed: true, outcome: "future_outcome" },
+    });
+
+    expect(host.compactionStatus).toEqual(
+      expect.objectContaining({ phase: "complete", runId: "run-1" }),
+    );
+    vi.useRealTimers();
+  });
+
+  it("replaces incomplete with the normal complete flow when a later success arrives", () => {
+    vi.useFakeTimers();
+    const host = createHost();
+
+    handleAgentEvent(host, {
+      runId: "run-1",
+      seq: 1,
+      stream: "compaction",
+      ts: Date.now(),
+      sessionKey: "main",
+      data: { phase: "start" },
+    });
+    handleAgentEvent(host, {
+      runId: "run-1",
+      seq: 2,
+      stream: "compaction",
+      ts: Date.now(),
+      sessionKey: "main",
+      data: { phase: "end", completed: false },
+    });
+    expect(host.compactionStatus).toEqual(
+      expect.objectContaining({ phase: "incomplete", runId: "run-1" }),
+    );
 
     handleAgentEvent(host, {
       runId: "run-1",
       seq: 3,
-      stream: "lifecycle",
+      stream: "compaction",
       ts: Date.now(),
       sessionKey: "main",
-      data: { phase: "error", error: "boom" },
+      data: {
+        phase: "end",
+        completed: true,
+        tokensBefore: 120_000,
+        tokensAfter: 45_000,
+      },
     });
 
+    expect(host.compactionStatus).toEqual({
+      phase: "complete",
+      runId: "run-1",
+      startedAt: expect.any(Number),
+      completedAt: expect.any(Number),
+      tokensBefore: 120_000,
+      tokensAfter: 45_000,
+    });
+    expect(host.compactionClearTimer).not.toBeNull();
+
+    vi.advanceTimersByTime(5_000);
     expect(host.compactionStatus).toBeNull();
-    expect(host.compactionClearTimer).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("preserves token metadata for normal compaction success", () => {
+    vi.useFakeTimers();
+    const host = createHost();
+
+    handleAgentEvent(host, {
+      runId: "run-1",
+      seq: 1,
+      stream: "compaction",
+      ts: Date.now(),
+      sessionKey: "main",
+      data: { phase: "start" },
+    });
+    handleAgentEvent(host, {
+      runId: "run-1",
+      seq: 2,
+      stream: "compaction",
+      ts: Date.now(),
+      sessionKey: "main",
+      data: {
+        phase: "end",
+        completed: true,
+        tokensBefore: 120_000,
+        tokensAfter: 45_000,
+      },
+    });
+
+    expect(host.compactionStatus).toEqual({
+      phase: "complete",
+      runId: "run-1",
+      startedAt: expect.any(Number),
+      completedAt: expect.any(Number),
+      tokensBefore: 120_000,
+      tokensAfter: 45_000,
+    });
+    expect(host.compactionClearTimer).not.toBeNull();
     expect(host.compactionRefreshTimer).toBeNull();
 
+    vi.advanceTimersByTime(5_000);
+    expect(host.compactionStatus).toBeNull();
     vi.useRealTimers();
   });
 

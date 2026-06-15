@@ -16,7 +16,7 @@ import { SKIP_DELETE_CONFIRM_KEY } from "../chat/grouped-render.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import type { ModelCatalogEntry } from "../types.ts";
 import type { SessionsListResult } from "../types.ts";
-import { renderChat, type ChatProps } from "./chat.ts";
+import { __test, renderChat, type ChatProps } from "./chat.ts";
 import { renderOverview, type OverviewProps } from "./overview.ts";
 
 function readDeleteConfirmPreference(): string | null {
@@ -247,6 +247,19 @@ function createProps(overrides: Partial<ChatProps> = {}): ChatProps {
   };
 }
 
+function expectLiveRunStatusAndMascotPhase(
+  container: HTMLElement,
+  bannerPhase: string,
+  mascotPhase: string = bannerPhase,
+) {
+  const status = container.querySelector(`.live-run-status[data-phase='${bannerPhase}']`);
+  expect(status).not.toBeNull();
+  const mascot = status?.querySelector(".employee-crab-mascot-wrap");
+  expect(mascot).not.toBeNull();
+  expect(mascot?.getAttribute("data-phase")).toBe(mascotPhase);
+  return status;
+}
+
 function createOverviewProps(overrides: Partial<OverviewProps> = {}): OverviewProps {
   return {
     connected: false,
@@ -372,6 +385,81 @@ describe("chat view", () => {
     });
   });
 
+  it("renders the status banner from LiveRunViewState title body tone and kind", () => {
+    withDocumentLang("en", () => {
+      const container = document.createElement("div");
+      const nowSpy = vi.spyOn(Date, "now").mockReturnValue(20_000);
+      render(
+        renderChat(createProps({ sending: true, streamStartedAt: 8_000 })),
+        container,
+      );
+
+      const status = expectLiveRunStatusAndMascotPhase(container, "sending");
+      expect(status?.className).toContain("live-run-status--normal");
+      expect(status?.querySelector(".live-run-status__title")?.textContent).toBe(
+        "Sending request",
+      );
+      expect(status?.querySelector(".live-run-status__body")?.textContent).toBe(
+        "The browser is handing this message to the gateway.",
+      );
+      expect(status?.querySelector(".live-run-status__phase")?.textContent).toBe("sending");
+      expect(status?.querySelector(".live-run-status__meta")?.textContent).toContain(
+        "00:12 elapsed",
+      );
+      nowSpy.mockRestore();
+    });
+  });
+
+  it("keeps waiting banner and mascot phases aligned", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          canAbort: true,
+          stream: null,
+          streamStartedAt: Date.now() - 1_000,
+        }),
+      ),
+      container,
+    );
+
+    expectLiveRunStatusAndMascotPhase(container, "waiting");
+  });
+
+  it("keeps streaming banner and mascot phases aligned", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          stream: "Assistant output",
+          streamStartedAt: Date.now() - 1_000,
+        }),
+      ),
+      container,
+    );
+
+    expectLiveRunStatusAndMascotPhase(container, "streaming");
+  });
+
+  it("keeps legacy deriveLiveRunStatus compatible for rollback", () => {
+    withDocumentLang("en", () => {
+      const status = __test.deriveLiveRunStatus(
+        createProps({
+          stream: "Assistant output",
+          streamStartedAt: 1_000,
+        }),
+      );
+
+      expect(status).toMatchObject({
+        phase: "streaming",
+        tone: "normal",
+        title: "Writing response",
+        body: "Assistant output is arriving. The final message will settle when the run completes.",
+        mascotPhase: "streaming",
+      });
+    });
+  });
+
   it("renders queued messages as compact pending user bubbles", () => {
     const onQueueRemove = vi.fn();
     const container = document.createElement("div");
@@ -403,7 +491,7 @@ describe("chat view", () => {
     expect(onQueueRemove).toHaveBeenCalledWith("q1");
   });
 
-  it("renders memory flushing status in Korean through the live run status bar", () => {
+  it("renders memory flushing as a compaction status in Korean through the live run status bar", () => {
     withDocumentLang("ko-KR", () => {
       const container = document.createElement("div");
       const nowSpy = vi.spyOn(Date, "now").mockReturnValue(12_000);
@@ -421,13 +509,116 @@ describe("chat view", () => {
         container,
       );
 
-      const status = container.querySelector(".live-run-status[data-phase='waiting']");
-      expect(status).not.toBeNull();
+      const status = expectLiveRunStatusAndMascotPhase(container, "compacting");
+      expect(status?.className).toContain("live-run-status--compaction");
       expect(status?.textContent).toContain("기억 정리 중");
-      expect(status?.textContent).toContain("응답 전에 대화 기억을 정리하고 있습니다.");
+      expect(status?.textContent).toContain("응답 전 필요한 기억을 정리하고 있습니다.");
       expect(status?.textContent).toContain("00:04 elapsed");
       nowSpy.mockRestore();
     });
+  });
+
+  it("prioritizes failed run phase over stale active compaction", () => {
+    const container = document.createElement("div");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(60_000);
+    render(
+      renderChat(
+        createProps({
+          compactionStatus: {
+            phase: "active",
+            runId: "run-1",
+            startedAt: 1_000,
+            completedAt: null,
+          },
+          runPhaseStatus: {
+            phase: "failed",
+            runId: "run-phase-1",
+            startedAt: 1_000,
+            endedAt: 6_000,
+            elapsedMs: 5_000,
+            failedCode: "run_failed",
+          },
+        }),
+      ),
+      container,
+    );
+
+    const status = expectLiveRunStatusAndMascotPhase(container, "terminal", "attention");
+    expect(status?.textContent).toContain("Response failed.");
+    expect(status?.textContent).toContain("00:05 elapsed");
+    expect(status?.textContent).not.toContain("Compacting context");
+    expect(status?.querySelector(".employee-crab-mascot-wrap")?.getAttribute("data-phase")).not.toBe(
+      "compacting",
+    );
+    nowSpy.mockRestore();
+  });
+
+  it("prioritizes aborted run phase over waiting or compacting status", () => {
+    const container = document.createElement("div");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(40_000);
+    render(
+      renderChat(
+        createProps({
+          canAbort: true,
+          compactionStatus: {
+            phase: "active",
+            runId: "run-1",
+            startedAt: 1_000,
+            completedAt: null,
+          },
+          runPhaseStatus: {
+            phase: "aborted",
+            runId: "run-phase-1",
+            startedAt: 1_000,
+            endedAt: 4_000,
+            elapsedMs: 3_000,
+            abortedCode: "aborted_by_user",
+          },
+        }),
+      ),
+      container,
+    );
+
+    const status = expectLiveRunStatusAndMascotPhase(container, "terminal", "attention");
+    expect(status?.textContent).toContain("Response stopped.");
+    expect(status?.textContent).toContain("00:03 elapsed");
+    expect(status?.textContent).not.toContain("Preparing response");
+    expect(status?.textContent).not.toContain("Compacting context");
+    expect(status?.querySelector(".employee-crab-mascot-wrap")?.getAttribute("data-phase")).not.toBe(
+      "waiting",
+    );
+    expect(status?.querySelector(".employee-crab-mascot-wrap")?.getAttribute("data-phase")).not.toBe(
+      "compacting",
+    );
+    nowSpy.mockRestore();
+  });
+
+  it("prioritizes terminal timeout over elapsed-only waiting status", () => {
+    const container = document.createElement("div");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(120_000);
+    render(
+      renderChat(
+        createProps({
+          canAbort: true,
+          streamStartedAt: 1_000,
+          runPhaseStatus: {
+            phase: "failed",
+            runId: "run-phase-1",
+            startedAt: 1_000,
+            endedAt: 61_000,
+            elapsedMs: 60_000,
+            failedCode: "timeout",
+          },
+        }),
+      ),
+      container,
+    );
+
+    const status = expectLiveRunStatusAndMascotPhase(container, "terminal", "attention");
+    expect(status?.textContent).toContain("The AI server did not respond in time.");
+    expect(status?.textContent).toContain("01:00 elapsed");
+    expect(status?.textContent).not.toContain("Waiting for model response");
+    nowSpy.mockRestore();
   });
 
   it("renders preflight compaction token reduction metadata in Korean", () => {
@@ -746,9 +937,176 @@ describe("chat view", () => {
       container,
     );
 
+    const status = expectLiveRunStatusAndMascotPhase(container, "compacting");
+    expect(status?.textContent).toContain("Compacting context");
+    nowSpy.mockRestore();
+  });
+
+  it("renders incomplete compaction as informational compaction status", () => {
+    withDocumentLang("ko-KR", () => {
+      const container = document.createElement("div");
+      render(
+        renderChat(
+          createProps({
+            compactionStatus: {
+              phase: "incomplete",
+              runId: "run-1",
+              startedAt: 1_000,
+              completedAt: 4_000,
+            },
+          }),
+        ),
+        container,
+      );
+
+      const status = expectLiveRunStatusAndMascotPhase(container, "compacting", "attention");
+      expect(status?.className).toContain("live-run-status--compaction");
+      expect(status?.className).not.toContain("danger");
+      expect(status?.textContent).toContain("대화 정리를 완료하지 못했습니다.");
+      expect(status?.textContent).toContain("응답은 계속 진행될 수 있습니다.");
+      expect(status?.textContent).toContain("00:03 elapsed");
+    });
+  });
+
+  it("prioritizes terminal failure over incomplete compaction", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          compactionStatus: {
+            phase: "incomplete",
+            runId: "run-1",
+            startedAt: 1_000,
+            completedAt: 4_000,
+          },
+          runPhaseStatus: {
+            phase: "failed",
+            runId: "run-1",
+            startedAt: 1_000,
+            endedAt: 5_000,
+            failedCode: "run_failed",
+          },
+        }),
+      ),
+      container,
+    );
+
+    const status = expectLiveRunStatusAndMascotPhase(container, "terminal", "attention");
+    expect(status?.textContent).toContain("Response failed.");
+    expect(status?.textContent).not.toContain("Conversation cleanup was incomplete.");
+  });
+
+  it("prioritizes streaming over incomplete compaction", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          stream: "The answer is arriving.",
+          streamStartedAt: 5_000,
+          compactionStatus: {
+            phase: "incomplete",
+            runId: "run-1",
+            startedAt: 1_000,
+            completedAt: 4_000,
+          },
+        }),
+      ),
+      container,
+    );
+
+    const status = expectLiveRunStatusAndMascotPhase(container, "streaming");
+    expect(status?.textContent).toContain("Writing response");
+    expect(status?.textContent).not.toContain("Conversation cleanup was incomplete.");
+  });
+
+  it("does not change Stop or composer policy for incomplete compaction", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          canAbort: true,
+          canSend: true,
+          draft: "follow up",
+          onAbort: vi.fn(),
+          onSend: vi.fn(),
+          compactionStatus: {
+            phase: "incomplete",
+            runId: "run-1",
+            startedAt: 1_000,
+            completedAt: 4_000,
+          },
+        }),
+      ),
+      container,
+    );
+
+    expect(container.querySelector('button[title="Stop"]')).not.toBeNull();
+    expect(container.querySelector('button[title="Queue"]')).not.toBeNull();
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")?.disabled).toBe(false);
+  });
+
+  it("prioritizes streaming over stale active compaction", () => {
+    const container = document.createElement("div");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(10_000);
+    render(
+      renderChat(
+        createProps({
+          stream: "The answer is arriving.",
+          streamStartedAt: 8_000,
+          compactionStatus: {
+            phase: "active",
+            runId: "run-1",
+            startedAt: 2_000,
+            completedAt: null,
+          },
+        }),
+      ),
+      container,
+    );
+
+    const status = expectLiveRunStatusAndMascotPhase(container, "streaming");
+    expect(status?.textContent).toContain("Writing response");
+    expect(status?.textContent).not.toContain("Compacting context");
+    nowSpy.mockRestore();
+  });
+
+  it.each([
+    {
+      elapsedMs: 2_000,
+      expected: "Long conversation context is being organized.",
+    },
+    {
+      elapsedMs: 5_000,
+      expected: "Organizing earlier conversation so the response can continue.",
+    },
+    {
+      elapsedMs: 12_000,
+      expected: "The conversation is long, so compaction is taking a little longer.",
+    },
+    {
+      elapsedMs: 65_000,
+      expected: "This is taking longer than expected. Please keep this tab open.",
+    },
+  ])("updates runtime compaction copy after $elapsedMs ms", ({ elapsedMs, expected }) => {
+    const container = document.createElement("div");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(100_000);
+    render(
+      renderChat(
+        createProps({
+          compactionStatus: {
+            phase: "active",
+            runId: "run-1",
+            startedAt: 100_000 - elapsedMs,
+            completedAt: null,
+          },
+        }),
+      ),
+      container,
+    );
+
     const status = container.querySelector(".live-run-status[data-phase='compacting']");
     expect(status).not.toBeNull();
-    expect(status?.textContent).toContain("Compacting context");
+    expect(status?.textContent).toContain(expected);
     nowSpy.mockRestore();
   });
 
@@ -925,10 +1283,402 @@ describe("chat view", () => {
     );
 
     const stopButton = container.querySelector<HTMLButtonElement>('button[title="Stop"]');
-    const sendButton = container.querySelector<HTMLButtonElement>('button[title="Send"]');
+    const queueButton = container.querySelector<HTMLButtonElement>('button[title="Queue"]');
     expect(stopButton).not.toBeNull();
-    expect(sendButton).toBeNull();
+    expect(queueButton).not.toBeNull();
     expect(container.textContent).not.toContain("New session");
+  });
+
+  it.each([
+    {
+      phase: "waiting",
+      overrides: {
+        canAbort: true,
+        stream: null,
+      },
+    },
+    {
+      phase: "streaming",
+      overrides: {
+        canAbort: true,
+        stream: "Assistant output",
+      },
+    },
+    {
+      phase: "compacting",
+      overrides: {
+        canAbort: true,
+        compactionStatus: {
+          phase: "active" as const,
+          runId: "run-1",
+          startedAt: 1_000,
+          completedAt: null,
+        },
+      },
+    },
+    {
+      phase: "tool",
+      overrides: {
+        canAbort: true,
+        toolMessages: [{ role: "tool", content: "tool output" }],
+      },
+    },
+    {
+      phase: "retrying",
+      overrides: {
+        canAbort: true,
+        compactionStatus: {
+          phase: "retrying" as const,
+          runId: "run-1",
+          startedAt: 1_000,
+          completedAt: null,
+        },
+      },
+    },
+  ])("shows Stop for an abortable $phase live run", ({ phase, overrides }) => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          ...overrides,
+          onAbort: vi.fn(),
+        }),
+      ),
+      container,
+    );
+
+    expect(container.querySelector(`.live-run-status[data-phase='${phase}']`)).not.toBeNull();
+    expect(container.querySelector('button[title="Stop"]')).not.toBeNull();
+    expect(container.querySelector('button[title="Queue"]')).not.toBeNull();
+  });
+
+  it.each([
+    {
+      state: "failed terminal",
+      overrides: {
+        canAbort: true,
+        runPhaseStatus: {
+          phase: "failed" as const,
+          runId: "run-1",
+          startedAt: 1_000,
+          endedAt: 2_000,
+          failedCode: "run_failed",
+        },
+      },
+      expectedPhase: "terminal",
+    },
+    {
+      state: "aborted terminal",
+      overrides: {
+        canAbort: true,
+        runPhaseStatus: {
+          phase: "aborted" as const,
+          runId: "run-1",
+          startedAt: 1_000,
+          endedAt: 2_000,
+          abortedCode: "aborted_by_user",
+        },
+      },
+      expectedPhase: "terminal",
+    },
+    {
+      state: "disconnected terminal",
+      overrides: {
+        connected: false,
+        canAbort: true,
+      },
+      expectedPhase: "terminal",
+    },
+    {
+      state: "queued-only",
+      overrides: {
+        canAbort: true,
+        queue: [{ id: "q1", text: "follow up", createdAt: 1 }],
+        runPhaseStatus: {
+          phase: "queued" as const,
+          runId: "run-1",
+          startedAt: 1_000,
+          endedAt: null,
+        },
+      },
+      expectedPhase: "queued",
+    },
+  ])("hides Stop for $state view state", ({ overrides, expectedPhase }) => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          ...overrides,
+          onAbort: vi.fn(),
+        }),
+      ),
+      container,
+    );
+
+    expect(
+      container.querySelector(`.live-run-status[data-phase='${expectedPhase}']`),
+    ).not.toBeNull();
+    expect(container.querySelector('button[title="Stop"]')).toBeNull();
+  });
+
+  it.each([
+    {
+      condition: "canAbort is false",
+      overrides: {
+        canAbort: false,
+        stream: "Assistant output",
+        onAbort: vi.fn(),
+      },
+      expectedTitle: "Send",
+    },
+    {
+      condition: "onAbort is missing",
+      overrides: {
+        canAbort: true,
+        stream: "Assistant output",
+        onAbort: undefined,
+      },
+      expectedTitle: "Queue",
+    },
+  ])("hides Stop for an active run when $condition", ({ overrides, expectedTitle }) => {
+    const container = document.createElement("div");
+    render(renderChat(createProps(overrides)), container);
+
+    expect(container.querySelector(".live-run-status[data-phase='streaming']")).not.toBeNull();
+    expect(container.querySelector('button[title="Stop"]')).toBeNull();
+    expect(container.querySelector(`button[title="${expectedTitle}"]`)).not.toBeNull();
+  });
+
+  it("keeps the existing Queue button policy when terminal state filters out Stop", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          canAbort: true,
+          onAbort: vi.fn(),
+          runPhaseStatus: {
+            phase: "failed",
+            runId: "run-1",
+            startedAt: 1_000,
+            endedAt: 2_000,
+            failedCode: "run_failed",
+          },
+        }),
+      ),
+      container,
+    );
+
+    const queueButton = container.querySelector<HTMLButtonElement>('button[title="Queue"]');
+    expect(queueButton).not.toBeNull();
+    expect(queueButton?.disabled).toBe(false);
+  });
+
+  it("keeps Stop and Queue as independent actions during an active run", () => {
+    const container = document.createElement("div");
+    const onAbort = vi.fn();
+    const onSend = vi.fn();
+    render(
+      renderChat(
+        createProps({
+          canAbort: true,
+          draft: "follow up",
+          onAbort,
+          onSend,
+        }),
+      ),
+      container,
+    );
+
+    container.querySelector<HTMLButtonElement>('button[title="Stop"]')?.click();
+    expect(onAbort).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+
+    container.querySelector<HTMLButtonElement>('button[title="Queue"]')?.click();
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onAbort).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps idle input enabled with an enabled Send action", () => {
+    const container = document.createElement("div");
+    render(renderChat(createProps()), container);
+
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")?.disabled).toBe(false);
+    expect(container.querySelector<HTMLButtonElement>('button[title="Send"]')?.disabled).toBe(
+      false,
+    );
+  });
+
+  it("disables the input and Send action while disconnected", () => {
+    const container = document.createElement("div");
+    render(renderChat(createProps({ connected: false, canSend: false })), container);
+
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")?.disabled).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>('button[title="Send"]')?.disabled).toBe(true);
+  });
+
+  it("keeps Queue label visible but disables submit while sending", () => {
+    const container = document.createElement("div");
+    render(renderChat(createProps({ sending: true })), container);
+
+    const queueButton = container.querySelector<HTMLButtonElement>('button[title="Queue"]');
+    expect(queueButton).not.toBeNull();
+    expect(queueButton?.disabled).toBe(true);
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")?.disabled).toBe(false);
+  });
+
+  it.each(["failed", "aborted"] as const)(
+    "uses transport busy state for Queue after terminal %s",
+    (phase) => {
+      const container = document.createElement("div");
+      render(
+        renderChat(
+          createProps({
+            canAbort: true,
+            onAbort: vi.fn(),
+            runPhaseStatus: {
+              phase,
+              runId: "run-1",
+              startedAt: 1_000,
+              endedAt: 2_000,
+            },
+          }),
+        ),
+        container,
+      );
+
+      expect(container.querySelector(".live-run-status[data-phase='terminal']")).not.toBeNull();
+      expect(container.querySelector('button[title="Stop"]')).toBeNull();
+      expect(container.querySelector('button[title="Queue"]')).not.toBeNull();
+    },
+  );
+
+  it.each(["failed", "aborted"] as const)(
+    "returns to Send after terminal %s transport state is cleared",
+    (phase) => {
+      const container = document.createElement("div");
+      render(
+        renderChat(
+          createProps({
+            canAbort: false,
+            runPhaseStatus: {
+              phase,
+              runId: "run-1",
+              startedAt: 1_000,
+              endedAt: 2_000,
+            },
+          }),
+        ),
+        container,
+      );
+
+      expect(container.querySelector(".live-run-status[data-phase='terminal']")).not.toBeNull();
+      expect(container.querySelector('button[title="Send"]')).not.toBeNull();
+      expect(container.querySelector('button[title="Queue"]')).toBeNull();
+    },
+  );
+
+  it("uses Send for queued-only state when no transport run is active", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          queue: [{ id: "q1", text: "follow up", createdAt: 1 }],
+          runPhaseStatus: {
+            phase: "queued",
+            runId: "run-1",
+            startedAt: 1_000,
+            endedAt: null,
+          },
+        }),
+      ),
+      container,
+    );
+
+    expect(container.querySelector(".live-run-status[data-phase='queued']")).not.toBeNull();
+    expect(container.querySelector('button[title="Send"]')).not.toBeNull();
+    expect(container.querySelector('button[title="Queue"]')).toBeNull();
+  });
+
+  it("blocks button and Enter submission during upload while keeping input editable", () => {
+    const container = document.createElement("div");
+    const onSend = vi.fn();
+    render(
+      renderChat(
+        createProps({
+          draft: "send after upload",
+          canSend: false,
+          attachments: [
+            {
+              id: "upload-1",
+              kind: "file",
+              fileName: "report.pdf",
+              mimeType: "application/pdf",
+              sizeBytes: 100,
+              status: "uploading",
+              progress: 50,
+            },
+          ],
+          onSend,
+        }),
+      ),
+      container,
+    );
+
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    const sendButton = container.querySelector<HTMLButtonElement>('button[title="Send"]');
+    expect(textarea?.disabled).toBe(false);
+    expect(sendButton?.disabled).toBe(true);
+
+    sendButton?.click();
+    textarea?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("uses the same enabled policy for button and Enter submission", () => {
+    const container = document.createElement("div");
+    const onSend = vi.fn();
+    render(renderChat(createProps({ draft: "hello", onSend })), container);
+
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    textarea?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    container.querySelector<HTMLButtonElement>('button[title="Send"]')?.click();
+    expect(onSend).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps Shift+Enter as a newline action without submitting", () => {
+    const container = document.createElement("div");
+    const onSend = vi.fn();
+    render(renderChat(createProps({ draft: "hello", onSend })), container);
+
+    const event = new KeyboardEvent("keydown", {
+      key: "Enter",
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    container.querySelector<HTMLTextAreaElement>("textarea")?.dispatchEvent(event);
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("does not submit Enter while IME composition is active", () => {
+    const container = document.createElement("div");
+    const onSend = vi.fn();
+    render(renderChat(createProps({ draft: "안녕", onSend })), container);
+
+    const event = new KeyboardEvent("keydown", {
+      key: "Enter",
+      isComposing: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    container.querySelector<HTMLTextAreaElement>("textarea")?.dispatchEvent(event);
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
   });
 
   it("shows a new session button when aborting is unavailable", () => {

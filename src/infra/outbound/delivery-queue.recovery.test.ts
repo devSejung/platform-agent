@@ -187,7 +187,7 @@ describe("delivery-queue recovery", () => {
     );
   });
 
-  it("respects maxRecoveryMs time budget and bumps deferred retries", async () => {
+  it("respects maxRecoveryMs time budget without bumping deferred retries", async () => {
     await enqueueCrashRecoveryEntries();
     await enqueueDelivery(
       { channel: "demo-channel-c", to: "#c", payloads: [{ text: "c" }] },
@@ -210,8 +210,22 @@ describe("delivery-queue recovery", () => {
 
     const remaining = await loadPendingDeliveries(tmpDir());
     expect(remaining).toHaveLength(3);
-    expect(remaining.every((entry) => entry.retryCount === 1)).toBe(true);
+    expect(remaining.map((entry) => entry.retryCount)).toEqual([0, 0, 0]);
     expect(log.warn).toHaveBeenCalledWith(expect.stringContaining("deferred to next startup"));
+
+    const secondDeliver = vi.fn().mockResolvedValue([]);
+    const secondRun = await runRecovery({
+      deliver: secondDeliver,
+      maxRecoveryMs: 60_000,
+    });
+    expect(secondDeliver).toHaveBeenCalledTimes(3);
+    expect(secondRun.result).toEqual({
+      recovered: 3,
+      failed: 0,
+      skippedMaxRetries: 0,
+      deferredBackoff: 0,
+    });
+    expect(await loadPendingDeliveries(tmpDir())).toHaveLength(0);
   });
 
   it("defers entries until backoff becomes eligible", async () => {

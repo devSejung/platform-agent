@@ -259,6 +259,76 @@ describe("followup queue collect routing", () => {
     expect(calls[0]?.prompt).toContain("Queued #2\ntwo");
   });
 
+  it("removes only collected item refs when queue cap mutates the front during collect drain", async () => {
+    const key = `test-collect-ref-removal-${Date.now()}`;
+    const calls: FollowupRun[] = [];
+    const releaseFirstDrain = createDeferred<void>();
+    const done = createDeferred<void>();
+    let didEnqueueDuringDrain = false;
+    const settings: QueueSettings = {
+      mode: "collect",
+      debounceMs: 0,
+      cap: 3,
+      dropPolicy: "summarize",
+    };
+    const runFollowup = async (run: FollowupRun) => {
+      calls.push(run);
+      if (!didEnqueueDuringDrain) {
+        didEnqueueDuringDrain = true;
+        enqueueFollowupRun(
+          key,
+          createRun({
+            prompt: "three",
+            originatingChannel: "slack",
+            originatingTo: "channel:A",
+          }),
+          settings,
+        );
+        enqueueFollowupRun(
+          key,
+          createRun({
+            prompt: "four",
+            originatingChannel: "slack",
+            originatingTo: "channel:A",
+          }),
+          settings,
+        );
+        await releaseFirstDrain.promise;
+        return;
+      }
+      done.resolve();
+    };
+
+    enqueueFollowupRun(
+      key,
+      createRun({
+        prompt: "one",
+        originatingChannel: "slack",
+        originatingTo: "channel:A",
+      }),
+      settings,
+    );
+    enqueueFollowupRun(
+      key,
+      createRun({
+        prompt: "two",
+        originatingChannel: "slack",
+        originatingTo: "channel:A",
+      }),
+      settings,
+    );
+
+    scheduleFollowupDrain(key, runFollowup);
+    releaseFirstDrain.resolve();
+    await done.promise;
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.prompt).toContain("Queued #1\none");
+    expect(calls[0]?.prompt).toContain("Queued #2\ntwo");
+    expect(calls[1]?.prompt).toContain("Queued #1\nthree");
+    expect(calls[1]?.prompt).toContain("Queued #2\nfour");
+  });
+
   it("retries overflow summary delivery without losing dropped previews", async () => {
     const key = `test-overflow-summary-retry-${Date.now()}`;
     const calls: FollowupRun[] = [];

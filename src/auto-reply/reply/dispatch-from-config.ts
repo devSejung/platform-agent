@@ -941,10 +941,13 @@ export async function dispatchReplyFromConfig(params: {
               inboundAudio,
               ttsAuto: sessionTtsAuto,
             });
+            const deliveryPayload = payload.assistantArtifactDelivery
+              ? { ...ttsPayload, assistantArtifactDelivery: true }
+              : ttsPayload;
             if (shouldRouteToOriginating) {
-              await sendPayloadAsync(ttsPayload, context?.abortSignal, false);
+              await sendPayloadAsync(deliveryPayload, context?.abortSignal, false);
             } else {
-              dispatcher.sendBlockReply(ttsPayload);
+              dispatcher.sendBlockReply(deliveryPayload);
             }
           };
           return run();

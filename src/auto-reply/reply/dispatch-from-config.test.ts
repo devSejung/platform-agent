@@ -2847,6 +2847,43 @@ describe("dispatchReplyFromConfig", () => {
       expect.objectContaining({ assistantMessageIndex: 7 }),
     );
   });
+
+  it("preserves assistant artifact delivery marker through block reply TTS normalization", async () => {
+    setNoAbort();
+    const dispatcher = createDispatcher();
+    const ctx = buildTestCtx({ Provider: "whatsapp" });
+    ttsMocks.maybeApplyTtsToPayload.mockImplementationOnce(async (paramsUnknown: unknown) => {
+      const params = paramsUnknown as { payload: ReplyPayload };
+      return {
+        text: params.payload.text,
+        mediaUrls: params.payload.mediaUrls,
+      };
+    });
+    const replyResolver = async (
+      _ctx: MsgContext,
+      opts?: GetReplyOptions,
+    ): Promise<ReplyPayload | undefined> => {
+      await opts?.onBlockReply?.({
+        text: "plot",
+        mediaUrls: ["/tmp/plot.png"],
+        assistantArtifactDelivery: true,
+      });
+      return undefined;
+    };
+
+    await dispatchReplyFromConfig({
+      ctx,
+      cfg: emptyConfig,
+      dispatcher,
+      replyResolver,
+    });
+
+    expect(dispatcher.sendBlockReply).toHaveBeenCalledWith({
+      text: "plot",
+      mediaUrls: ["/tmp/plot.png"],
+      assistantArtifactDelivery: true,
+    });
+  });
 });
 
 describe("before_dispatch hook", () => {

@@ -320,6 +320,21 @@ function shouldEmitCompactToolOutput(params: {
   return Boolean(params.outputText?.trim());
 }
 
+function isAssistantArtifactDeliveryToolResult(params: {
+  toolName: string;
+  mediaReply: ReturnType<typeof extractToolResultMediaArtifact>;
+}): params is {
+  toolName: string;
+  mediaReply: NonNullable<ReturnType<typeof extractToolResultMediaArtifact>> & {
+    assistantArtifactDelivery: true;
+  };
+} {
+  return (
+    params.toolName === "attach_artifact" &&
+    params.mediaReply?.assistantArtifactDelivery === true
+  );
+}
+
 function readExecApprovalPendingDetails(result: unknown): {
   approvalId: string;
   approvalSlug: string;
@@ -507,6 +522,17 @@ async function emitToolResultOutput(params: {
     return;
   }
   const mediaUrls = filterToolResultMediaUrls(toolName, mediaReply.mediaUrls, result);
+  if (isAssistantArtifactDeliveryToolResult({ toolName, mediaReply })) {
+    if (mediaUrls.length === 0) {
+      return;
+    }
+    ctx.emitBlockReply({
+      ...(mediaReply.caption ? { text: mediaReply.caption } : {}),
+      mediaUrls,
+      assistantArtifactDelivery: true,
+    });
+    return;
+  }
   const pendingMediaUrls =
     mediaReply.audioAsVoice || emittedToolOutputMediaUrls.length === 0
       ? mediaUrls

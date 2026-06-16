@@ -7,6 +7,7 @@ import { clearConfigCache } from "../config/config.js";
 import { __setMaxChatHistoryMessagesBytesForTest } from "./server-constants.js";
 import {
   connectOk,
+  dispatchInboundMessageMock,
   getReplyFromConfig,
   installGatewayTestHooks,
   mockGetReplyFromConfigOnce,
@@ -285,6 +286,439 @@ describe("gateway server chat", () => {
       } finally {
         testState.agentConfig = undefined;
       }
+    });
+  });
+
+  test("chat.send materializes assistant artifact delivery blocks as workspace attachments", async () => {
+    await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
+      await connectOk(ws);
+      const sessionDir = await createSessionDir();
+      const workspaceDir = path.join(sessionDir, "workspace");
+      await fs.mkdir(workspaceDir, { recursive: true });
+      await fs.writeFile(path.join(workspaceDir, "plot.png"), "plot image");
+      await writeGatewayConfig({
+        agents: {
+          defaults: {
+            workspace: workspaceDir,
+          },
+        },
+      });
+      await writeMainSessionStore();
+
+      const artifactPayload = {
+        text: "그래프 생성했습니다.",
+        mediaUrls: ["./plot.png"],
+        assistantArtifactDelivery: true,
+      };
+      dispatchInboundMessageMock.mockImplementationOnce(async (...args: unknown[]) => {
+        const [params] = args as [
+          {
+            dispatcher: {
+              sendBlockReply: (payload: {
+                text: string;
+                mediaUrls: string[];
+                assistantArtifactDelivery: boolean;
+              }) => boolean;
+              sendFinalReply: (payload: { text: string }) => boolean;
+              markComplete: () => void;
+              waitForIdle: () => Promise<void>;
+              getQueuedCounts: () => { final: number; block: number; tool: number };
+            };
+          },
+        ];
+        params.dispatcher.sendBlockReply(artifactPayload);
+        params.dispatcher.sendFinalReply({ text: "완료했습니다." });
+        params.dispatcher.markComplete();
+        await params.dispatcher.waitForIdle();
+        return {
+          queuedFinal: true,
+          counts: params.dispatcher.getQueuedCounts(),
+        };
+      });
+
+      const finalPromise = onceMessage<{
+        type?: string;
+        event?: string;
+        payload?: {
+          state?: string;
+          runId?: string;
+          message?: { role?: string; content?: unknown[] };
+        };
+      }>(
+        ws,
+        (o) =>
+          o.type === "event" &&
+          o.event === "chat" &&
+          o.payload?.state === "final" &&
+          o.payload?.runId === "idem-artifact-1",
+        8000,
+      );
+
+      const sendRes = await rpcReq(ws, "chat.send", {
+        sessionKey: "main",
+        message: "make plot",
+        idempotencyKey: "idem-artifact-1",
+      });
+      expect(sendRes.ok).toBe(true);
+
+      const finalEvent = await finalPromise;
+      expect(finalEvent.payload?.message?.content).toEqual([
+        expect.objectContaining({ type: "text", text: "완료했습니다." }),
+      ]);
+      expect(artifactPayload.mediaUrls).toEqual(["./plot.png"]);
+      await expect(fs.readFile(path.join(workspaceDir, "plot.png"), "utf-8")).resolves.toBe(
+        "plot image",
+      );
+      const messages = await fetchHistoryMessages(ws);
+      const artifactMessage = messages.find((message) => {
+        const content = (message as { content?: unknown }).content;
+        return (
+          Array.isArray(content) &&
+          content.some(
+            (block) =>
+              block &&
+              typeof block === "object" &&
+              (block as { type?: unknown }).type === "attachment",
+          )
+        );
+      }) as { content?: unknown[] } | undefined;
+      const attachment = artifactMessage?.content?.find(
+        (block) =>
+          block && typeof block === "object" && (block as { type?: unknown }).type === "attachment",
+      ) as Record<string, unknown> | undefined;
+      expect(attachment).toMatchObject({
+        attachmentType: "image",
+        fileName: "plot.png",
+        mimeType: "image/png",
+        promptMode: "workspace",
+      });
+      expect(attachment?.workspacePath).toMatch(
+        /^outbox\/generated-artifacts\/\d{4}-\d{2}-\d{2}\/plot-[a-f0-9]{8}\.png$/,
+      );
+      await expect(
+        fs.readFile(path.join(workspaceDir, String(attachment?.workspacePath)), "utf-8"),
+      ).resolves.toBe("plot image");
+      expect(artifactMessage).toMatchObject({
+        role: "assistant",
+        content: expect.arrayContaining([
+          expect.objectContaining({ type: "text", text: "그래프 생성했습니다." }),
+          expect.objectContaining({ workspacePath: attachment?.workspacePath }),
+        ]),
+      });
+    });
+  });
+
+  test("chat.send keeps final text when assistant artifact copy fails", async () => {
+    await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
+      await connectOk(ws);
+      const sessionDir = await createSessionDir();
+      const workspaceDir = path.join(sessionDir, "workspace");
+      await fs.mkdir(workspaceDir, { recursive: true });
+      const sourcePath = path.join(workspaceDir, "plot.png");
+      const hardlinkPath = path.join(workspaceDir, "plot-hardlink.png");
+      await fs.writeFile(sourcePath, "plot image");
+      await fs.link(sourcePath, hardlinkPath);
+      await writeGatewayConfig({
+        agents: {
+          defaults: {
+            workspace: workspaceDir,
+          },
+        },
+      });
+      await writeMainSessionStore();
+
+      dispatchInboundMessageMock.mockImplementationOnce(async (...args: unknown[]) => {
+        const [params] = args as [
+          {
+            dispatcher: {
+              sendBlockReply: (payload: {
+                text: string;
+                mediaUrls: string[];
+                assistantArtifactDelivery: boolean;
+              }) => boolean;
+              sendFinalReply: (payload: { text: string }) => boolean;
+              markComplete: () => void;
+              waitForIdle: () => Promise<void>;
+              getQueuedCounts: () => { final: number; block: number; tool: number };
+            };
+          },
+        ];
+        params.dispatcher.sendBlockReply({
+          text: "텍스트는 유지됩니다.",
+          mediaUrls: ["./plot-hardlink.png"],
+          assistantArtifactDelivery: true,
+        });
+        params.dispatcher.sendFinalReply({ text: "완료했습니다." });
+        params.dispatcher.markComplete();
+        await params.dispatcher.waitForIdle();
+        return {
+          queuedFinal: true,
+          counts: params.dispatcher.getQueuedCounts(),
+        };
+      });
+
+      const finalPromise = onceMessage<{
+        type?: string;
+        event?: string;
+        payload?: {
+          state?: string;
+          runId?: string;
+          message?: { role?: string; content?: unknown[] };
+        };
+      }>(
+        ws,
+        (o) =>
+          o.type === "event" &&
+          o.event === "chat" &&
+          o.payload?.state === "final" &&
+          o.payload?.runId === "idem-artifact-fail-1",
+        8000,
+      );
+
+      const sendRes = await rpcReq(ws, "chat.send", {
+        sessionKey: "main",
+        message: "make plot",
+        idempotencyKey: "idem-artifact-fail-1",
+      });
+      expect(sendRes.ok).toBe(true);
+
+      const finalEvent = await finalPromise;
+      expect(finalEvent.payload?.message?.content).toEqual([
+        expect.objectContaining({ type: "text", text: "완료했습니다." }),
+      ]);
+
+      const messages = await fetchHistoryMessages(ws);
+      const artifactAttempt = messages.find((message) => {
+        const content = (message as { content?: unknown }).content;
+        return (
+          Array.isArray(content) &&
+          content.some(
+            (block) =>
+              block &&
+              typeof block === "object" &&
+              (block as { text?: unknown }).text === "텍스트는 유지됩니다.",
+          )
+        );
+      }) as { content?: unknown[] } | undefined;
+      expect(artifactAttempt).toMatchObject({
+        role: "assistant",
+        content: [expect.objectContaining({ type: "text", text: "텍스트는 유지됩니다." })],
+      });
+      expect(
+        artifactAttempt?.content?.some(
+          (block) =>
+            block &&
+            typeof block === "object" &&
+            (block as { type?: unknown }).type === "attachment",
+        ),
+      ).toBe(false);
+    });
+  });
+
+  test("chat.send preserves multiple assistant artifact deliveries in history order", async () => {
+    await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
+      await connectOk(ws);
+      const sessionDir = await createSessionDir();
+      const workspaceDir = path.join(sessionDir, "workspace");
+      await fs.mkdir(workspaceDir, { recursive: true });
+      await fs.writeFile(path.join(workspaceDir, "test-a-result.png"), "test a");
+      await fs.writeFile(path.join(workspaceDir, "test-b-result.png"), "test b");
+      await writeGatewayConfig({
+        agents: {
+          defaults: {
+            workspace: workspaceDir,
+          },
+        },
+      });
+      await writeMainSessionStore();
+
+      dispatchInboundMessageMock.mockImplementationOnce(async (...args: unknown[]) => {
+        const [params] = args as [
+          {
+            dispatcher: {
+              sendBlockReply: (payload: {
+                text: string;
+                mediaUrls: string[];
+                assistantArtifactDelivery: boolean;
+              }) => boolean;
+              sendFinalReply: (payload: { text: string }) => boolean;
+              markComplete: () => void;
+              waitForIdle: () => Promise<void>;
+              getQueuedCounts: () => { final: number; block: number; tool: number };
+            };
+          },
+        ];
+        params.dispatcher.sendBlockReply({
+          text: "테스트 A 결과야.",
+          mediaUrls: ["./test-a-result.png"],
+          assistantArtifactDelivery: true,
+        });
+        params.dispatcher.sendBlockReply({
+          text: "테스트 B 결과야.",
+          mediaUrls: ["./test-b-result.png"],
+          assistantArtifactDelivery: true,
+        });
+        params.dispatcher.sendFinalReply({ text: "전체 확인 완료." });
+        params.dispatcher.markComplete();
+        await params.dispatcher.waitForIdle();
+        return {
+          queuedFinal: true,
+          counts: params.dispatcher.getQueuedCounts(),
+        };
+      });
+
+      const finalPromise = onceMessage<{
+        type?: string;
+        event?: string;
+        payload?: {
+          state?: string;
+          runId?: string;
+          message?: { role?: string; content?: unknown[] };
+        };
+      }>(
+        ws,
+        (o) =>
+          o.type === "event" &&
+          o.event === "chat" &&
+          o.payload?.state === "final" &&
+          o.payload?.runId === "idem-artifact-order-1",
+        8000,
+      );
+
+      const sendRes = await rpcReq(ws, "chat.send", {
+        sessionKey: "main",
+        message: "run two tests",
+        idempotencyKey: "idem-artifact-order-1",
+      });
+      expect(sendRes.ok).toBe(true);
+      await finalPromise;
+
+      const messages = await fetchHistoryMessages(ws);
+      const assistantMessages = messages.filter(
+        (message): message is { role?: string; content?: unknown[] } =>
+          Boolean(
+            message &&
+              typeof message === "object" &&
+              (message as { role?: unknown }).role === "assistant" &&
+              Array.isArray((message as { content?: unknown }).content),
+          ),
+      );
+      const delivered = assistantMessages.filter((message) =>
+        message.content?.some(
+          (block) =>
+            block &&
+            typeof block === "object" &&
+            (block as { type?: unknown }).type === "attachment",
+        ),
+      );
+
+      expect(delivered).toHaveLength(2);
+      expect(delivered[0]?.content).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: "text", text: "테스트 A 결과야." }),
+          expect.objectContaining({
+            type: "attachment",
+            attachmentType: "image",
+            fileName: "test-a-result.png",
+            mimeType: "image/png",
+          }),
+        ]),
+      );
+      expect(delivered[1]?.content).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: "text", text: "테스트 B 결과야." }),
+          expect.objectContaining({
+            type: "attachment",
+            attachmentType: "image",
+            fileName: "test-b-result.png",
+            mimeType: "image/png",
+          }),
+        ]),
+      );
+      expect(assistantMessages.at(-1)?.content).toEqual([
+        expect.objectContaining({ type: "text", text: "전체 확인 완료." }),
+      ]);
+    });
+  });
+
+  test("chat.send does not materialize existing ReplyPayload mediaUrls without artifact marker", async () => {
+    await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
+      await connectOk(ws);
+      const sessionDir = await createSessionDir();
+      const workspaceDir = path.join(sessionDir, "workspace");
+      await fs.mkdir(workspaceDir, { recursive: true });
+      await fs.writeFile(path.join(workspaceDir, "plot.png"), "plot image");
+      await writeGatewayConfig({
+        agents: {
+          defaults: {
+            workspace: workspaceDir,
+          },
+        },
+      });
+      await writeMainSessionStore();
+
+      dispatchInboundMessageMock.mockImplementationOnce(async (...args: unknown[]) => {
+        const [params] = args as [
+          {
+            dispatcher: {
+              sendFinalReply: (payload: { text: string; mediaUrls?: string[] }) => boolean;
+              markComplete: () => void;
+              waitForIdle: () => Promise<void>;
+              getQueuedCounts: () => { final: number; block: number; tool: number };
+            };
+          },
+        ];
+        params.dispatcher.sendFinalReply({
+          text: "붙였습니다.",
+          mediaUrls: ["./plot.png"],
+        });
+        params.dispatcher.markComplete();
+        await params.dispatcher.waitForIdle();
+        return {
+          queuedFinal: true,
+          counts: params.dispatcher.getQueuedCounts(),
+        };
+      });
+
+      const finalPromise = onceMessage<{
+        type?: string;
+        event?: string;
+        payload?: {
+          state?: string;
+          runId?: string;
+          message?: { role?: string; content?: unknown[] };
+        };
+      }>(
+        ws,
+        (o) =>
+          o.type === "event" &&
+          o.event === "chat" &&
+          o.payload?.state === "final" &&
+          o.payload?.runId === "idem-tool-artifact-1",
+        8000,
+      );
+
+      const sendRes = await rpcReq(ws, "chat.send", {
+        sessionKey: "main",
+        message: "make plot",
+        idempotencyKey: "idem-tool-artifact-1",
+      });
+      expect(sendRes.ok).toBe(true);
+
+      const finalEvent = await finalPromise;
+      const content = finalEvent.payload?.message?.content ?? [];
+      expect(content).toEqual(
+        expect.arrayContaining([expect.objectContaining({ type: "text", text: "붙였습니다." })]),
+      );
+      expect(content.some((block) => (block as { type?: unknown })?.type === "attachment")).toBe(
+        false,
+      );
+
+      const messages = await fetchHistoryMessages(ws);
+      expect(messages.at(-1)).toMatchObject({
+        role: "assistant",
+        content: [expect.objectContaining({ type: "text", text: "붙였습니다." })],
+      });
     });
   });
 

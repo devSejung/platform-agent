@@ -3,7 +3,7 @@ import path from "node:path";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
 import { resolveAccountTimezone } from "../../accounts/account-store.js";
-import { resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { resolveAgentWorkspaceDir, resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { DEFAULT_PLATFORMCLAW_TIMEZONE } from "../../agents/date-time.js";
 import { resolveFailoverReasonFromError } from "../../agents/failover-error.js";
 import { resolveThinkingDefault } from "../../agents/model-selection.js";
@@ -25,6 +25,7 @@ import { jsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
 import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
 import { type SavedMedia, saveMediaBuffer } from "../../media/store.js";
 import { createChannelReplyPipeline } from "../../plugin-sdk/channel-reply-pipeline.js";
+import { resolveSendableOutboundReplyParts } from "../../plugin-sdk/reply-payload.js";
 import { normalizeInputProvenance, type InputProvenance } from "../../sessions/input-provenance.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { parseAgentSessionKey } from "../../sessions/session-key-utils.js";
@@ -47,6 +48,7 @@ import {
   isWebchatClient,
   normalizeMessageChannel,
 } from "../../utils/message-channel.js";
+import { materializeAssistantArtifacts } from "../assistant-artifacts.js";
 import {
   abortChatRunById,
   type ChatAbortControllerEntry,
@@ -1924,7 +1926,65 @@ export const chatHandlers: GatewayRequestHandlers = {
         agentId,
         channel: INTERNAL_MESSAGE_CHANNEL,
       });
-      const deliveredReplies: Array<{ payload: ReplyPayload; kind: "block" | "final" }> = [];
+      const deliveredReplies: Array<{ payload: ReplyPayload; kind: "tool" | "block" | "final" }> =
+        [];
+      const appendAssistantArtifactDelivery = async (payload: ReplyPayload) => {
+        const mediaUrls = resolveSendableOutboundReplyParts(payload).mediaUrls;
+        if (mediaUrls.length === 0 && !payload.text?.trim()) {
+          return;
+        }
+        const artifactBlocks: Array<Record<string, unknown>> = [];
+        if (mediaUrls.length > 0) {
+          try {
+            artifactBlocks.push(
+              ...(
+                await materializeAssistantArtifacts({
+                  mediaUrls,
+                  workspaceDir: resolveAgentWorkspaceDir(cfg, agentId),
+                  log: context.logGateway,
+                })
+              ).contentBlocks,
+            );
+          } catch (err) {
+            context.logGateway.warn(
+              `assistant artifact materialization skipped: ${formatForLog(err)}`,
+            );
+          }
+        }
+        const assistantContent: Array<Record<string, unknown>> = [];
+        const text = payload.text?.trim();
+        if (text) {
+          assistantContent.push({ type: "text", text });
+        } else if (artifactBlocks.length > 0) {
+          assistantContent.push({ type: "text", text: "Attached artifact" });
+        }
+        assistantContent.push(...artifactBlocks);
+        if (assistantContent.length === 0) {
+          return;
+        }
+        const { storePath: latestStorePath, entry: latestEntry } = loadSessionEntry(sessionKey);
+        const sessionId = latestEntry?.sessionId ?? entry?.sessionId ?? clientRunId;
+        const appended = appendAssistantTranscriptMessage({
+          message: text || "Attached artifact",
+          content: assistantContent,
+          sessionId,
+          storePath: latestStorePath,
+          sessionFile: latestEntry?.sessionFile,
+          agentId,
+          createIfMissing: true,
+          idempotencyKey:
+            typeof payload.channelData?.artifactDeliveryId === "string"
+              ? payload.channelData.artifactDeliveryId
+              : undefined,
+        });
+        if (!appended.ok) {
+          context.logGateway.warn(
+            `webchat assistant artifact transcript append failed: ${
+              appended.error ?? "unknown error"
+            }`,
+          );
+        }
+      };
       let userTranscriptUpdatePromise: Promise<void> | null = null;
       const emitUserTranscriptUpdate = async () => {
         if (userTranscriptUpdatePromise) {
@@ -1996,7 +2056,11 @@ export const chatHandlers: GatewayRequestHandlers = {
           context.logGateway.warn(`webchat dispatch failed: ${formatForLog(err)}`);
         },
         deliver: async (payload, info) => {
-          if (info.kind !== "block" && info.kind !== "final") {
+          if (info.kind !== "tool" && info.kind !== "block" && info.kind !== "final") {
+            return;
+          }
+          if (payload.assistantArtifactDelivery) {
+            await appendAssistantArtifactDelivery(payload);
             return;
           }
           deliveredReplies.push({ payload, kind: info.kind });
@@ -2110,6 +2174,31 @@ export const chatHandlers: GatewayRequestHandlers = {
                 .join("\n\n")
                 .trim();
               const audioBlocks = buildWebchatAudioContentBlocksFromReplyPayloads(finalPayloads);
+              const assistantArtifactMediaUrls = Array.from(
+                new Set(
+                  finalPayloads
+                    .filter((payload) => payload.assistantArtifactDelivery)
+                    .flatMap((payload) => resolveSendableOutboundReplyParts(payload).mediaUrls),
+                ),
+              );
+              const artifactBlocks: Array<Record<string, unknown>> = [];
+              if (assistantArtifactMediaUrls.length > 0) {
+                try {
+                  artifactBlocks.push(
+                    ...(
+                      await materializeAssistantArtifacts({
+                        mediaUrls: assistantArtifactMediaUrls,
+                        workspaceDir: resolveAgentWorkspaceDir(cfg, agentId),
+                        log: context.logGateway,
+                      })
+                    ).contentBlocks,
+                  );
+                } catch (err) {
+                  context.logGateway.warn(
+                    `assistant artifact materialization skipped: ${formatForLog(err)}`,
+                  );
+                }
+              }
               const assistantContent: Array<Record<string, unknown>> = [];
               if (combinedReply) {
                 assistantContent.push({ type: "text", text: combinedReply });
@@ -2117,6 +2206,7 @@ export const chatHandlers: GatewayRequestHandlers = {
                 assistantContent.push({ type: "text", text: "Audio reply" });
               }
               assistantContent.push(...audioBlocks);
+              assistantContent.push(...artifactBlocks);
 
               let message: Record<string, unknown> | undefined;
               if (assistantContent.length > 0) {
@@ -2124,7 +2214,12 @@ export const chatHandlers: GatewayRequestHandlers = {
                   loadSessionEntry(sessionKey);
                 const sessionId = latestEntry?.sessionId ?? entry?.sessionId ?? clientRunId;
                 const transcriptFallbackText =
-                  combinedReply || (audioBlocks.length > 0 ? "Audio reply" : "");
+                  combinedReply ||
+                  (audioBlocks.length > 0
+                    ? "Audio reply"
+                    : artifactBlocks.length > 0
+                      ? "Generated attachment"
+                      : "");
                 const appended = appendAssistantTranscriptMessage({
                   message: transcriptFallbackText,
                   content: assistantContent,

@@ -165,4 +165,43 @@ describe("chat context notice", () => {
       "path=inbox%2Fchat-attachments%2F2026-06-06%2Fnotes.txt",
     );
   });
+
+  it("renders assistant artifact attachments as inline images", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    render(
+      renderChat(
+        createProps({
+          messages: [
+            {
+              role: "assistant",
+              timestamp: Date.now(),
+              content: [
+                { type: "text", text: "붙였습니다." },
+                {
+                  type: "attachment",
+                  attachmentType: "image",
+                  fileName: "plot.png",
+                  workspacePath: "outbox/generated-artifacts/2026-06-16/plot-abcd1234.png",
+                  mimeType: "image/png",
+                  sizeBytes: 1234,
+                  promptMode: "workspace",
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    const image = container.querySelector<HTMLImageElement>(".chat-message-images img");
+    expect(image).not.toBeNull();
+    expect(image?.getAttribute("alt")).toBe("plot.png");
+    expect(image?.getAttribute("src")).toContain(
+      "path=outbox%2Fgenerated-artifacts%2F2026-06-16%2Fplot-abcd1234.png",
+    );
+    expect(image?.getAttribute("src")).toContain("inline=1");
+  });
 });

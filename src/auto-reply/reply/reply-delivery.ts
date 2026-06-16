@@ -100,7 +100,8 @@ export function createBlockReplyDeliveryHandler(params: {
       parseMode: "auto",
     });
 
-    const mediaNormalizedPayload = params.normalizeMediaPaths
+    const mediaNormalizedPayload =
+      params.normalizeMediaPaths && !normalized.payload.assistantArtifactDelivery
       ? await params.normalizeMediaPaths(normalized.payload)
       : normalized.payload;
     const blockPayload = params.applyReplyToMode(mediaNormalizedPayload);
@@ -133,7 +134,11 @@ export function createBlockReplyDeliveryHandler(params: {
       // final response. Media cannot be reconstructed later, so send it immediately and let
       // the assistant's final text arrive through the normal final-reply path.
       params.directlySentBlockKeys.add(createBlockReplyContentKey(blockPayload));
-      await params.onBlockReply({ ...blockPayload, text: undefined });
+      await params.onBlockReply(
+        blockPayload.assistantArtifactDelivery
+          ? blockPayload
+          : { ...blockPayload, text: undefined },
+      );
     }
     // When streaming is disabled entirely, text-only blocks are accumulated in final text.
   };

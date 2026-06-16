@@ -159,4 +159,43 @@ describe("createBlockReplyDeliveryHandler", () => {
       audioAsVoice: false,
     });
   });
+
+  it("does not run assistant artifact delivery media through normal reply path normalization", async () => {
+    const onBlockReply = vi.fn(async () => {});
+    const normalizeMediaPaths = vi.fn(async (payload) => ({
+      ...payload,
+      mediaUrl: undefined,
+      mediaUrls: undefined,
+    }));
+    const sourcePath = path.join("/tmp/workspace", "plot.png");
+
+    const handler = createBlockReplyDeliveryHandler({
+      onBlockReply,
+      normalizeStreamingText: (payload) => ({ text: payload.text, skip: false }),
+      applyReplyToMode: (payload) => payload,
+      normalizeMediaPaths,
+      typingSignals: {
+        signalTextDelta: vi.fn(async () => {}),
+      } as unknown as TypingSignaler,
+      blockStreamingEnabled: false,
+      blockReplyPipeline: null,
+      directlySentBlockKeys: new Set(),
+    });
+
+    await handler({
+      text: "plot",
+      mediaUrls: [sourcePath],
+      assistantArtifactDelivery: true,
+    });
+
+    expect(normalizeMediaPaths).not.toHaveBeenCalled();
+    expect(onBlockReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "plot",
+        mediaUrl: sourcePath,
+        mediaUrls: [sourcePath],
+        assistantArtifactDelivery: true,
+      }),
+    );
+  });
 });

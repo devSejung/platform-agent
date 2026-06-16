@@ -172,6 +172,8 @@ export type ReplyPayload = {
   isCompactionNotice?: boolean;
   /** Channel-specific payload data (per-channel envelope). */
   channelData?: Record<string, unknown>;
+  /** Internal Web UI marker: materialize mediaUrls as assistant-delivered artifacts. */
+  assistantArtifactDelivery?: boolean;
 };
 
 export type ReplyPayloadMetadata = {

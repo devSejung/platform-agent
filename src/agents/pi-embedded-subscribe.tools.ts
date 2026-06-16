@@ -141,6 +141,7 @@ export function extractToolResultText(result: unknown): string | undefined {
 const TRUSTED_TOOL_RESULT_MEDIA = new Set([
   "agents_list",
   "apply_patch",
+  "attach_artifact",
   "browser",
   "canvas",
   "cron",
@@ -236,6 +237,8 @@ export function filterToolResultMediaUrls(
 export type ToolResultMediaArtifact = {
   mediaUrls: string[];
   audioAsVoice?: boolean;
+  assistantArtifactDelivery?: boolean;
+  caption?: string;
 };
 
 function readToolResultDetailsMedia(
@@ -276,9 +279,15 @@ export function extractToolResultMediaArtifact(
   if (detailsMedia) {
     const mediaUrls = collectStructuredMediaUrls(detailsMedia);
     if (mediaUrls.length > 0) {
+      const details = readToolResultDetails(record);
+      const caption = typeof details?.caption === "string" ? details.caption.trim() : "";
       return {
         mediaUrls,
         ...(detailsMedia.audioAsVoice === true ? { audioAsVoice: true } : {}),
+        ...(details?.artifactDelivery === true
+          ? { assistantArtifactDelivery: true }
+          : {}),
+        ...(caption ? { caption } : {}),
       };
     }
   }

@@ -446,4 +446,30 @@ describe("handleToolExecutionEnd media emission", () => {
     expect(ctx.state.pendingToolMediaUrls).toEqual(["/tmp/reply.opus"]);
     expect(ctx.state.pendingToolAudioAsVoice).toBe(true);
   });
+
+  it("emits attach_artifact as assistant artifact delivery instead of tool preview media", async () => {
+    const ctx = createMockContext({ shouldEmitToolOutput: false, onToolResult: vi.fn() });
+
+    await handleToolExecutionEnd(ctx, {
+      type: "tool_execution_end",
+      toolName: "attach_artifact",
+      toolCallId: "tc-artifact",
+      isError: false,
+      result: {
+        content: [{ type: "text", text: "Attached artifact: plot.png" }],
+        details: {
+          artifactDelivery: true,
+          caption: "핵심 결과 그래프야.",
+          media: { mediaUrl: "/tmp/plot.png" },
+        },
+      },
+    });
+
+    expect(ctx.emitBlockReply).toHaveBeenCalledWith({
+      text: "핵심 결과 그래프야.",
+      mediaUrls: ["/tmp/plot.png"],
+      assistantArtifactDelivery: true,
+    });
+    expect(ctx.state.pendingToolMediaUrls).toEqual([]);
+  });
 });

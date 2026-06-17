@@ -6,6 +6,8 @@ import { detectMime } from "../../media/mime.js";
 import { resolveConfigDir } from "../../utils.js";
 import { readStringParam, ToolInputError, type AnyAgentTool } from "./common.js";
 
+const GLOBAL_DOCS_DIRNAME = "global_docs";
+
 const AttachArtifactToolSchema = Type.Object({
   path: Type.String({
     description:
@@ -49,10 +51,15 @@ function isManagedGlobalMediaPath(candidate: string): boolean {
   return firstSegment === "outbound" || firstSegment.startsWith("tool-");
 }
 
+function isGlobalDocsPath(candidate: string): boolean {
+  return isPathInside(path.join(resolveConfigDir(), GLOBAL_DOCS_DIRNAME), candidate);
+}
+
 function assertAllowedArtifactSource(params: { workspaceDir: string; sourcePath: string }) {
   if (
     isPathInside(params.workspaceDir, params.sourcePath) ||
     isManagedGlobalMediaPath(params.sourcePath) ||
+    isGlobalDocsPath(params.sourcePath) ||
     isPathInside(resolvePreferredOpenClawTmpDir(), params.sourcePath)
   ) {
     return;

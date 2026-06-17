@@ -14,6 +14,7 @@ import {
 const ASSISTANT_ARTIFACT_ROOT = "outbox/generated-artifacts";
 const MAX_ASSISTANT_ARTIFACT_BYTES = 25 * 1024 * 1024;
 const MANAGED_GLOBAL_MEDIA_SUBDIRS = new Set(["outbound"]);
+const GLOBAL_DOCS_DIRNAME = "global_docs";
 const SENSITIVE_ARTIFACT_NAME_RE = /(?:secret|token|credential|password|private-key)/i;
 const BLOCKED_ARTIFACT_EXTENSIONS = new Set([
   ".cer",
@@ -99,6 +100,10 @@ function isManagedGlobalMediaPath(candidate: string): boolean {
   return MANAGED_GLOBAL_MEDIA_SUBDIRS.has(firstSegment) || firstSegment.startsWith("tool-");
 }
 
+function isGlobalDocsPath(candidate: string): boolean {
+  return isPathInside(path.join(resolveConfigDir(), GLOBAL_DOCS_DIRNAME), candidate);
+}
+
 function isAllowedAssistantArtifactSource(params: {
   workspaceDir: string;
   candidate: string;
@@ -107,6 +112,9 @@ function isAllowedAssistantArtifactSource(params: {
     return true;
   }
   if (isManagedGlobalMediaPath(params.candidate)) {
+    return true;
+  }
+  if (isGlobalDocsPath(params.candidate)) {
     return true;
   }
   return isPathInside(resolvePreferredOpenClawTmpDir(), params.candidate);

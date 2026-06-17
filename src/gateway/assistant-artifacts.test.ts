@@ -143,6 +143,35 @@ describe("materializeAssistantArtifacts", () => {
     ).resolves.toBe("generated");
   });
 
+  it("copies files from global docs into workspace artifacts", async () => {
+    const workspaceDir = await makeTempWorkspace();
+    const stateDir = await makeTempWorkspace();
+    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+    const globalDocsDir = path.join(stateDir, "global_docs");
+    await fs.mkdir(globalDocsDir, { recursive: true });
+    const sourcePath = path.join(globalDocsDir, "reference.md");
+    await fs.writeFile(sourcePath, "# reference");
+
+    const result = await materializeAssistantArtifacts({
+      mediaUrls: [sourcePath],
+      workspaceDir,
+      now: new Date("2026-06-16T00:00:00.000Z"),
+    });
+
+    expect(result.attachments).toHaveLength(1);
+    expect(result.attachments[0]).toMatchObject({
+      type: "file",
+      fileName: "reference.md",
+      mimeType: "text/markdown",
+    });
+    expect(result.attachments[0]?.workspacePath).toMatch(
+      /^outbox\/generated-artifacts\/2026-06-16\/reference-[a-f0-9]{8}\.md$/,
+    );
+    await expect(
+      fs.readFile(path.join(workspaceDir, result.attachments[0]!.workspacePath), "utf-8"),
+    ).resolves.toBe("# reference");
+  });
+
   it("copies files from the OpenClaw tmp media root into workspace artifacts", async () => {
     const workspaceDir = await makeTempWorkspace();
     const tmpRoot = resolvePreferredOpenClawTmpDir();

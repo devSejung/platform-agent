@@ -3,10 +3,16 @@ import fs from "node:fs/promises";
 import type { IncomingMessage } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CONTROL_UI_BOOTSTRAP_CONFIG_PATH } from "./control-ui-contract.js";
 import { handleControlUiAvatarRequest, handleControlUiHttpRequest } from "./control-ui.js";
 import { makeMockHttpResponse } from "./test-http-response.js";
+
+vi.mock("../platformclaw-release.js", () => ({
+  readLatestPlatformClawReleaseNotes: vi.fn(
+    () => "# PlatformClaw v2026.6.18\n\n## Added\n\n- Test\n",
+  ),
+}));
 
 describe("handleControlUiHttpRequest", () => {
   async function withControlUiRoot<T>(params: {
@@ -132,6 +138,25 @@ describe("handleControlUiHttpRequest", () => {
         expect(String(csp)).toContain("frame-ancestors 'none'");
         expect(String(csp)).toContain("script-src 'self'");
         expect(String(csp)).not.toContain("script-src 'self' 'unsafe-inline'");
+      },
+    });
+  });
+
+  it("serves PlatformClaw release notes from the reserved Control UI endpoint", async () => {
+    await withControlUiRoot({
+      fn: async (tmp) => {
+        const { res, end, setHeader } = makeMockHttpResponse();
+        const handled = handleControlUiHttpRequest(
+          { url: "/__openclaw/release-notes/latest.md", method: "GET" } as IncomingMessage,
+          res,
+          {
+            root: { kind: "resolved", path: tmp },
+          },
+        );
+        expect(handled).toBe(true);
+        expect(res.statusCode).toBe(200);
+        expect(setHeader).toHaveBeenCalledWith("Content-Type", "text/markdown; charset=utf-8");
+        expect(String(end.mock.calls[0]?.[0] ?? "")).toContain("# PlatformClaw v2026.6.18");
       },
     });
   });

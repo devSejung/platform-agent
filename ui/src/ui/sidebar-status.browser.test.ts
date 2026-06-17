@@ -10,7 +10,13 @@ describe("sidebar connection status", () => {
 
     app.hello = {
       ok: true,
-      server: { version: "1.2.3" },
+      server: {
+        version: "1.2.3",
+        product: {
+          name: "PlatformClaw",
+          version: "2026.6.18",
+        },
+      },
     } as never;
     app.requestUpdate();
     await app.updateComplete;
@@ -18,6 +24,7 @@ describe("sidebar connection status", () => {
     const version = app.querySelector<HTMLElement>(".sidebar-version");
     const statusDot = app.querySelector<HTMLElement>(".sidebar-version__status");
     expect(version).not.toBeNull();
+    expect(version?.textContent).toContain("PlatformClaw v2026.6.18");
     expect(statusDot).not.toBeNull();
     expect(statusDot?.getAttribute("aria-label")).toContain("Online");
   });

@@ -218,6 +218,10 @@ export class OpenClawApp extends LitElement {
   @state() themeResolved: ResolvedTheme = "dark";
   @state() themeOrder: ThemeName[] = this.buildThemeOrder(this.theme);
   @state() hello: GatewayHelloOk | null = null;
+  @state() releaseNotesOpen = false;
+  @state() releaseNotesLoading = false;
+  @state() releaseNotesError: string | null = null;
+  @state() releaseNotesMarkdown: string | null = null;
   @state() lastError: string | null = null;
   @state() lastErrorCode: string | null = null;
   @state() eventLog: EventLogEntry[] = [];
@@ -1057,6 +1061,33 @@ export class OpenClawApp extends LitElement {
     const newRatio = Math.max(0.4, Math.min(0.7, ratio));
     this.splitRatio = newRatio;
     this.applySettings({ ...this.settings, splitRatio: newRatio });
+  }
+
+  async handleOpenReleaseNotes() {
+    this.releaseNotesOpen = true;
+    if (this.releaseNotesMarkdown || this.releaseNotesLoading) {
+      return;
+    }
+    this.releaseNotesLoading = true;
+    this.releaseNotesError = null;
+    try {
+      const base = this.basePath ? this.basePath.replace(/\/$/, "") : "";
+      const res = await fetch(`${base}/__openclaw/release-notes/latest.md`, {
+        headers: { Accept: "text/markdown, text/plain;q=0.9" },
+      });
+      if (!res.ok) {
+        throw new Error(`Release notes unavailable (${res.status})`);
+      }
+      this.releaseNotesMarkdown = await res.text();
+    } catch (error) {
+      this.releaseNotesError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.releaseNotesLoading = false;
+    }
+  }
+
+  handleCloseReleaseNotes() {
+    this.releaseNotesOpen = false;
   }
 
   render() {

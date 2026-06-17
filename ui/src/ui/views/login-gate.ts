@@ -1,4 +1,5 @@
 import { html, nothing } from "lit";
+import { ref } from "lit/directives/ref.js";
 import { t } from "../../i18n/index.ts";
 import type { AppViewState } from "../app-view-state.ts";
 import {
@@ -7,9 +8,38 @@ import {
   resolveEmployeeAnnouncement,
 } from "../employee-announcement.ts";
 import { icons } from "../icons.ts";
+import {
+  type EmployeeLoginMascotRefs,
+  installEmployeeLoginMascot,
+  renderEmployeeLoginMascot,
+} from "../login-mascot.ts";
 import { normalizeBasePath } from "../navigation.ts";
 import { agentLogoUrl, employeeLogoUrl } from "./agents-utils.ts";
 import { renderConnectCommand } from "./connect-command.ts";
+
+const employeeLoginMascotRefs: EmployeeLoginMascotRefs = {};
+
+function bindEmployeeLoginMascotRef(key: keyof EmployeeLoginMascotRefs) {
+  return (element?: Element) => {
+    if (key === "root") {
+      employeeLoginMascotRefs.root = element instanceof HTMLElement ? element : undefined;
+    } else if (key === "accountInput") {
+      employeeLoginMascotRefs.accountInput =
+        element instanceof HTMLInputElement ? element : undefined;
+    } else if (key === "passwordInput") {
+      employeeLoginMascotRefs.passwordInput =
+        element instanceof HTMLInputElement ? element : undefined;
+    } else {
+      employeeLoginMascotRefs.mirror = element instanceof HTMLElement ? element : undefined;
+    }
+    installEmployeeLoginMascot(employeeLoginMascotRefs);
+  };
+}
+
+const employeeLoginMascotRootRef = bindEmployeeLoginMascotRef("root");
+const employeeLoginMascotAccountRef = bindEmployeeLoginMascotRef("accountInput");
+const employeeLoginMascotPasswordRef = bindEmployeeLoginMascotRef("passwordInput");
+const employeeLoginMascotMirrorRef = bindEmployeeLoginMascotRef("mirror");
 
 export function renderLoginGate(state: AppViewState) {
   const basePath = normalizeBasePath(state.basePath ?? "");
@@ -23,18 +53,30 @@ export function renderLoginGate(state: AppViewState) {
       state.employeeProfile.department,
       state.employeeProfile.agentId ? `Agent ${state.employeeProfile.agentId}` : "",
     ].filter(Boolean);
+    const featureChips = ["Knox Teams", "Jira", "Spec Finder", "Confluence", "Gerrit / Jenkins"];
     return html`
       <div class="login-gate login-gate--employee">
         <div class="login-gate__layout">
           <section class="login-gate__hero">
             <div class="login-gate__eyebrow">PlatformClaw</div>
             <div class="login-gate__hero-title">Start Soc PlatformClaw.</div>
-            <div class="login-gate__hero-copy">Workspace access for your assigned agent.</div>
+            <div class="login-gate__hero-copy">
+              Workspace access for your assigned agent. Connect internal workflows across Knox
+              Teams, Jira, and spec search.
+            </div>
+            <div class="login-gate__feature-chips" aria-label="Connected workflow tools">
+              ${featureChips.map(
+                (chip) => html`<span class="login-gate__feature-chip">${chip}</span>`,
+              )}
+            </div>
           </section>
 
-          <div class="login-gate__card login-gate__card--employee">
+          <div
+            class="login-gate__card login-gate__card--employee"
+            ${ref(employeeLoginMascotRootRef)}
+          >
             <div class="login-gate__header login-gate__header--employee">
-              <img class="login-gate__logo" src=${faviconSrc} alt="Soc PlatformClaw" />
+              ${renderEmployeeLoginMascot()}
               <div class="login-gate__title">Soc PlatformClaw</div>
               <div class="login-gate__sub">
                 ${state.employeeBootstrapReady ? employeeLabel.trim() : "Workspace access"}
@@ -67,6 +109,8 @@ export function renderLoginGate(state: AppViewState) {
                       <span>Account</span>
                       <input
                         .value=${state.employeeLoginIdentifier}
+                        data-login-mascot-account
+                        ${ref(employeeLoginMascotAccountRef)}
                         @input=${(e: Event) => {
                           state.employeeLoginIdentifier = (e.target as HTMLInputElement).value;
                         }}
@@ -87,6 +131,8 @@ export function renderLoginGate(state: AppViewState) {
                         <input
                           type=${state.loginShowGatewayPassword ? "text" : "password"}
                           .value=${state.employeeLoginPassword}
+                          data-login-mascot-password
+                          ${ref(employeeLoginMascotPasswordRef)}
                           @input=${(e: Event) => {
                             state.employeeLoginPassword = (e.target as HTMLInputElement).value;
                           }}
@@ -122,9 +168,7 @@ export function renderLoginGate(state: AppViewState) {
                       ?disabled=${state.employeeLoginSubmitting}
                       @click=${() => state.handleEmployeeLogin()}
                     >
-                      ${state.employeeLoginSubmitting
-                        ? "Preparing workspace..."
-                        : "Sign in"}
+                      ${state.employeeLoginSubmitting ? "Preparing workspace..." : "Sign in"}
                     </button>
                     <button
                       class="btn btn--sso login-gate__connect"
@@ -135,6 +179,11 @@ export function renderLoginGate(state: AppViewState) {
                       Sign in with AD SSO
                     </button>
                   `}
+              <span
+                class="login-mascot-mirror"
+                data-login-mascot-mirror
+                ${ref(employeeLoginMascotMirrorRef)}
+              ></span>
             </div>
 
             ${state.employeeBootstrapError

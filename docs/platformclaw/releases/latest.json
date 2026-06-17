@@ -1,0 +1,7 @@
+{
+  "name": "PlatformClaw",
+  "version": "2026.6.18",
+  "baseName": "OpenClaw",
+  "baseVersion": "2026.4.6",
+  "releaseNotesPath": "docs/platformclaw/releases/latest.md"
+}

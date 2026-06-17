@@ -1,4 +1,5 @@
 import { html, nothing } from "lit";
+import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { i18n, t, type Locale } from "../i18n/index.ts";
 import { getSafeLocalStorage } from "../local-storage.ts";
 import { refreshChatAvatar } from "./app-chat.ts";
@@ -142,8 +143,9 @@ import {
   resolveEmployeeAnnouncement,
 } from "./employee-announcement.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
-import "./components/dashboard-header.ts";
 import { icons } from "./icons.ts";
+import "./components/dashboard-header.ts";
+import { toSanitizedMarkdownHtml } from "./markdown.ts";
 import { normalizeBasePath, subtitleForTab, tabGroupsForMode, titleForTab } from "./navigation.ts";
 import {
   buildAgentMainSessionKey,
@@ -680,6 +682,47 @@ function renderEmployeeHeartbeat(state: AppViewState) {
         </div>
       </div>
     </section>
+  `;
+}
+
+function resolveProductVersion(state: AppViewState): { name: string; version: string } | null {
+  const product = state.hello?.server?.product;
+  const version = product?.version ?? state.hello?.server?.version ?? "";
+  if (!version) {
+    return null;
+  }
+  return {
+    name: product?.name ?? "PlatformClaw",
+    version,
+  };
+}
+
+function renderReleaseNotesDialog(state: AppViewState) {
+  if (!state.releaseNotesOpen) {
+    return nothing;
+  }
+  const product = resolveProductVersion(state);
+  const title = product ? `${product.name} v${product.version}` : "PlatformClaw Release Notes";
+  return html`
+    <dialog class="md-preview-dialog" open @close=${() => state.handleCloseReleaseNotes()}>
+      <div class="md-preview-dialog__panel">
+        <div class="md-preview-dialog__header">
+          <div class="md-preview-dialog__title">${title}</div>
+          <button class="btn btn--sm" type="button" @click=${() => state.handleCloseReleaseNotes()}>
+            Close
+          </button>
+        </div>
+        <div class="md-preview-dialog__body sidebar-markdown">
+          ${state.releaseNotesLoading
+            ? html`<p>Loading release notes...</p>`
+            : state.releaseNotesError
+              ? html`<p>${state.releaseNotesError}</p>`
+              : state.releaseNotesMarkdown
+                ? unsafeHTML(toSanitizedMarkdownHtml(state.releaseNotesMarkdown))
+                : html`<p>Release notes unavailable.</p>`}
+        </div>
+      </div>
+    </dialog>
   `;
 }
 
@@ -1269,18 +1312,24 @@ export function renderApp(state: AppViewState) {
                   : nothing}
                 <div class="sidebar-mode-switch">${renderTopbarThemeModeToggle(state)}</div>
                 ${(() => {
-                  const version = state.hello?.server?.version ?? "";
-                  return version
+                  const productVersion = resolveProductVersion(state);
+                  return productVersion
                     ? html`
-                        <div class="sidebar-version" title=${`v${version}`}>
+                        <button
+                          class="sidebar-version sidebar-version--button"
+                          type="button"
+                          @click=${() => state.handleOpenReleaseNotes()}
+                        >
                           ${!navCollapsed
                             ? html`
                                 <span class="sidebar-version__label">${t("common.version")}</span>
-                                <span class="sidebar-version__text">v${version}</span>
+                                <span class="sidebar-version__text"
+                                  >${productVersion.name} v${productVersion.version}</span
+                                >
                                 ${renderSidebarConnectionStatus(state)}
                               `
                             : html` ${renderSidebarConnectionStatus(state)} `}
-                        </div>
+                        </button>
                       `
                     : nothing;
                 })()}
@@ -3436,7 +3485,8 @@ export function renderApp(state: AppViewState) {
             )
           : nothing}
       </main>
-      ${renderExecApprovalPrompt(state)} ${renderGatewayUrlConfirmation(state)} ${nothing}
+      ${renderExecApprovalPrompt(state)} ${renderGatewayUrlConfirmation(state)}
+      ${renderReleaseNotesDialog(state)}
     </div>
   `;
 }

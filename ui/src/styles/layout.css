@@ -446,8 +446,11 @@
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
   border-radius: var(--radius-xl);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 96%, transparent), var(--card));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--bg-elevated) 96%, transparent),
+    var(--card)
+  );
   box-shadow: none;
 }
 
@@ -818,6 +821,24 @@
   border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
 }
 
+.sidebar-version--button {
+  width: 100%;
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.sidebar-version--button:hover .sidebar-version__text,
+.sidebar-version--button:focus-visible .sidebar-version__text {
+  color: var(--accent);
+}
+
+.sidebar-version--button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .sidebar-version__label {
   font-size: 11px;
   font-weight: 600;
@@ -827,6 +848,10 @@
 }
 
 .sidebar-version__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
   color: var(--text);
   font-weight: 600;

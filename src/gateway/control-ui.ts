@@ -9,6 +9,7 @@ import {
 } from "../infra/control-ui-assets.js";
 import { isWithinDir } from "../infra/path-safety.js";
 import { openVerifiedFileSync } from "../infra/safe-open-sync.js";
+import { readLatestPlatformClawReleaseNotes } from "../platformclaw-release.js";
 import { AVATAR_MAX_BYTES } from "../shared/avatar-policy.js";
 import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 import { DEFAULT_ASSISTANT_IDENTITY, resolveAssistantIdentity } from "./assistant-identity.js";
@@ -103,6 +104,7 @@ const STATIC_ASSET_EXTENSIONS = new Set([
 ]);
 
 const EMPLOYEE_UI_PREFIX = "/employee";
+const RELEASE_NOTES_PATH = "/__openclaw/release-notes/latest.md";
 
 export type ControlUiAvatarResolution =
   | { kind: "none"; reason: string }
@@ -354,6 +356,27 @@ export function handleControlUiHttpRequest(
 
   applyControlUiSecurityHeaders(res);
 
+  const releaseNotesPath = basePath ? `${basePath}${RELEASE_NOTES_PATH}` : RELEASE_NOTES_PATH;
+  if (pathname === releaseNotesPath) {
+    const body = readLatestPlatformClawReleaseNotes();
+    if (!body) {
+      respondControlUiNotFound(res);
+      return true;
+    }
+    if (req.method === "HEAD") {
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.end();
+      return true;
+    }
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache");
+    res.end(body);
+    return true;
+  }
+
   const bootstrapConfigPath = basePath
     ? `${basePath}${CONTROL_UI_BOOTSTRAP_CONFIG_PATH}`
     : CONTROL_UI_BOOTSTRAP_CONFIG_PATH;
@@ -423,7 +446,8 @@ export function handleControlUiHttpRequest(
   const defaultEntryHtml = opts?.entryHtml ?? "index.html";
   const uiPath =
     basePath && pathname.startsWith(`${basePath}/`) ? pathname.slice(basePath.length) : pathname;
-  const isEmployeeUiRoute = uiPath === EMPLOYEE_UI_PREFIX || uiPath.startsWith(`${EMPLOYEE_UI_PREFIX}/`);
+  const isEmployeeUiRoute =
+    uiPath === EMPLOYEE_UI_PREFIX || uiPath.startsWith(`${EMPLOYEE_UI_PREFIX}/`);
   const rel = (() => {
     if (uiPath === ROOT_PREFIX) {
       return "";
@@ -437,12 +461,12 @@ export function handleControlUiHttpRequest(
   const requested = rel && !rel.endsWith("/") ? rel : `${rel}index.html`;
   const isRootMountedEmployeeEntry =
     !basePath && defaultEntryHtml === "employee.html" && uiPath === ROOT_PREFIX;
-  const fileRel =
-    isRootMountedEmployeeEntry
+  const fileRel = isRootMountedEmployeeEntry
+    ? "employee.html"
+    : isEmployeeUiRoute &&
+        (!requested || requested === "employee" || requested.startsWith("employee/"))
       ? "employee.html"
-      : isEmployeeUiRoute && (!requested || requested === "employee" || requested.startsWith("employee/"))
-        ? "employee.html"
-        : requested || defaultEntryHtml;
+      : requested || defaultEntryHtml;
   if (!isSafeRelativePath(fileRel)) {
     respondControlUiNotFound(res);
     return true;

@@ -77,6 +77,18 @@ export const HelloOkSchema = Type.Object(
       {
         version: NonEmptyString,
         connId: NonEmptyString,
+        product: Type.Optional(
+          Type.Object(
+            {
+              name: NonEmptyString,
+              version: NonEmptyString,
+              baseName: NonEmptyString,
+              baseVersion: NonEmptyString,
+              releaseNotesPath: NonEmptyString,
+            },
+            { additionalProperties: false },
+          ),
+        ),
       },
       { additionalProperties: false },
     ),

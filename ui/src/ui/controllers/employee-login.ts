@@ -146,36 +146,11 @@ export async function submitEmployeeAdSso(state: EmployeeLoginState) {
       return;
     }
     if (!response.ok) {
-      const message =
-        payload &&
-        typeof payload === "object" &&
-        "message" in payload &&
-        typeof payload.message === "string"
-          ? payload.message
-          : `employee AD SSO failed (${response.status})`;
-      throw new Error(message);
+      throw new Error("AD SSO sign-in is not supported yet.");
     }
-    state.employeeLoginNotice =
-      payload &&
-      typeof payload === "object" &&
-      "notice" in payload &&
-      payload.notice &&
-      typeof payload.notice === "object" &&
-      "title" in payload.notice &&
-      typeof payload.notice.title === "string" &&
-      "body" in payload.notice &&
-      typeof payload.notice.body === "string"
-        ? {
-            title: payload.notice.title,
-            body: payload.notice.body,
-          }
-        : null;
-    await loadEmployeeBootstrap(state);
-    if (state.employeeBootstrapReady) {
-      state.connect();
-    }
-  } catch (error) {
-    state.employeeBootstrapError = error instanceof Error ? error.message : String(error);
+    state.employeeBootstrapError = "AD SSO sign-in is not supported yet.";
+  } catch {
+    state.employeeBootstrapError = "AD SSO sign-in is not supported yet.";
   } finally {
     state.employeeLoginSubmitting = false;
   }

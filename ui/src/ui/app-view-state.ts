@@ -86,6 +86,10 @@ export type AppViewState = {
   themeResolved: ResolvedTheme;
   themeOrder: ThemeName[];
   hello: GatewayHelloOk | null;
+  releaseNotesOpen: boolean;
+  releaseNotesLoading: boolean;
+  releaseNotesError: string | null;
+  releaseNotesMarkdown: string | null;
   lastError: string | null;
   lastErrorCode: string | null;
   eventLog: EventLogEntry[];
@@ -553,4 +557,6 @@ export type AppViewState = {
     handleOpenSidebar: (content: string) => void;
     handleCloseSidebar: () => void;
     handleSplitRatioChange: (ratio: number) => void;
+    handleOpenReleaseNotes: () => Promise<void>;
+    handleCloseReleaseNotes: () => void;
   };

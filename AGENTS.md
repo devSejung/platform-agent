@@ -120,6 +120,22 @@
 ## Build, Test, and Development Commands
 
 - Runtime baseline: Node **22+** (keep Node + Bun paths working).
+
+## PlatformClaw Internal Release Notes
+
+- Product-facing PlatformClaw release notes live under `docs/platformclaw/releases/`.
+- Keep `docs/platformclaw/releases/latest.json` aligned with the current internal release note.
+- Keep `docs/platformclaw/releases/latest.md` in this structure:
+  - `# PlatformClaw vYYYY.M.D` or the approved internal version.
+  - `Date: YYYY-MM-DD`.
+  - `Base OpenClaw: v...`.
+  - `## Added`, `## Changed`, `## Fixed`, and `## Internal Notes`.
+- When asked "지금 수정된 내용으로 내부 release note만들어줘.", inspect `git diff --stat`
+  and `git diff`, summarize only user-facing or operator-relevant changes, and update the
+  release note using the structure above. Include verification results when they affect rollout.
+- Do not rename package names, CLI commands, config keys, protocol identifiers, or public SDK
+  imports from `openclaw` to `platformclaw` just because the product-facing release note uses
+  PlatformClaw.
 - Install deps: `pnpm install`
 - If deps are missing (for example `node_modules` missing, `vitest not found`, or `command not found`), run the repo’s package-manager install command (prefer lockfile/README-defined PM), then rerun the exact requested command once. Apply this to test/build/lint/typecheck/dev commands; if retry still fails, report the command and first actionable error.
 - Pre-commit hooks: `prek install`. The hook runs the repo verification flow, including `pnpm check`.

@@ -11,7 +11,7 @@
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--bg);
-  padding: 24px;
+  padding: clamp(24px, 4vw, 72px);
 }
 
 .login-gate--employee {
@@ -19,32 +19,34 @@
   overflow: hidden;
   background:
     radial-gradient(
-      circle at top left,
-      color-mix(in srgb, var(--accent) 13%, transparent),
-      transparent 36%
+      circle at 16% 14%,
+      color-mix(in srgb, var(--accent) 15%, transparent),
+      transparent 38%
     ),
     radial-gradient(
-      circle at bottom right,
-      color-mix(in srgb, var(--accent-2) 10%, transparent),
-      transparent 32%
+      circle at 84% 86%,
+      color-mix(in srgb, var(--accent-2) 11%, transparent),
+      transparent 34%
     ),
     linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 92%, var(--bg) 8%), var(--bg));
 }
 
 .login-gate__layout {
-  width: min(1080px, 100%);
+  width: min(1560px, 100%);
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(360px, 480px);
-  gap: 28px;
-  align-items: stretch;
+  grid-template-columns: minmax(460px, 1.12fr) minmax(420px, 500px);
+  gap: clamp(44px, 6.5vw, 112px);
+  align-items: center;
 }
 
 .login-gate__hero {
   position: relative;
   display: grid;
-  gap: 14px;
+  gap: 16px;
   align-content: center;
-  padding: 24px 6px;
+  justify-self: end;
+  max-width: 560px;
+  padding: 24px 0;
 }
 
 .login-gate__eyebrow {
@@ -64,18 +66,38 @@
 
 .login-gate__hero-title {
   max-width: 14ch;
-  font-size: clamp(34px, 5vw, 54px);
+  font-size: clamp(42px, 4.4vw, 66px);
   line-height: 0.96;
-  letter-spacing: -0.05em;
+  letter-spacing: -0.055em;
   font-weight: 800;
   color: var(--text-strong);
 }
 
 .login-gate__hero-copy {
-  max-width: 36ch;
+  max-width: 44ch;
   color: var(--muted);
-  font-size: 15px;
+  font-size: clamp(15px, 1.05vw, 17px);
   line-height: 1.65;
+}
+
+.login-gate__feature-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.login-gate__feature-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 72%, var(--accent-subtle) 28%);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .login-gate__theme {
@@ -96,8 +118,10 @@
 
 .login-gate__card--employee {
   width: 100%;
+  max-width: 500px;
   position: relative;
   align-self: center;
+  justify-self: center;
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--card) 96%, var(--bg-elevated) 4%),
@@ -113,6 +137,110 @@
 
 .login-gate__header--employee {
   margin-bottom: 18px;
+}
+
+.login-gate__card--employee {
+  --mascot-x: 0px;
+  --eye-x: 0px;
+  --eye-y: 0px;
+  --eye-open: 1;
+  --login-mascot-size: 67.2px;
+  --login-mascot-stage-width: calc(var(--login-mascot-size) * 2.6);
+  --login-mascot-stage-height: calc(var(--login-mascot-size) + 4px);
+}
+
+.login-mascot-stage {
+  position: relative;
+  width: min(var(--login-mascot-stage-width), 100%);
+  height: var(--login-mascot-stage-height);
+  margin: -3px auto 9px;
+  color: var(--accent);
+}
+
+.login-mascot-runner {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: var(--login-mascot-size);
+  height: var(--login-mascot-size);
+  transform: translateX(calc(-50% + var(--mascot-x)));
+  transition: transform 420ms cubic-bezier(0.18, 0.88, 0.18, 1);
+  will-change: transform;
+}
+
+.login-mascot-svg {
+  display: block;
+  width: var(--login-mascot-size);
+  height: var(--login-mascot-size);
+  overflow: visible;
+  transform-origin: center 74%;
+}
+
+.mascot-body,
+.eye-hole-cover {
+  fill: currentColor;
+}
+
+.eye-white {
+  fill: #fffdf8;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: translate(var(--eye-x), var(--eye-y)) scaleY(var(--eye-open));
+  transition: transform 120ms cubic-bezier(0.2, 0.9, 0.2, 1);
+  animation: login-mascot-blink 5.4s infinite;
+}
+
+.login-gate__card--employee[data-login-mascot-mode="password"] .eye-white {
+  animation: none;
+}
+
+.login-gate__card--employee.login-mascot-moving .login-mascot-svg {
+  animation: login-mascot-waddle 520ms var(--ease-out) 1;
+}
+
+.login-mascot-mirror {
+  position: fixed;
+  top: -9999px;
+  left: -9999px;
+  visibility: hidden;
+  white-space: pre;
+  pointer-events: none;
+}
+
+@keyframes login-mascot-blink {
+  0%,
+  7%,
+  58%,
+  100% {
+    transform: translate(var(--eye-x), var(--eye-y)) scaleY(var(--eye-open));
+  }
+
+  3%,
+  4%,
+  61%,
+  62%,
+  65%,
+  66% {
+    transform: translate(var(--eye-x), var(--eye-y)) scaleY(0.08);
+  }
+}
+
+@keyframes login-mascot-waddle {
+  0% {
+    transform: rotate(0deg) scaleX(1);
+  }
+
+  28% {
+    transform: rotate(-1.6deg) scaleX(1.02);
+  }
+
+  58% {
+    transform: rotate(1.3deg) scaleX(0.99);
+  }
+
+  100% {
+    transform: rotate(0deg) scaleX(1);
+  }
 }
 
 .login-gate__logo {
@@ -814,17 +942,69 @@
   margin-top: 14px;
 }
 
-@media (max-width: 920px) {
+@media (max-width: 1000px) {
+  .login-gate {
+    align-items: flex-start;
+    padding: 28px 18px;
+  }
+
   .login-gate__layout {
+    width: min(560px, 100%);
     grid-template-columns: 1fr;
+    gap: 28px;
   }
 
   .login-gate__hero {
-    padding: 0;
+    justify-self: center;
+    justify-items: center;
+    max-width: 560px;
+    padding: 16px 0 0;
+    text-align: center;
   }
 
   .login-gate__hero-title {
-    max-width: none;
+    max-width: 14ch;
+    font-size: clamp(36px, 10vw, 52px);
+  }
+
+  .login-gate__hero-copy {
+    max-width: 42ch;
+  }
+
+  .login-gate__feature-chips {
+    justify-content: center;
+  }
+
+  .login-gate__card--employee {
+    max-width: 520px;
+  }
+}
+
+@media (max-width: 520px) {
+  .login-gate {
+    padding: 16px;
+  }
+
+  .login-gate__card {
+    padding: 24px 20px;
+  }
+
+  .login-gate__hero {
+    gap: 12px;
+    padding-top: 6px;
+  }
+
+  .login-gate__hero-title {
+    font-size: clamp(32px, 12vw, 44px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-mascot-runner,
+  .eye-white,
+  .login-gate__card--employee.login-mascot-moving .login-mascot-svg {
+    animation: none;
+    transition: none;
   }
 }
 

@@ -102,6 +102,13 @@ export type GatewayHelloOk = {
   server?: {
     version?: string;
     connId?: string;
+    product?: {
+      name?: string;
+      version?: string;
+      baseName?: string;
+      baseVersion?: string;
+      releaseNotesPath?: string;
+    };
   };
   features?: { methods?: string[]; events?: string[] };
   snapshot?: unknown;

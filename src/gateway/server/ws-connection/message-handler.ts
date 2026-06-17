@@ -35,12 +35,12 @@ import { upsertPresence } from "../../../infra/system-presence.js";
 import { loadVoiceWakeConfig } from "../../../infra/voicewake.js";
 import { rawDataToString } from "../../../infra/ws.js";
 import type { createSubsystemLogger } from "../../../logging/subsystem.js";
+import { resolvePlatformClawReleaseInfo } from "../../../platformclaw-release.js";
 import {
   resolveBootstrapProfileScopesForRole,
   type DeviceBootstrapProfile,
 } from "../../../shared/device-bootstrap-profile.js";
 import { roleScopesAllow } from "../../../shared/operator-scope-compat.js";
-import { inspectEmployeeBootstrapToken, verifyEmployeeBootstrapToken } from "../../employee-auth.js";
 import {
   isBrowserOperatorUiClient,
   isGatewayCliClient,
@@ -57,6 +57,10 @@ import {
   mintCanvasCapabilityToken,
 } from "../../canvas-capability.js";
 import { normalizeDeviceMetadataForAuth } from "../../device-auth.js";
+import {
+  inspectEmployeeBootstrapToken,
+  verifyEmployeeBootstrapToken,
+} from "../../employee-auth.js";
 import { ADMIN_SCOPE } from "../../method-scopes.js";
 import {
   isLocalishHost,
@@ -438,7 +442,9 @@ export function attachGatewayWsMessageHandler(params: {
         // Default-deny: scopes must be explicit. Empty/missing scopes means no permissions.
         // Note: If the client does not present a device identity, we can't bind scopes to a paired
         // device/token, so we will clear scopes after auth to avoid self-declared permissions.
-        const requestedScopes = Array.isArray(connectParams.scopes) ? [...connectParams.scopes] : [];
+        const requestedScopes = Array.isArray(connectParams.scopes)
+          ? [...connectParams.scopes]
+          : [];
         let scopes = [...requestedScopes];
         if (role === "employee") {
           scopes = [];
@@ -817,8 +823,7 @@ export function attachGatewayWsMessageHandler(params: {
           trustedProxyAuthOk,
           resolvedAuth.mode,
         );
-        const skipPairing =
-          skipLocalBackendSelfPairing || skipControlUiPairingForDevice;
+        const skipPairing = skipLocalBackendSelfPairing || skipControlUiPairingForDevice;
         if (role !== "employee" && device && devicePublicKey && !skipPairing) {
           const formatAuditList = (items: string[] | undefined): string => {
             if (!items || items.length === 0) {
@@ -1251,6 +1256,7 @@ export function attachGatewayWsMessageHandler(params: {
           server: {
             version: resolveRuntimeServiceVersion(process.env),
             connId,
+            product: resolvePlatformClawReleaseInfo(process.env),
           },
           features: { methods: gatewayMethods, events },
           snapshot,

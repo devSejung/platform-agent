@@ -1,23 +1,26 @@
 # PlatformClaw v2026.6.18
 
 Date: 2026-06-18
-Base OpenClaw: v2026.4.6
 
-## Added
+## 추가
 
-- Added a PlatformClaw product version surface for the Control UI sidebar.
-- Added internal release notes that ship from the repository and Docker image through `docs/platformclaw/releases`.
-- Added a version dialog in the Control UI so employees can open the current PlatformClaw release notes from the sidebar.
+- 에이전트가 만든 파일, 리포트, 이미지, 표, 압축 파일 등을 채팅에서 바로 첨부로 받을 수 있습니다.
+- 생성된 첨부파일은 채팅 기록에서 카드로 다시 확인할 수 있고, 이미지는 대화 안에서 바로 미리 볼 수 있습니다.
+- sidebar에 PlatformClaw 제품 버전을 표시했습니다.
+- 버전 영역을 누르면 현재 업데이트 내역을 바로 확인할 수 있습니다.
+- 직원 로그인 화면에 mascot을 추가하고 UI 구성을 더 보기 좋고 알아보기 쉽게 개선했습니다.
 
-## Changed
+## 변경
 
-- The sidebar version is now product-facing PlatformClaw metadata instead of only the OpenClaw compatibility version.
-- The Gateway handshake keeps the existing OpenClaw-compatible `server.version` while adding product metadata for PlatformClaw-specific UI display.
+- 채팅과 자동 응답에서 생성 첨부파일이 더 일관된 형태로 표시됩니다.
+- 새 첨부 도구를 통해 에이전트가 만든 결과물을 사용자가 놓치지 않고 받을 수 있습니다.
+- AD SSO 로그인은 실제 로그인 상태가 확인된 뒤에만 다음 화면으로 이동합니다.
 
-## Fixed
+## 수정
+
+- AD SSO 로그인 중 아직 인증이 끝나지 않았는데 성공한 것처럼 보일 수 있던 문제를 수정했습니다.
+- 생성 첨부파일이 채팅에 표시될 때 더 안정적으로 처리되도록 개선했습니다.
+
+## 내부 메모
 
 - N/A
-
-## Internal Notes
-
-- Keep OpenClaw package, CLI, config, plugin SDK, and protocol compatibility identifiers unchanged unless a separate compatibility migration explicitly requires changing them.

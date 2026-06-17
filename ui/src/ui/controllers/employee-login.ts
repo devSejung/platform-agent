@@ -1,8 +1,6 @@
 import {
-  EMPLOYEE_ADSSO_PATH,
   EMPLOYEE_LOGIN_PATH,
   EMPLOYEE_LOGOUT_PATH,
-  type EmployeeTimezoneBody,
   type EmployeeUiLoginNotice,
 } from "../../../../src/gateway/employee-ui-contract.js";
 import { clearStoredAuthState } from "../storage.ts";
@@ -112,48 +110,8 @@ export async function submitEmployeeAdSso(state: EmployeeLoginState) {
   if (!state.employeeMode || state.employeeLoginSubmitting) {
     return;
   }
-  state.employeeLoginSubmitting = true;
-  state.employeeBootstrapError = null;
+  state.employeeBootstrapError = "AD SSO sign-in is not supported yet.";
   state.employeeLoginNotice = null;
-  try {
-    const response = await fetch(EMPLOYEE_ADSSO_PATH, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      credentials: "include",
-      body: JSON.stringify({
-        timezone: resolveBrowserTimezone(),
-      } satisfies EmployeeTimezoneBody),
-    });
-    let payload: unknown = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
-    const redirectUrl =
-      payload && typeof payload === "object"
-        ? "redirectUrl" in payload && typeof payload.redirectUrl === "string"
-          ? payload.redirectUrl
-          : "signInUrl" in payload && typeof payload.signInUrl === "string"
-            ? payload.signInUrl
-            : null
-        : null;
-    if (redirectUrl) {
-      window.location.assign(redirectUrl);
-      return;
-    }
-    if (!response.ok) {
-      throw new Error("AD SSO sign-in is not supported yet.");
-    }
-    state.employeeBootstrapError = "AD SSO sign-in is not supported yet.";
-  } catch {
-    state.employeeBootstrapError = "AD SSO sign-in is not supported yet.";
-  } finally {
-    state.employeeLoginSubmitting = false;
-  }
 }
 
 export async function logoutEmployee(state: EmployeeLoginState) {

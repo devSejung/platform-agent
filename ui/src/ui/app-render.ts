@@ -1,4 +1,5 @@
 import { html, nothing } from "lit";
+import { ref } from "lit/directives/ref.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { i18n, t, type Locale } from "../i18n/index.ts";
 import { getSafeLocalStorage } from "../local-storage.ts";
@@ -703,8 +704,31 @@ function renderReleaseNotesDialog(state: AppViewState) {
   }
   const product = resolveProductVersion(state);
   const title = product ? `${product.name} v${product.version}` : "PlatformClaw Release Notes";
+  const ensureOpen = (el?: Element) => {
+    if (!(el instanceof HTMLDialogElement) || el.matches(":modal")) {
+      return;
+    }
+    try {
+      if (el.open) {
+        el.close();
+      }
+      el.showModal();
+    } catch {
+      el.setAttribute("open", "");
+    }
+  };
   return html`
-    <dialog class="md-preview-dialog" open @close=${() => state.handleCloseReleaseNotes()}>
+    <dialog
+      class="md-preview-dialog release-notes-dialog"
+      ${ref(ensureOpen)}
+      @click=${(event: Event) => {
+        const dialog = event.currentTarget as HTMLDialogElement;
+        if (event.target === dialog) {
+          dialog.close();
+        }
+      }}
+      @close=${() => state.handleCloseReleaseNotes()}
+    >
       <div class="md-preview-dialog__panel">
         <div class="md-preview-dialog__header">
           <div class="md-preview-dialog__title">${title}</div>

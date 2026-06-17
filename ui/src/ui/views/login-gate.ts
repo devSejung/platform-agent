@@ -170,14 +170,6 @@ export function renderLoginGate(state: AppViewState) {
                     >
                       ${state.employeeLoginSubmitting ? "Preparing workspace..." : "Sign in"}
                     </button>
-                    <button
-                      class="btn btn--sso login-gate__connect"
-                      type="button"
-                      ?disabled=${state.employeeLoginSubmitting}
-                      @click=${() => state.handleEmployeeAdSso()}
-                    >
-                      Sign in with AD SSO
-                    </button>
                   `}
               <span
                 class="login-mascot-mirror"

@@ -128,11 +128,11 @@
 - Keep `docs/platformclaw/releases/latest.md` in this structure:
   - `# PlatformClaw vYYYY.M.D` or the approved internal version.
   - `Date: YYYY-MM-DD`.
-  - `Base OpenClaw: v...`.
-  - `## Added`, `## Changed`, `## Fixed`, and `## Internal Notes`.
+  - `## 추가`, `## 변경`, `## 수정`, and `## 내부 메모`.
 - When asked "지금 수정된 내용으로 내부 release note만들어줘.", inspect `git diff --stat`
-  and `git diff`, summarize only user-facing or operator-relevant changes, and update the
+  and `git diff`, summarize only user-facing or operator-relevant changes in Korean, and update the
   release note using the structure above. Include verification results when they affect rollout.
+- Do not show or mention the OpenClaw base version in product-facing PlatformClaw release notes.
 - Do not rename package names, CLI commands, config keys, protocol identifiers, or public SDK
   imports from `openclaw` to `platformclaw` just because the product-facing release note uses
   PlatformClaw.

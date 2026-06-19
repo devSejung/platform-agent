@@ -93,7 +93,12 @@ const LOGIN_MASCOT_BODY_PATH = `
   Z
 `;
 
-const installedLoginMascots = new WeakMap<HTMLElement, () => void>();
+type InstalledLoginMascot = {
+  cleanup: () => void;
+  hasFieldTracking: boolean;
+};
+
+const installedLoginMascots = new WeakMap<HTMLElement, InstalledLoginMascot>();
 let activeLoginMascotCleanup: (() => void) | null = null;
 
 function clamp(value: number, min: number, max: number): number {
@@ -227,17 +232,13 @@ export function installEmployeeLoginMascot(refs: EmployeeLoginMascotRefs) {
     activeLoginMascotCleanup = null;
     return;
   }
-  if (!accountInput || !passwordInput || !mirror) {
-    const cleanup = installedLoginMascots.get(element);
-    cleanup?.();
-    if (activeLoginMascotCleanup === cleanup) {
-      activeLoginMascotCleanup = null;
-    }
+
+  const hasFieldTracking = Boolean(accountInput && passwordInput && mirror);
+  const installed = installedLoginMascots.get(element);
+  if (installed?.hasFieldTracking === hasFieldTracking) {
     return;
   }
-  if (installedLoginMascots.has(element)) {
-    return;
-  }
+  installed?.cleanup();
 
   activeLoginMascotCleanup?.();
   activeLoginMascotCleanup = null;
@@ -255,7 +256,7 @@ export function installEmployeeLoginMascot(refs: EmployeeLoginMascotRefs) {
     installedLoginMascots.delete(element);
   };
 
-  installedLoginMascots.set(element, cleanup);
+  installedLoginMascots.set(element, { cleanup, hasFieldTracking });
   activeLoginMascotCleanup = cleanup;
   centerMascot(element);
 
@@ -304,7 +305,7 @@ export function installEmployeeLoginMascot(refs: EmployeeLoginMascotRefs) {
 
   const updateFromCaret = () => {
     caretFrame = 0;
-    if (mode !== "account" || document.activeElement !== accountInput) {
+    if (!accountInput || !mirror || mode !== "account" || document.activeElement !== accountInput) {
       return;
     }
 
@@ -337,61 +338,61 @@ export function installEmployeeLoginMascot(refs: EmployeeLoginMascotRefs) {
     if (mode !== "idle") {
       return;
     }
-    const rect = element.getBoundingClientRect();
-    const ratioX = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+    const ratioX = clamp(event.clientX / Math.max(1, window.innerWidth), 0, 1);
     const mascotX = (ratioX - 0.5) * BODY_RANGE_X * 2;
     const eyes = lookAtScreenPoint(element, event.clientX, event.clientY, mascotX);
     setVars({ mascotX, eyeX: eyes.eyeX, eyeY: eyes.eyeY, eyeOpen: 1 });
   };
 
-  accountInput.addEventListener("focus", () => setMode("account"), listenerOptions);
-  accountInput.addEventListener(
-    "blur",
-    () => {
-      window.requestAnimationFrame(() => {
-        if (document.activeElement !== passwordInput) {
-          setMode("idle");
-        }
-      });
-    },
-    listenerOptions,
-  );
-  passwordInput.addEventListener("focus", () => setMode("password"), listenerOptions);
-  passwordInput.addEventListener(
-    "blur",
-    () => {
-      window.requestAnimationFrame(() => {
-        if (document.activeElement === accountInput) {
-          setMode("account");
-          return;
-        }
-        setMode("idle");
-      });
-    },
-    listenerOptions,
-  );
+  const centerIdleMascot = () => {
+    if (mode === "idle") {
+      centerMascot(element);
+    }
+  };
 
-  for (const eventName of [
-    "input",
-    "keyup",
-    "click",
-    "select",
-    "compositionupdate",
-    "compositionend",
-  ]) {
-    accountInput.addEventListener(eventName, scheduleCaretUpdate, listenerOptions);
+  if (accountInput && passwordInput && mirror) {
+    accountInput.addEventListener("focus", () => setMode("account"), listenerOptions);
+    accountInput.addEventListener(
+      "blur",
+      () => {
+        window.requestAnimationFrame(() => {
+          if (document.activeElement !== passwordInput) {
+            setMode("idle");
+          }
+        });
+      },
+      listenerOptions,
+    );
+    passwordInput.addEventListener("focus", () => setMode("password"), listenerOptions);
+    passwordInput.addEventListener(
+      "blur",
+      () => {
+        window.requestAnimationFrame(() => {
+          if (document.activeElement === accountInput) {
+            setMode("account");
+            return;
+          }
+          setMode("idle");
+        });
+      },
+      listenerOptions,
+    );
+
+    for (const eventName of [
+      "input",
+      "keyup",
+      "click",
+      "select",
+      "compositionupdate",
+      "compositionend",
+    ]) {
+      accountInput.addEventListener(eventName, scheduleCaretUpdate, listenerOptions);
+    }
   }
 
-  element.addEventListener("pointermove", updateFromMouse, listenerOptions);
-  element.addEventListener(
-    "pointerleave",
-    () => {
-      if (mode === "idle") {
-        centerMascot(element);
-      }
-    },
-    listenerOptions,
-  );
+  window.addEventListener("pointermove", updateFromMouse, listenerOptions);
+  window.addEventListener("blur", centerIdleMascot, listenerOptions);
+  document.documentElement.addEventListener("pointerleave", centerIdleMascot, listenerOptions);
   window.addEventListener(
     "resize",
     () => {

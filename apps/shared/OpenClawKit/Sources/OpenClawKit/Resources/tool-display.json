@@ -1007,6 +1007,15 @@
         "model"
       ]
     },
+    "attach_artifact": {
+      "emoji": "📎",
+      "title": "Attach Artifact",
+      "detailKeys": [
+        "path",
+        "caption",
+        "kind"
+      ]
+    },
     "image_generate": {
       "emoji": "🎨",
       "title": "Image Generation",

@@ -626,6 +626,11 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "Image",
       detailKeys: ["path", "paths", "url", "urls", "prompt", "model"],
     },
+    attach_artifact: {
+      emoji: "📎",
+      title: "Attach Artifact",
+      detailKeys: ["path", "caption", "kind"],
+    },
     image_generate: {
       emoji: "🎨",
       title: "Image Generation",

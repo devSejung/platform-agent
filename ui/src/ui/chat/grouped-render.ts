@@ -46,6 +46,24 @@ function buildWorkspaceInlineImageUrl(relativePath: string): string {
   return `${EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH}?path=${encodeURIComponent(relativePath)}&inline=1`;
 }
 
+function buildWorkspaceInlineArtifactUrl(relativePath: string): string {
+  return `${EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH}?path=${encodeURIComponent(relativePath)}&inline=1`;
+}
+
+function isHtmlAttachment(attachment: MessageAttachment): boolean {
+  const fileName = attachment.fileName.trim().toLowerCase();
+  const workspacePath = attachment.workspacePath?.trim().toLowerCase() ?? "";
+  return fileName.endsWith(".html") || workspacePath.endsWith(".html");
+}
+
+function hasHtmlAttachment(attachments: MessageAttachment[]): boolean {
+  return attachments.some((attachment) => attachment.workspacePath && isHtmlAttachment(attachment));
+}
+
+function hasImageAttachment(attachments: MessageAttachment[]): boolean {
+  return attachments.some((attachment) => attachment.type === "image" && attachment.workspacePath);
+}
+
 function extractImages(message: unknown): ImageBlock[] {
   const m = message as Record<string, unknown>;
   const content = m.content;
@@ -180,6 +198,34 @@ function renderMessageAttachments(attachments: MessageAttachment[]) {
       ${fileAttachments.map((attachment) => {
         const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
         const detail = [attachment.promptMode, sizeLabel].filter(Boolean).join(" · ");
+        if (attachment.workspacePath && isHtmlAttachment(attachment)) {
+          return html`
+            <div class="chat-message-attachments__html">
+              <div class="chat-message-attachments__html-header">
+                <span class="chat-message-attachments__icon">${icons.file}</span>
+                <span class="chat-message-attachments__body">
+                  <span class="chat-message-attachments__name">${attachment.fileName}</span>
+                  ${detail
+                    ? html`<span class="chat-message-attachments__meta">${detail}</span>`
+                    : nothing}
+                </span>
+                <a
+                  class="chat-message-attachments__download"
+                  href=${buildWorkspaceDownloadUrl(attachment.workspacePath)}
+                  title=${attachment.workspacePath}
+                >
+                  ${icons.download}
+                </a>
+              </div>
+              <iframe
+                class="chat-message-attachments__html-frame"
+                src=${buildWorkspaceInlineArtifactUrl(attachment.workspacePath)}
+                title=${attachment.fileName}
+                sandbox="allow-scripts"
+              ></iframe>
+            </div>
+          `;
+        }
         const content = html`
           <span class="chat-message-attachments__icon">${icons.file}</span>
           <span class="chat-message-attachments__body">
@@ -289,6 +335,23 @@ export function renderMessageGroup(
         : normalizedRole === "tool"
           ? "tool"
           : "other";
+  const groupHasHtmlArtifactPreview = group.messages.some(({ message }) =>
+    hasHtmlAttachment(extractAttachments(message)),
+  );
+  const groupHasImageArtifactPreview = group.messages.some(({ message }) =>
+    hasImageAttachment(extractAttachments(message)),
+  );
+  const groupClasses = [
+    "chat-group",
+    roleClass,
+    groupHasHtmlArtifactPreview || groupHasImageArtifactPreview
+      ? "chat-group--artifact-preview"
+      : "",
+    groupHasHtmlArtifactPreview ? "chat-group--html-artifact" : "",
+    groupHasImageArtifactPreview ? "chat-group--image-artifact" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   const timestamp = new Date(group.timestamp).toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
@@ -298,7 +361,7 @@ export function renderMessageGroup(
   const meta = extractGroupMeta(group, opts.contextWindow ?? null);
 
   return html`
-    <div class="chat-group ${roleClass}">
+    <div class="${groupClasses}">
       ${renderAvatar(
         group.role,
         {
@@ -914,6 +977,8 @@ function renderGroupedMessage(
   const hasAudio = audioClips.length > 0;
   const attachments = extractAttachments(message);
   const hasAttachments = attachments.length > 0;
+  const hasHtmlArtifactPreview = hasHtmlAttachment(attachments);
+  const hasImageArtifactPreview = hasImageAttachment(attachments);
 
   const extractedText = extractTextCached(message);
   const extractedThinking =
@@ -932,6 +997,9 @@ function renderGroupedMessage(
     opts.isStreaming ? "streaming" : "",
     "fade-in",
     canCopyMarkdown ? "has-copy" : "",
+    hasHtmlArtifactPreview || hasImageArtifactPreview ? "chat-bubble--artifact-preview" : "",
+    hasHtmlArtifactPreview ? "chat-bubble--html-artifact" : "",
+    hasImageArtifactPreview ? "chat-bubble--image-artifact" : "",
   ]
     .filter(Boolean)
     .join(" ");

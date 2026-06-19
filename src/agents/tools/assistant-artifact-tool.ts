@@ -73,7 +73,7 @@ export function createAssistantArtifactTool(options: { workspaceDir: string }): 
     name: "attach_artifact",
     displaySummary: "Attach a generated file to the assistant response.",
     description:
-      "Deliver a generated local/workspace file to the user as an assistant artifact. Use this after creating an image, report, CSV, HTML, log, archive, or other file that should be visible in the assistant message, not hidden inside tool output.",
+      "Deliver a generated local/workspace file to the user as an assistant artifact. Use this after creating an image, HTML page, report, CSV, log, archive, or other file that should be visible in the assistant message, not hidden inside tool output. PlatformClaw Web UI previews image artifacts inline and renders HTML artifacts in an inline sandboxed preview with a download link; other files appear as downloadable cards.",
     parameters: AttachArtifactToolSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;

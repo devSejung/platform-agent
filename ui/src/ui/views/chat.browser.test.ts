@@ -198,10 +198,69 @@ describe("chat context notice", () => {
 
     const image = container.querySelector<HTMLImageElement>(".chat-message-images img");
     expect(image).not.toBeNull();
+    expect(container.querySelector(".chat-group--artifact-preview")).not.toBeNull();
+    expect(container.querySelector(".chat-group--image-artifact")).not.toBeNull();
+    expect(container.querySelector(".chat-bubble--artifact-preview")).not.toBeNull();
+    expect(container.querySelector(".chat-bubble--image-artifact")).not.toBeNull();
     expect(image?.getAttribute("alt")).toBe("plot.png");
     expect(image?.getAttribute("src")).toContain(
       "path=outbox%2Fgenerated-artifacts%2F2026-06-16%2Fplot-abcd1234.png",
     );
     expect(image?.getAttribute("src")).toContain("inline=1");
+  });
+
+  it("renders html assistant artifact attachments in sandboxed iframes", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    render(
+      renderChat(
+        createProps({
+          messages: [
+            {
+              role: "assistant",
+              timestamp: Date.now(),
+              content: [
+                { type: "text", text: "차트입니다." },
+                {
+                  type: "attachment",
+                  attachmentType: "file",
+                  fileName: "chart.html",
+                  workspacePath: "outbox/generated-artifacts/2026-06-19/chart-abcd1234.html",
+                  mimeType: "text/html",
+                  sizeBytes: 4096,
+                  promptMode: "workspace",
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    const frame = container.querySelector<HTMLIFrameElement>(
+      ".chat-message-attachments__html-frame",
+    );
+    expect(frame).not.toBeNull();
+    expect(container.querySelector(".chat-group--artifact-preview")).not.toBeNull();
+    expect(container.querySelector(".chat-group--html-artifact")).not.toBeNull();
+    expect(container.querySelector(".chat-bubble--artifact-preview")).not.toBeNull();
+    expect(container.querySelector(".chat-bubble--html-artifact")).not.toBeNull();
+    expect(frame?.getAttribute("title")).toBe("chart.html");
+    expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame?.getAttribute("src")).toContain(
+      "path=outbox%2Fgenerated-artifacts%2F2026-06-19%2Fchart-abcd1234.html",
+    );
+    expect(frame?.getAttribute("src")).toContain("inline=1");
+
+    const downloadLink = container.querySelector<HTMLAnchorElement>(
+      ".chat-message-attachments__download",
+    );
+    expect(downloadLink).not.toBeNull();
+    expect(downloadLink?.getAttribute("href")).toContain(
+      "path=outbox%2Fgenerated-artifacts%2F2026-06-19%2Fchart-abcd1234.html",
+    );
+    expect(downloadLink?.getAttribute("href")).not.toContain("inline=1");
   });
 });

@@ -72,6 +72,10 @@
   margin-top: 0 !important;
 }
 
+.chat-thread-inner {
+  width: 100%;
+}
+
 /* Focus mode exit button */
 .chat-focus-exit {
   position: absolute;
@@ -298,6 +302,17 @@
 
 .chat-message-image:hover {
   transform: scale(1.02);
+}
+
+.chat-bubble--image-artifact .chat-message-images {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.chat-bubble--image-artifact .chat-message-image {
+  width: auto;
+  max-width: min(100%, 900px);
+  max-height: min(72vh, 900px);
 }
 
 /* User message images align right */
@@ -822,6 +837,32 @@
   margin-bottom: 10px;
 }
 
+.chat-bubble.chat-bubble--artifact-preview {
+  width: fit-content;
+  max-width: min(1100px, 100%);
+}
+
+.chat-bubble.chat-bubble--artifact-preview.has-copy {
+  padding: 42px 15px 11px;
+}
+
+.chat-group--artifact-preview {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.chat-group--artifact-preview .chat-group-messages {
+  flex: 1 1 auto;
+  width: auto;
+  max-width: min(1100px, 100%);
+  align-self: flex-start;
+}
+
+.chat-bubble--html-artifact .chat-message-attachments {
+  width: fit-content;
+  max-width: 100%;
+}
+
 .chat-message-attachments__item {
   display: inline-flex;
   align-items: center;
@@ -838,6 +879,58 @@
 
 .chat-message-attachments__item:hover {
   border-color: color-mix(in srgb, var(--brand, #0f766e) 38%, var(--border));
+}
+
+.chat-message-attachments__html {
+  display: flex;
+  flex-direction: column;
+  width: clamp(420px, 72vw, 900px);
+  max-width: 100%;
+  min-width: 0;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
+  background: color-mix(in srgb, var(--panel) 90%, white 10%);
+  overflow: hidden;
+}
+
+.chat-message-attachments__html-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.chat-message-attachments__download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.chat-message-attachments__download:hover {
+  background: color-mix(in srgb, var(--brand, #0f766e) 12%, transparent);
+  color: var(--brand, #0f766e);
+}
+
+.chat-message-attachments__download svg {
+  width: 16px;
+  height: 16px;
+}
+
+.chat-message-attachments__html-frame {
+  display: block;
+  width: 100%;
+  height: clamp(420px, 72vh, 900px);
+  max-height: 900px;
+  border: 0;
+  background: #fff;
 }
 
 .chat-message-attachments__icon {

@@ -270,6 +270,14 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     includeInOpenClawGroup: true,
   },
   {
+    id: "attach_artifact",
+    label: "attach_artifact",
+    description: "Attach generated workspace artifacts to assistant replies",
+    sectionId: "media",
+    profiles: ["coding"],
+    includeInOpenClawGroup: true,
+  },
+  {
     id: "image_generate",
     label: "image_generate",
     description: "Image generation",

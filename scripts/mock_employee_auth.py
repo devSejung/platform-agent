@@ -13,7 +13,7 @@ DEFAULT_PORT = 18080
 DEFAULT_LOGIN_PATH = "/login"
 DEFAULT_ADSSO_PATH = "/adsso"
 DEFAULT_HEALTH_PATH = "/healthz"
-DEFAULT_IDENTIFIER = "eon@samsung.com"
+DEFAULT_IDENTIFIER = "eon"
 DEFAULT_PASSWORD = "456123"
 DEFAULT_EMPLOYEE_ID = "eon"
 DEFAULT_AGENT_ID = "eon"
@@ -38,7 +38,7 @@ def default_accounts() -> list[dict]:
     return [
         default_account(),
         {
-            "identifier": "minji@samsung.com",
+            "identifier": "minji",
             "password": DEFAULT_PASSWORD,
             "employeeId": "minji",
             "name": "Minji",
@@ -47,13 +47,13 @@ def default_accounts() -> list[dict]:
             "sessionKey": "agent:minji:main",
         },
         {
-            "identifier": "jiwon@samsung.com",
+            "identifier": "test_admin",
             "password": DEFAULT_PASSWORD,
-            "employeeId": "jiwon",
-            "name": "Jiwon",
+            "employeeId": "test_admin",
+            "name": "test_admin",
             "department": DEFAULT_DEPARTMENT,
-            "agentId": "jiwon",
-            "sessionKey": "agent:jiwon:main",
+            "agentId": "test_admin",
+            "sessionKey": "agent:test_admin:main",
         },
     ]
 

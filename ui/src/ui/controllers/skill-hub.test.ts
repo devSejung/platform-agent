@@ -1,10 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   deleteSkillHubEntry,
+  loadSkillHub,
   publishWorkspaceSkillWithPrompts,
   resolveExistingSkillHubPromptsForSkillName,
   type SkillHubState,
+  updateSkillHubPresentationAction,
 } from "./skill-hub.ts";
+
+function resolvedPresentation() {
+  return {
+    displayName: "Demo Skill",
+    displayDescription: "summary",
+    category: "other" as const,
+    icon: { source: "category_default" as const, fallbackKey: "other" as const },
+  };
+}
 
 function createState() {
   const request = vi.fn();
@@ -18,6 +29,7 @@ function createState() {
     skillHubError: null,
     skillHubScope: "discover",
     skillHubSort: "recent",
+    skillHubCategory: "all",
     skillHubQuery: "",
     skillHubDetail: null,
     skillHubDetailSlug: null,
@@ -36,7 +48,12 @@ function createState() {
     skillHubEditorTitle: null,
     skillHubEditorSkillName: null,
     skillHubEditorFile: null,
+    skillHubEditorIconFile: null,
+    skillHubEditorIconReset: false,
+    skillHubEditorDisplayName: "",
     skillHubEditorDescription: "",
+    skillHubEditorCategory: "",
+    skillHubEditorRevision: 0,
     skillHubEditorPrompts: ["", "", ""],
     skillHubEditorError: null,
     skillHubEditorLoading: false,
@@ -51,6 +68,7 @@ describe("resolveExistingSkillHubPromptsForSkillName", () => {
       slug: "demo-skill",
       displayName: "Demo Skill",
       summary: "summary",
+      presentation: resolvedPresentation(),
       uploaderName: "Eon",
       uploaderEmployeeId: "eon",
       ownerAccountId: "eon",
@@ -70,6 +88,7 @@ describe("resolveExistingSkillHubPromptsForSkillName", () => {
       canTransferOwnership: true,
       updateAvailable: false,
       flags: { hasHiddenFiles: false, hasExecutableFiles: false },
+      presentationEdit: { revision: 0 },
       examplePrompts: ["prompt one", "prompt two"],
       versions: [],
     };
@@ -79,6 +98,7 @@ describe("resolveExistingSkillHubPromptsForSkillName", () => {
     expect(result).toEqual({
       slug: "demo-skill",
       examplePrompts: ["prompt one", "prompt two"],
+      presentationEdit: { revision: 0 },
     });
     expect(request).not.toHaveBeenCalled();
   });
@@ -92,6 +112,7 @@ describe("resolveExistingSkillHubPromptsForSkillName", () => {
             slug: "demo-skill",
             displayName: "Demo Skill",
             summary: "summary",
+            presentation: resolvedPresentation(),
             uploaderName: "Eon",
             uploaderEmployeeId: "eon",
             ownerAccountId: "eon",
@@ -119,6 +140,7 @@ describe("resolveExistingSkillHubPromptsForSkillName", () => {
           slug: "demo-skill",
           displayName: "Demo Skill",
           summary: "summary",
+          presentation: resolvedPresentation(),
           uploaderName: "Eon",
           uploaderEmployeeId: "eon",
           ownerAccountId: "eon",
@@ -138,6 +160,7 @@ describe("resolveExistingSkillHubPromptsForSkillName", () => {
           canTransferOwnership: true,
           updateAvailable: false,
           flags: { hasHiddenFiles: false, hasExecutableFiles: false },
+          presentationEdit: { revision: 0 },
           examplePrompts: ["prompt one"],
           versions: [],
         },
@@ -154,6 +177,28 @@ describe("resolveExistingSkillHubPromptsForSkillName", () => {
     expect(result).toEqual({
       slug: "demo-skill",
       examplePrompts: ["prompt one"],
+      presentationEdit: { revision: 0 },
+    });
+  });
+});
+
+describe("loadSkillHub category filter", () => {
+  it("omits the default All filter and sends a selected category", async () => {
+    const { state, request } = createState();
+    request.mockResolvedValue({ entries: [] });
+
+    await loadSkillHub(state);
+    expect(request).toHaveBeenLastCalledWith("skillhub.list", {
+      scope: "discover",
+      sort: "recent",
+    });
+
+    state.skillHubCategory = "automation";
+    await loadSkillHub(state);
+    expect(request).toHaveBeenLastCalledWith("skillhub.list", {
+      scope: "discover",
+      sort: "recent",
+      category: "automation",
     });
   });
 });
@@ -191,6 +236,12 @@ describe("publishWorkspaceSkillWithPrompts", () => {
         reason: "update",
       },
       ["prompt"],
+      {
+        displayName: "Presented Demo",
+        displayDescription: "Published with metadata",
+        category: "automation",
+        iconFile: null,
+      },
     );
 
     expect(request).toHaveBeenNthCalledWith(1, "skillhub.publish", {
@@ -200,6 +251,11 @@ describe("publishWorkspaceSkillWithPrompts", () => {
       expectedLocalChecksum: "local-checksum",
       expectedHubChecksum: "hub-checksum",
       examplePrompts: ["prompt"],
+      presentation: {
+        displayName: "Presented Demo",
+        displayDescription: "Published with metadata",
+        category: "automation",
+      },
     });
     expect(request).toHaveBeenNthCalledWith(2, "skillhub.list", {
       scope: "discover",
@@ -208,6 +264,108 @@ describe("publishWorkspaceSkillWithPrompts", () => {
     expect(request).toHaveBeenNthCalledWith(3, "skillhub.workspacePublish.list", {});
     expect(state.skillHubWorkspacePendingKeys).toEqual([]);
     expect(state.skillHubMessage).toEqual({ kind: "success", text: "Updated" });
+  });
+});
+
+describe("updateSkillHubPresentationAction", () => {
+  it("sends revisioned presentation overrides and refreshes the catalog", async () => {
+    const { state, request } = createState();
+    request
+      .mockResolvedValueOnce({ message: "Updated" })
+      .mockResolvedValueOnce({ entries: [] })
+      .mockResolvedValueOnce({
+        entries: [],
+        overview: {
+          sharedSkillCount: 1,
+          updateAvailableCount: 0,
+          localSkillCount: 0,
+          installedSkillCount: 0,
+          recentUpdates: [],
+        },
+      });
+
+    await updateSkillHubPresentationAction(state, {
+      slug: "demo-skill",
+      expectedRevision: 3,
+      displayName: " ",
+      displayDescription: "Short description",
+      category: "knowledge",
+      examplePrompts: ["prompt"],
+      iconFile: null,
+      resetIcon: false,
+    });
+
+    expect(request).toHaveBeenNthCalledWith(1, "skillhub.presentation.update", {
+      slug: "demo-skill",
+      expectedRevision: 3,
+      displayName: null,
+      displayDescription: "Short description",
+      category: "knowledge",
+      examplePrompts: ["prompt"],
+    });
+    expect(request).toHaveBeenNthCalledWith(2, "skillhub.list", {
+      scope: "discover",
+      sort: "recent",
+    });
+    expect(request).toHaveBeenNthCalledWith(3, "skillhub.workspacePublish.list", {});
+  });
+
+  it("keeps stale edit errors observable by the editor", async () => {
+    const { state, request } = createState();
+    request.mockRejectedValueOnce(new Error("skill presentation changed"));
+
+    await expect(
+      updateSkillHubPresentationAction(state, {
+        slug: "demo-skill",
+        expectedRevision: 1,
+        displayName: "Title",
+        displayDescription: "Description",
+        category: "utility",
+        examplePrompts: [],
+        iconFile: null,
+        resetIcon: false,
+      }),
+    ).rejects.toThrow("skill presentation changed");
+    expect(state.skillHubMessage).toEqual({
+      kind: "error",
+      text: "skill presentation changed",
+    });
+  });
+
+  it("uploads PNG icon data through the revisioned presentation update", async () => {
+    const { state, request } = createState();
+    request
+      .mockResolvedValueOnce({ message: "Updated" })
+      .mockResolvedValueOnce({ entries: [] })
+      .mockResolvedValueOnce({ entries: [], overview: null });
+    const iconFile = new File([new Uint8Array([1, 2, 3])], "icon.png", {
+      type: "image/png",
+    });
+
+    await updateSkillHubPresentationAction(state, {
+      slug: "demo-skill",
+      expectedRevision: 2,
+      displayName: "Demo",
+      displayDescription: "Description",
+      category: "utility",
+      examplePrompts: [],
+      iconFile,
+      resetIcon: false,
+    });
+
+    expect(request).toHaveBeenNthCalledWith(1, "skillhub.presentation.update", {
+      slug: "demo-skill",
+      expectedRevision: 2,
+      displayName: "Demo",
+      displayDescription: "Description",
+      category: "utility",
+      examplePrompts: [],
+      iconChange: {
+        action: "upload",
+        mimeType: "image/png",
+        dataBase64: "AQID",
+      },
+    });
   });
 });
 

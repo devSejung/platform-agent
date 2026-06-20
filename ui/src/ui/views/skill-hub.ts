@@ -3,6 +3,7 @@ import { ref } from "lit/directives/ref.js";
 import { t } from "../../i18n/index.ts";
 import type { AccountDirectoryEntry } from "../controllers/accounts.ts";
 import type {
+  SkillHubCategoryFilter,
   SkillHubDetail,
   SkillHubEntry,
   SkillHubOverview,
@@ -10,6 +11,7 @@ import type {
   SkillHubSort,
   WorkspacePublishEntry,
 } from "../controllers/skill-hub.ts";
+import { renderSkillPresentationIcon, skillCategoryLabel } from "../skill-hub-presentation.ts";
 
 export type SkillHubProps = {
   loading: boolean;
@@ -17,6 +19,7 @@ export type SkillHubProps = {
   error: string | null;
   scope: SkillHubScope;
   sort: SkillHubSort;
+  category: SkillHubCategoryFilter;
   query: string;
   detail: SkillHubDetail | null;
   detailSlug: string | null;
@@ -35,7 +38,12 @@ export type SkillHubProps = {
   editorTitle: string | null;
   editorSkillName: string | null;
   editorFile: File | null;
+  editorIconFile: File | null;
+  editorIconReset: boolean;
+  editorHasUploadedIcon: boolean;
+  editorDisplayName: string;
   editorDescription: string;
+  editorCategory: SkillHubEntry["presentation"]["category"] | "";
   editorPrompts: string[];
   editorError: string | null;
   editorLoading: boolean;
@@ -49,6 +57,7 @@ export type SkillHubProps = {
   transferLoading: boolean;
   onScopeChange: (scope: SkillHubScope) => void;
   onSortChange: (sort: SkillHubSort) => void;
+  onCategoryChange: (category: SkillHubCategoryFilter) => void;
   onQueryChange: (query: string) => void;
   onRefresh: () => void;
   onOpenDetail: (slug: string) => void;
@@ -63,16 +72,15 @@ export type SkillHubProps = {
   onOpenWorkspaceSkillDetail: (skillKey: string) => void;
   onOpenUploadEditor: () => void;
   onToggleWorkspacePanel: () => void;
-  onOpenEditMetadataEditor: (
-    slug: string,
-    title: string,
-    summary: string,
-    prompts: string[],
-  ) => void;
+  onOpenEditMetadataEditor: (detail: SkillHubDetail) => void;
   onEditorClose: () => void;
+  onEditorDisplayNameChange: (value: string) => void;
   onEditorDescriptionChange: (value: string) => void;
+  onEditorCategoryChange: (value: SkillHubEntry["presentation"]["category"] | "") => void;
   onEditorPromptChange: (index: number, value: string) => void;
   onEditorFileChange: (file: File | null) => void;
+  onEditorIconFileChange: (file: File | null) => void;
+  onEditorIconReset: () => void;
   onEditorSubmit: () => void;
   onOpenTransfer: (slug: string, title: string) => void;
   onCloseTransfer: () => void;
@@ -94,6 +102,14 @@ const SORT_OPTIONS: Array<{ id: SkillHubSort; labelKey: string }> = [
   { id: "installs", labelKey: "skillHub.sort.installs" },
   { id: "likes", labelKey: "skillHub.sort.likes" },
   { id: "az", labelKey: "skillHub.sort.az" },
+];
+
+const CATEGORY_FILTERS: Array<{ id: SkillHubCategoryFilter; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "knowledge", label: "Knowledge" },
+  { id: "automation", label: "Automation" },
+  { id: "utility", label: "Utility" },
+  { id: "other", label: "Other" },
 ];
 
 function ensureDialogOpen(el?: Element) {
@@ -172,17 +188,23 @@ function renderLikeButton(entry: SkillHubEntry | SkillHubDetail, props: SkillHub
 
 function renderEntryCard(entry: SkillHubEntry, props: SkillHubProps) {
   const busy = props.busySlug === entry.slug;
+  const presentation = entry.presentation;
   return html`
     <article class="skillhub-card">
       <div class="skillhub-card__body">
         <div class="skillhub-card__header">
-          <div class="skillhub-card__title-group">
-            <div class="skillhub-card__title">${entry.displayName}</div>
-            <code class="chip">${entry.slug}</code>
+          <div class="skillhub-card__identity">
+            ${renderSkillPresentationIcon(presentation)}
+            <div class="skillhub-card__title-group">
+              <div class="skillhub-card__title">${presentation.displayName}</div>
+              <span class="skillhub-category-badge"
+                >${skillCategoryLabel(presentation.category)}</span
+              >
+            </div>
           </div>
           ${renderLikeButton(entry, props)}
         </div>
-        <div class="skillhub-card__summary">${entry.summary}</div>
+        <div class="skillhub-card__summary">${presentation.displayDescription}</div>
         ${renderFlagBadges(entry)} ${renderMetaRow(entry)}
       </div>
       <div class="skillhub-card__actions">
@@ -297,16 +319,7 @@ function renderExamplePrompts(detail: SkillHubDetail, props: SkillHubProps) {
         <div class="card-title" style="margin:0;">${t("skillHub.detail.examplePrompts")}</div>
         ${detail.canEditMetadata
           ? html`
-              <button
-                class="btn btn--sm"
-                @click=${() =>
-                  props.onOpenEditMetadataEditor(
-                    detail.slug,
-                    detail.displayName,
-                    detail.summary,
-                    detail.examplePrompts,
-                  )}
-              >
+              <button class="btn btn--sm" @click=${() => props.onOpenEditMetadataEditor(detail)}>
                 ${t("skillHub.actions.edit")}
               </button>
             `
@@ -426,7 +439,9 @@ function renderDetailDialog(props: SkillHubProps) {
     >
       <div class="md-preview-dialog__panel">
         <div class="md-preview-dialog__header">
-          <div class="md-preview-dialog__title">${detail?.displayName ?? props.detailSlug}</div>
+          <div class="md-preview-dialog__title">
+            ${detail?.presentation.displayName ?? props.detailSlug}
+          </div>
           <button
             class="btn btn--sm"
             @click=${(e: Event) => (e.currentTarget as HTMLElement).closest("dialog")?.close()}
@@ -441,16 +456,21 @@ function renderDetailDialog(props: SkillHubProps) {
               ? html`<div class="callout danger">${props.detailError}</div>`
               : detail
                 ? html`
-                    <div>
-                      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                        <code class="chip">${detail.slug}</code>
-                        <div class="muted">v${detail.latestVersion}</div>
+                    <div class="skillhub-detail-presentation">
+                      ${renderSkillPresentationIcon(detail.presentation, "detail")}
+                      <div class="skillhub-detail-presentation__body">
+                        <div class="skillhub-detail-presentation__heading">
+                          <span class="skillhub-category-badge"
+                            >${skillCategoryLabel(detail.presentation.category)}</span
+                          >
+                          <span class="muted">v${detail.latestVersion}</span>
+                        </div>
+                        <div class="skillhub-detail-presentation__description">
+                          ${detail.presentation.displayDescription}
+                        </div>
                       </div>
-                      <div style="margin-top:10px; font-size:14px; line-height:1.7;">
-                        ${detail.summary}
-                      </div>
-                      ${renderFlagBadges(detail)} ${renderMetaRow(detail)}
                     </div>
+                    ${renderFlagBadges(detail)} ${renderMetaRow(detail)}
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
                       ${renderLikeButton(detail, props)}
                       ${detail.installed
@@ -489,13 +509,7 @@ function renderDetailDialog(props: SkillHubProps) {
                         ? html`
                             <button
                               class="btn"
-                              @click=${() =>
-                                props.onOpenEditMetadataEditor(
-                                  detail.slug,
-                                  detail.displayName,
-                                  detail.summary,
-                                  detail.examplePrompts,
-                                )}
+                              @click=${() => props.onOpenEditMetadataEditor(detail)}
                             >
                               ${t("skillHub.actions.edit")}
                             </button>
@@ -512,7 +526,8 @@ function renderDetailDialog(props: SkillHubProps) {
                         ? html`
                             <button
                               class="btn"
-                              @click=${() => props.onOpenTransfer(detail.slug, detail.displayName)}
+                              @click=${() =>
+                                props.onOpenTransfer(detail.slug, detail.presentation.displayName)}
                             >
                               ${t("skillHub.actions.transferOwnership")}
                             </button>
@@ -520,6 +535,26 @@ function renderDetailDialog(props: SkillHubProps) {
                         : nothing}
                     </div>
                     <div class="skills-detail-paths">
+                      <div>
+                        <span>Slug</span>
+                        <code>${detail.slug}</code>
+                      </div>
+                      ${detail.sourceDescription
+                        ? html`
+                            <div>
+                              <span>${t("skillHub.editor.descriptionLabel")} (SKILL.md)</span>
+                              <code>${detail.sourceDescription}</code>
+                            </div>
+                          `
+                        : nothing}
+                      <div>
+                        <span>Icon</span>
+                        <code
+                          >${detail.presentation.icon.source === "uploaded"
+                            ? "Uploaded PNG"
+                            : "Category default"}</code
+                        >
+                      </div>
                       <div>
                         <span>${t("skillHub.detail.uploader")}</span>
                         <code>${detail.uploaderName} (${detail.uploaderEmployeeId})</code>
@@ -611,6 +646,7 @@ function renderEditorDialog(props: SkillHubProps) {
     }
   };
   let fileInput: HTMLInputElement | null = null;
+  let iconInput: HTMLInputElement | null = null;
   const publishEntry =
     props.editorMode === "publish"
       ? props.workspacePublishEntries.find((entry) => entry.skillName === props.editorSkillName)
@@ -673,23 +709,104 @@ function renderEditorDialog(props: SkillHubProps) {
                 </div>
               `
             : nothing}
-          ${props.editorMode === "edit-metadata"
+          ${props.editorMode === "edit-metadata" ||
+          props.editorMode === "publish" ||
+          props.editorMode === "upload"
             ? html`
+                <input
+                  ${ref((el?: Element) => {
+                    iconInput = el instanceof HTMLInputElement ? el : null;
+                  })}
+                  type="file"
+                  accept="image/png,.png"
+                  style="display:none"
+                  @change=${(e: Event) => {
+                    const target = e.target as HTMLInputElement;
+                    props.onEditorIconFileChange(target.files?.[0] ?? null);
+                    target.value = "";
+                  }}
+                />
+                <div class="skillhub-icon-editor">
+                  <div>
+                    <div class="field__label">Icon</div>
+                    <div class="muted">PNG · max 256 KB · max 1024×1024</div>
+                  </div>
+                  <div class="skillhub-icon-editor__actions">
+                    <button class="btn" @click=${() => iconInput?.click()}>Choose PNG</button>
+                    ${props.editorMode === "edit-metadata" &&
+                    (props.editorHasUploadedIcon || props.editorIconFile)
+                      ? html`
+                          <button class="btn" @click=${props.onEditorIconReset}>
+                            Use category icon
+                          </button>
+                        `
+                      : nothing}
+                  </div>
+                  ${props.editorIconFile
+                    ? html`<div class="muted skillhub-icon-editor__file">
+                        Selected: ${props.editorIconFile.name}
+                      </div>`
+                    : props.editorIconReset
+                      ? html`<div class="muted skillhub-icon-editor__file">
+                          Category default icon will be used after saving.
+                        </div>`
+                      : nothing}
+                </div>
+                <label class="field">
+                  <div class="field__label">
+                    Display name
+                    <span class="muted" style="margin-left:8px;"
+                      >${props.editorDisplayName.length}/80</span
+                    >
+                  </div>
+                  <input
+                    maxlength="80"
+                    .value=${props.editorDisplayName}
+                    placeholder="Fallback: skill slug"
+                    @input=${(e: Event) =>
+                      props.onEditorDisplayNameChange((e.target as HTMLInputElement).value)}
+                  />
+                </label>
                 <label class="field">
                   <div class="field__label">
                     ${t("skillHub.editor.descriptionLabel")}
                     <span class="muted" style="margin-left:8px;"
-                      >${props.editorDescription.length}/220</span
+                      >${props.editorDescription.length}/100</span
                     >
                   </div>
                   <textarea
                     rows="4"
-                    maxlength="220"
+                    maxlength="100"
                     .value=${props.editorDescription}
                     placeholder=${t("skillHub.editor.descriptionPlaceholder")}
                     @input=${(e: Event) =>
                       props.onEditorDescriptionChange((e.target as HTMLTextAreaElement).value)}
                   ></textarea>
+                </label>
+                <label class="field">
+                  <div class="field__label">Category</div>
+                  <select
+                    .value=${props.editorCategory}
+                    @change=${(e: Event) =>
+                      props.onEditorCategoryChange(
+                        (e.target as HTMLSelectElement).value as
+                          | SkillHubEntry["presentation"]["category"]
+                          | "",
+                      )}
+                  >
+                    <option value="" ?selected=${props.editorCategory === ""}>
+                      Default (Other)
+                    </option>
+                    ${(["knowledge", "automation", "utility", "other"] as const).map(
+                      (category) =>
+                        html`<option
+                          value=${category}
+                          ?selected=${props.editorCategory === category}
+                        >
+                          ${skillCategoryLabel(category)}
+                        </option>`,
+                    )}
+                  </select>
                 </label>
               `
             : nothing}
@@ -751,56 +868,73 @@ function renderTransferDialog(props: SkillHubProps) {
     return nothing;
   }
   return html`
-    <dialog class="md-preview-dialog" open ${ref(ensureDialogOpen)} @close=${props.onCloseTransfer}>
-      <div class="md-preview-dialog__panel">
+    <dialog
+      class="md-preview-dialog skillhub-transfer-dialog"
+      open
+      ${ref(ensureDialogOpen)}
+      @close=${props.onCloseTransfer}
+    >
+      <div class="md-preview-dialog__panel skillhub-transfer-dialog__panel">
         <div class="md-preview-dialog__header">
           <div>
             <div class="md-preview-dialog__title">${t("skillHub.transfer.title")}</div>
             <div class="md-preview-dialog__subtitle">${props.transferTitle ?? ""}</div>
           </div>
-          <button class="btn btn--sm" @click=${props.onCloseTransfer}>${t("common.close")}</button>
+          <button class="btn btn--sm" @click=${props.onCloseTransfer}>
+            ${t("skillHub.actions.close")}
+          </button>
         </div>
-        <div class="md-preview-dialog__body" style="display:grid; gap:12px;">
-          <input
-            class="input"
-            .value=${props.transferQuery}
-            placeholder=${t("skillHub.transfer.searchPlaceholder")}
-            @input=${(e: Event) =>
-              props.onTransferQueryChange((e.target as HTMLInputElement).value)}
-          />
-          <div class="list">
+        <div class="md-preview-dialog__body skillhub-transfer-dialog__body">
+          <label class="skillhub-transfer-dialog__search">
+            <input
+              aria-label=${t("skillHub.transfer.searchPlaceholder")}
+              .value=${props.transferQuery}
+              placeholder=${t("skillHub.transfer.searchPlaceholder")}
+              @input=${(e: Event) =>
+                props.onTransferQueryChange((e.target as HTMLInputElement).value)}
+            />
+          </label>
+          <div class="skillhub-transfer-dialog__results" role="listbox">
             ${props.transferResults.map(
               (entry) => html`
                 <button
-                  class="list-item"
-                  style="text-align:left; width:100%; ${props.transferTargetAccountId ===
+                  class="skillhub-transfer-account ${props.transferTargetAccountId ===
                   entry.accountId
-                    ? "outline:2px solid var(--accent);"
+                    ? "is-selected"
                     : ""}"
+                  role="option"
+                  aria-selected=${props.transferTargetAccountId === entry.accountId
+                    ? "true"
+                    : "false"}
                   @click=${() => props.onTransferTargetSelect(entry.accountId)}
                 >
-                  <div class="list-main">
-                    <div class="list-title">${entry.displayName}</div>
-                    <div class="list-sub">
+                  <div class="skillhub-transfer-account__identity">
+                    <div class="skillhub-transfer-account__name">${entry.displayName}</div>
+                    <div class="skillhub-transfer-account__meta">
                       ${entry.employeeId}${entry.email ? ` · ${entry.email}` : ""}
                     </div>
                   </div>
+                  <span class="skillhub-transfer-account__select" aria-hidden="true">
+                    ${props.transferTargetAccountId === entry.accountId ? "Selected" : "Select"}
+                  </span>
                 </button>
               `,
             )}
           </div>
-          <textarea
-            class="input"
-            rows="3"
-            .value=${props.transferReason}
-            placeholder=${t("skillHub.transfer.reasonPlaceholder")}
-            @input=${(e: Event) =>
-              props.onTransferReasonChange((e.target as HTMLTextAreaElement).value)}
-          ></textarea>
+          <label class="skillhub-transfer-dialog__reason">
+            <textarea
+              aria-label=${t("skillHub.transfer.reasonPlaceholder")}
+              rows="3"
+              .value=${props.transferReason}
+              placeholder=${t("skillHub.transfer.reasonPlaceholder")}
+              @input=${(e: Event) =>
+                props.onTransferReasonChange((e.target as HTMLTextAreaElement).value)}
+            ></textarea>
+          </label>
           ${props.transferError
             ? html`<div class="callout danger">${props.transferError}</div>`
             : nothing}
-          <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <div class="skillhub-transfer-dialog__actions">
             <button class="btn" @click=${props.onCloseTransfer}>${t("common.cancel")}</button>
             <button
               class="btn primary"
@@ -850,6 +984,19 @@ export function renderSkillHub(props: SkillHubProps) {
                   @click=${() => props.onScopeChange(scope.id)}
                 >
                   ${t(scope.labelKey)}
+                </button>
+              `,
+            )}
+          </div>
+          <div class="skillhub-category-filters" aria-label="Skill categories">
+            ${CATEGORY_FILTERS.map(
+              (category) => html`
+                <button
+                  class="skillhub-category-filter ${props.category === category.id ? "active" : ""}"
+                  aria-pressed=${props.category === category.id ? "true" : "false"}
+                  @click=${() => props.onCategoryChange(category.id)}
+                >
+                  ${category.label}
                 </button>
               `,
             )}

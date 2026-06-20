@@ -117,6 +117,119 @@ describe("skillhub metadata and hard-delete gateway handlers", () => {
     });
 
     let respond = createRespond();
+    await skillsHandlers["skillhub.list"]({
+      params: {},
+      respond,
+      client: {
+        connect: { role: "employee" },
+        internal: { employee: { employeeId: "admin", agentId: "admin", name: "Admin" } },
+      },
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      {
+        entries: [
+          expect.objectContaining({
+            slug: "demo-skill",
+            displayName: "Demo Skill",
+            presentation: {
+              displayName: "demo-skill",
+              displayDescription: "Existing metadata",
+              category: "other",
+              icon: { source: "category_default", fallbackKey: "other" },
+            },
+          }),
+        ],
+      },
+      undefined,
+    );
+
+    respond = createRespond();
+    await skillsHandlers["skillhub.detail"]({
+      params: { slug: "demo-skill" },
+      respond,
+      client: {
+        connect: { role: "employee" },
+        internal: { employee: { employeeId: "admin", agentId: "admin", name: "Admin" } },
+      },
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      {
+        detail: expect.objectContaining({
+          slug: "demo-skill",
+          presentation: {
+            displayName: "demo-skill",
+            displayDescription: "Existing metadata",
+            category: "other",
+            icon: { source: "category_default", fallbackKey: "other" },
+          },
+        }),
+      },
+      undefined,
+    );
+
+    respond = createRespond();
+    await skillsHandlers["skillhub.presentation.update"]({
+      params: {
+        slug: "demo-skill",
+        expectedRevision: 0,
+        displayName: "Presented Demo",
+        displayDescription: "Short display description",
+        category: "automation",
+        examplePrompts: ["first prompt"],
+      },
+      respond,
+      client: {
+        connect: { role: "employee" },
+        internal: { employee: { employeeId: "admin", agentId: "admin", name: "Admin" } },
+      },
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        ok: true,
+        slug: "demo-skill",
+        revision: 1,
+        message: "Skill presentation updated.",
+      }),
+      undefined,
+    );
+    const presentationUpdated = JSON.parse(await fs.readFile(metadataPath, "utf8")) as {
+      updatedAt: string;
+      latestVersion: string;
+      presentation: { revision: number; updatedAt: string };
+    };
+    expect(presentationUpdated.updatedAt).toBe("2026-05-21T00:00:00.000Z");
+    expect(presentationUpdated.latestVersion).toBe("1.0.0");
+    expect(presentationUpdated.presentation.revision).toBe(1);
+
+    respond = createRespond();
+    await skillsHandlers["skillhub.list"]({
+      params: { category: "automation", query: "Presented Demo", sort: "az" },
+      respond,
+      client: {
+        connect: { role: "employee" },
+        internal: { employee: { employeeId: "admin", agentId: "admin", name: "Admin" } },
+      },
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      {
+        entries: [
+          expect.objectContaining({
+            slug: "demo-skill",
+            presentation: expect.objectContaining({
+              displayName: "Presented Demo",
+              category: "automation",
+            }),
+          }),
+        ],
+      },
+      undefined,
+    );
+
+    respond = createRespond();
     await skillsHandlers["skillhub.metadata.update"]({
       params: {
         slug: "demo-skill",
@@ -141,16 +254,49 @@ describe("skillhub metadata and hard-delete gateway handlers", () => {
 
     const updated = JSON.parse(await fs.readFile(metadataPath, "utf8")) as {
       summary: string;
+      updatedAt: string;
       hidden: boolean;
       uploader: { employeeId: string };
       owner: { accountId: string };
-      presentation: { examplePrompts: string[] };
+      presentation: { examplePrompts: string[]; revision: number };
     };
     expect(updated.summary).toBe("Admin updated summary");
     expect(updated.presentation.examplePrompts).toEqual(["first prompt", "second prompt"]);
+    expect(updated.presentation.revision).toBe(2);
+    expect(updated.updatedAt).toBe("2026-05-21T00:00:00.000Z");
     expect(updated.hidden).toBe(false);
     expect(updated.uploader.employeeId).toBe("owner");
     expect(updated.owner.accountId).toBe("owner");
+
+    respond = createRespond();
+    await skillsHandlers["skillhub.icons.audit"]({
+      params: {},
+      respond,
+      client: {
+        connect: { role: "employee" },
+        internal: { employee: { employeeId: "admin", agentId: "admin", name: "Admin" } },
+      },
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ assetCount: 0, orphanAssets: [], missingAssetIds: [] }),
+      undefined,
+    );
+
+    respond = createRespond();
+    await skillsHandlers["skillhub.icons.gc"]({
+      params: { dryRun: false },
+      respond,
+      client: {
+        connect: { role: "employee" },
+        internal: { employee: { employeeId: "owner", agentId: "owner", name: "Owner" } },
+      },
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: "admin access required" }),
+    );
 
     respond = createRespond();
     await skillsHandlers["skillhub.hardDelete"]({

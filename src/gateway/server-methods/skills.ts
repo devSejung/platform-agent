@@ -1,6 +1,11 @@
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { canExecRequestNode } from "../../agents/exec-defaults.js";
 import {
+  auditSkillHubIconAssets,
+  garbageCollectSkillHubIconAssets,
+} from "../../agents/skill-hub-icon-maintenance.js";
+import {
+  listReferencedSkillHubIconAssetIds,
   deleteSkillFromHub,
   deleteSkillFromWorkspace,
   formatHubPublishMessage,
@@ -20,6 +25,7 @@ import {
   updateSkillFromHub,
   updateSkillHubExamplePrompts,
   updateSkillHubMetadata,
+  updateSkillHubPresentation,
   uploadSkillPackageToHub,
 } from "../../agents/skill-hub.js";
 import {
@@ -49,10 +55,13 @@ import {
   validateSkillHubDetailParams,
   validateSkillHubExamplePromptsUpdateParams,
   validateSkillHubHideParams,
+  validateSkillHubIconAuditParams,
+  validateSkillHubIconGcParams,
   validateSkillHubInstallParams,
   validateSkillHubLikeParams,
   validateSkillHubListParams,
   validateSkillHubMetadataUpdateParams,
+  validateSkillHubPresentationUpdateParams,
   validateSkillHubPublishParams,
   validateSkillHubTransferOwnershipParams,
   validateSkillHubUploadParams,
@@ -468,6 +477,14 @@ export const skillsHandlers: GatewayRequestHandlers = {
           typeof (params as { sort?: string }).sort === "string"
             ? ((params as { sort?: "recent" | "installs" | "likes" | "az" }).sort ?? "recent")
             : "recent",
+        category:
+          typeof (params as { category?: string }).category === "string"
+            ? ((
+                params as {
+                  category?: "all" | "knowledge" | "automation" | "utility" | "other";
+                }
+              ).category ?? "all")
+            : "all",
       });
       respond(true, { entries }, undefined);
     } catch (err) {
@@ -559,6 +576,11 @@ export const skillsHandlers: GatewayRequestHandlers = {
         examplePrompts: Array.isArray((params as { examplePrompts?: string[] }).examplePrompts)
           ? (params as { examplePrompts?: string[] }).examplePrompts
           : undefined,
+        presentation: (
+          params as {
+            presentation?: Parameters<typeof publishWorkspaceSkillToHub>[0]["presentation"];
+          }
+        ).presentation,
       });
       respond(
         true,
@@ -598,6 +620,9 @@ export const skillsHandlers: GatewayRequestHandlers = {
         examplePrompts: Array.isArray((params as { examplePrompts?: string[] }).examplePrompts)
           ? (params as { examplePrompts?: string[] }).examplePrompts
           : undefined,
+        presentation: (
+          params as { presentation?: Parameters<typeof uploadSkillPackageToHub>[0]["presentation"] }
+        ).presentation,
       });
       respond(
         true,
@@ -607,6 +632,55 @@ export const skillsHandlers: GatewayRequestHandlers = {
           version: result.version,
           message: formatHubPublishMessage(result),
         },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.icons.audit": async ({ params, respond, client }) => {
+    if (!validateSkillHubIconAuditParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "invalid icon audit params"),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { actor } = resolveSkillsWorkspace({ cfg, client });
+    if (actor.globalRole !== "admin") {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "admin access required"));
+      return;
+    }
+    try {
+      const referencedAssetIds = await listReferencedSkillHubIconAssetIds();
+      respond(true, await auditSkillHubIconAssets({ referencedAssetIds }), undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.icons.gc": async ({ params, respond, client }) => {
+    if (!validateSkillHubIconGcParams(params)) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "invalid icon GC params"));
+      return;
+    }
+    const cfg = loadConfig();
+    const { actor } = resolveSkillsWorkspace({ cfg, client });
+    if (actor.globalRole !== "admin") {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "admin access required"));
+      return;
+    }
+    try {
+      const referencedAssetIds = await listReferencedSkillHubIconAssetIds();
+      const input = params as { dryRun?: boolean; graceDays?: number };
+      respond(
+        true,
+        await garbageCollectSkillHubIconAssets({
+          referencedAssetIds,
+          dryRun: input.dryRun ?? true,
+          graceDays: input.graceDays ?? 14,
+        }),
         undefined,
       );
     } catch (err) {
@@ -869,6 +943,58 @@ export const skillsHandlers: GatewayRequestHandlers = {
           slug: result.slug,
           examplePrompts: result.examplePrompts,
           message: "Skill metadata updated.",
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatSkillHubError(err)));
+    }
+  },
+  "skillhub.presentation.update": async ({ params, respond, client }) => {
+    if (!validateSkillHubPresentationUpdateParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skillhub.presentation.update params: ${formatValidationErrors(validateSkillHubPresentationUpdateParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const { actor } = resolveSkillsWorkspace({ cfg, client });
+    const input = params as {
+      slug: string;
+      expectedRevision: number;
+      displayName: string | null;
+      displayDescription: string | null;
+      category: "knowledge" | "automation" | "utility" | "other" | null;
+      examplePrompts: string[];
+      iconChange?:
+        | { action: "upload"; mimeType: "image/png"; dataBase64: string }
+        | { action: "reset" };
+    };
+    try {
+      const result = await updateSkillHubPresentation({
+        slug: input.slug,
+        actor,
+        expectedRevision: input.expectedRevision,
+        displayName: input.displayName,
+        displayDescription: input.displayDescription,
+        category: input.category,
+        examplePrompts: input.examplePrompts,
+        ...(input.iconChange ? { iconChange: input.iconChange } : {}),
+      });
+      respond(
+        true,
+        {
+          ok: true,
+          slug: result.slug,
+          revision: result.revision,
+          message: result.noOp
+            ? "Skill presentation is already up to date."
+            : "Skill presentation updated.",
         },
         undefined,
       );

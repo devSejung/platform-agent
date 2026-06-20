@@ -352,6 +352,15 @@ export const SkillHubListParamsSchema = Type.Object(
         Type.Literal("az"),
       ]),
     ),
+    category: Type.Optional(
+      Type.Union([
+        Type.Literal("all"),
+        Type.Literal("knowledge"),
+        Type.Literal("automation"),
+        Type.Literal("utility"),
+        Type.Literal("other"),
+      ]),
+    ),
   },
   { additionalProperties: false },
 );
@@ -364,6 +373,30 @@ const SkillHubWarningFlagsSchema = Type.Object(
   {
     hasHiddenFiles: Type.Boolean(),
     hasExecutableFiles: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
+const SkillHubCategorySchema = Type.Union([
+  Type.Literal("knowledge"),
+  Type.Literal("automation"),
+  Type.Literal("utility"),
+  Type.Literal("other"),
+]);
+
+const SkillHubResolvedPresentationSchema = Type.Object(
+  {
+    displayName: NonEmptyString,
+    displayDescription: Type.String(),
+    category: SkillHubCategorySchema,
+    icon: Type.Object(
+      {
+        source: Type.Union([Type.Literal("uploaded"), Type.Literal("category_default")]),
+        assetUrl: Type.Optional(NonEmptyString),
+        fallbackKey: SkillHubCategorySchema,
+      },
+      { additionalProperties: false },
+    ),
   },
   { additionalProperties: false },
 );
@@ -436,6 +469,7 @@ export const SkillHubListResultSchema = Type.Object(
           slug: NonEmptyString,
           displayName: NonEmptyString,
           summary: Type.String(),
+          presentation: SkillHubResolvedPresentationSchema,
           uploaderName: NonEmptyString,
           uploaderEmployeeId: NonEmptyString,
           latestVersion: NonEmptyString,
@@ -478,6 +512,18 @@ export const SkillHubDetailResultSchema = Type.Object(
           slug: NonEmptyString,
           displayName: NonEmptyString,
           summary: Type.String(),
+          presentation: SkillHubResolvedPresentationSchema,
+          sourceDescription: Type.Optional(Type.String()),
+          presentationEdit: Type.Object(
+            {
+              displayName: Type.Optional(Type.String({ maxLength: 80 })),
+              displayDescription: Type.Optional(Type.String({ maxLength: 100 })),
+              category: Type.Optional(SkillHubCategorySchema),
+              revision: Type.Integer({ minimum: 0 }),
+              updatedAt: Type.Optional(NonEmptyString),
+            },
+            { additionalProperties: false },
+          ),
           uploaderName: NonEmptyString,
           uploaderEmployeeId: NonEmptyString,
           latestVersion: NonEmptyString,
@@ -524,6 +570,24 @@ export const SkillHubDetailResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const SkillHubPublishPresentationDraftSchema = Type.Object(
+  {
+    displayName: Type.Optional(Type.Union([Type.String({ maxLength: 80 }), Type.Null()])),
+    displayDescription: Type.Optional(Type.Union([Type.String({ maxLength: 100 }), Type.Null()])),
+    category: Type.Optional(Type.Union([SkillHubCategorySchema, Type.Null()])),
+    iconUpload: Type.Optional(
+      Type.Object(
+        {
+          mimeType: Type.Literal("image/png"),
+          dataBase64: NonEmptyString,
+        },
+        { additionalProperties: false },
+      ),
+    ),
+  },
+  { additionalProperties: false },
+);
+
 export const SkillHubPublishParamsSchema = Type.Object(
   {
     skillName: NonEmptyString,
@@ -532,6 +596,7 @@ export const SkillHubPublishParamsSchema = Type.Object(
     expectedLocalChecksum: NonEmptyString,
     expectedHubChecksum: Type.Optional(Type.Union([NonEmptyString, Type.Null()])),
     examplePrompts: Type.Optional(SkillHubExamplePromptsSchema),
+    presentation: Type.Optional(SkillHubPublishPresentationDraftSchema),
   },
   { additionalProperties: false },
 );
@@ -542,9 +607,69 @@ export const SkillHubUploadParamsSchema = Type.Object(
     contentBase64: NonEmptyString,
     expectedHubChecksum: Type.Optional(Type.Union([NonEmptyString, Type.Null()])),
     examplePrompts: Type.Optional(SkillHubExamplePromptsSchema),
+    presentation: Type.Optional(SkillHubPublishPresentationDraftSchema),
   },
   { additionalProperties: false },
 );
+
+const SkillHubIconOrphanSchema = Type.Object(
+  {
+    assetId: NonEmptyString,
+    filename: NonEmptyString,
+    modifiedAt: NonEmptyString,
+    ageMs: Type.Number({ minimum: 0 }),
+    sizeBytes: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+const SkillHubIconIssueSchema = Type.Object(
+  {
+    filename: NonEmptyString,
+    reason: Type.Union([
+      Type.Literal("invalid_filename"),
+      Type.Literal("hash_mismatch"),
+      Type.Literal("invalid_png"),
+    ]),
+    assetId: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubIconAuditParamsSchema = Type.Object({}, { additionalProperties: false });
+
+export const SkillHubIconAuditResultSchema = Type.Object(
+  {
+    referencedAssetIds: Type.Array(NonEmptyString),
+    invalidReferencedAssetIds: Type.Array(NonEmptyString),
+    assetCount: Type.Integer({ minimum: 0 }),
+    orphanAssets: Type.Array(SkillHubIconOrphanSchema),
+    missingAssetIds: Type.Array(NonEmptyString),
+    issues: Type.Array(SkillHubIconIssueSchema),
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubIconGcParamsSchema = Type.Object(
+  {
+    dryRun: Type.Optional(Type.Boolean()),
+    graceDays: Type.Optional(Type.Number({ minimum: 0, maximum: 3650 })),
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubIconGcResultSchema = Type.Intersect([
+  SkillHubIconAuditResultSchema,
+  Type.Object(
+    {
+      dryRun: Type.Boolean(),
+      graceDays: Type.Number({ minimum: 0 }),
+      deleteCandidates: Type.Array(SkillHubIconOrphanSchema),
+      deletedAssetIds: Type.Array(NonEmptyString),
+    },
+    { additionalProperties: false },
+  ),
+]);
 
 export const SkillHubHideParamsSchema = Type.Object(
   {
@@ -601,6 +726,31 @@ export const SkillHubMetadataUpdateParamsSchema = Type.Object(
     slug: NonEmptyString,
     summary: Type.String({ maxLength: 220 }),
     examplePrompts: SkillHubExamplePromptsSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const SkillHubPresentationUpdateParamsSchema = Type.Object(
+  {
+    slug: NonEmptyString,
+    expectedRevision: Type.Integer({ minimum: 0 }),
+    displayName: Type.Union([Type.String({ maxLength: 80 }), Type.Null()]),
+    displayDescription: Type.Union([Type.String({ maxLength: 100 }), Type.Null()]),
+    category: Type.Union([SkillHubCategorySchema, Type.Null()]),
+    examplePrompts: SkillHubExamplePromptsSchema,
+    iconChange: Type.Optional(
+      Type.Union([
+        Type.Object(
+          {
+            action: Type.Literal("upload"),
+            mimeType: Type.Literal("image/png"),
+            dataBase64: Type.String({ minLength: 4, maxLength: 350_000 }),
+          },
+          { additionalProperties: false },
+        ),
+        Type.Object({ action: Type.Literal("reset") }, { additionalProperties: false }),
+      ]),
+    ),
   },
   { additionalProperties: false },
 );

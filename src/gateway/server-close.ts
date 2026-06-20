@@ -22,6 +22,7 @@ export function createGatewayCloseHandler(params: {
   cron: { stop: () => void };
   heartbeatRunner: HeartbeatRunner;
   updateCheckStop?: (() => void) | null;
+  stopSkillHubIconGc?: (() => void) | null;
   stopTaskRegistryMaintenance?: (() => void) | null;
   nodePresenceTimers: Map<string, ReturnType<typeof setInterval>>;
   broadcast: (event: string, payload: unknown, opts?: { dropIfSlow?: boolean }) => void;
@@ -88,6 +89,11 @@ export function createGatewayCloseHandler(params: {
       }
       try {
         params.updateCheckStop?.();
+      } catch {
+        /* ignore */
+      }
+      try {
+        params.stopSkillHubIconGc?.();
       } catch {
         /* ignore */
       }

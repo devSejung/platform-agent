@@ -244,11 +244,16 @@ import {
   SkillHubDetailResultSchema,
   SkillHubExamplePromptsUpdateParamsSchema,
   SkillHubHideParamsSchema,
+  SkillHubIconAuditParamsSchema,
+  SkillHubIconAuditResultSchema,
+  SkillHubIconGcParamsSchema,
+  SkillHubIconGcResultSchema,
   SkillHubInstallParamsSchema,
   SkillHubLikeParamsSchema,
   SkillHubListParamsSchema,
   SkillHubListResultSchema,
   SkillHubMetadataUpdateParamsSchema,
+  SkillHubPresentationUpdateParamsSchema,
   SkillHubMutationResultSchema,
   SkillHubPublishParamsSchema,
   SkillHubUploadParamsSchema,
@@ -483,6 +488,8 @@ export const validateSkillHubListParams = ajv.compile(SkillHubListParamsSchema);
 export const validateSkillHubDetailParams = ajv.compile(SkillHubDetailParamsSchema);
 export const validateSkillHubPublishParams = ajv.compile(SkillHubPublishParamsSchema);
 export const validateSkillHubUploadParams = ajv.compile(SkillHubUploadParamsSchema);
+export const validateSkillHubIconAuditParams = ajv.compile(SkillHubIconAuditParamsSchema);
+export const validateSkillHubIconGcParams = ajv.compile(SkillHubIconGcParamsSchema);
 export const validateSkillHubWorkspacePublishListParams = ajv.compile(
   SkillHubWorkspacePublishListParamsSchema,
 );
@@ -494,6 +501,9 @@ export const validateSkillHubExamplePromptsUpdateParams = ajv.compile(
   SkillHubExamplePromptsUpdateParamsSchema,
 );
 export const validateSkillHubMetadataUpdateParams = ajv.compile(SkillHubMetadataUpdateParamsSchema);
+export const validateSkillHubPresentationUpdateParams = ajv.compile(
+  SkillHubPresentationUpdateParamsSchema,
+);
 export const validateSkillHubTransferOwnershipParams = ajv.compile<SkillHubTransferOwnershipParams>(
   SkillHubTransferOwnershipParamsSchema,
 );
@@ -725,11 +735,16 @@ export {
   SkillHubDetailResultSchema,
   SkillHubExamplePromptsUpdateParamsSchema,
   SkillHubMetadataUpdateParamsSchema,
+  SkillHubPresentationUpdateParamsSchema,
   SkillHubPublishParamsSchema,
   SkillHubUploadParamsSchema,
   SkillHubWorkspacePublishListParamsSchema,
   SkillHubWorkspacePublishListResultSchema,
   SkillHubHideParamsSchema,
+  SkillHubIconAuditParamsSchema,
+  SkillHubIconAuditResultSchema,
+  SkillHubIconGcParamsSchema,
+  SkillHubIconGcResultSchema,
   SkillHubInstallParamsSchema,
   SkillHubDeleteParamsSchema,
   SkillHubLikeParamsSchema,

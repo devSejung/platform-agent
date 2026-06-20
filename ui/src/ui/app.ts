@@ -548,6 +548,7 @@ export class OpenClawApp extends LitElement {
   @state() skillHubError: string | null = null;
   @state() skillHubScope: SkillHubScope = "discover";
   @state() skillHubSort: import("./controllers/skill-hub.ts").SkillHubSort = "recent";
+  @state() skillHubCategory: import("./controllers/skill-hub.ts").SkillHubCategoryFilter = "all";
   @state() skillHubQuery = "";
   @state() skillHubDetail: SkillHubDetail | null = null;
   @state() skillHubDetailSlug: string | null = null;
@@ -569,7 +570,12 @@ export class OpenClawApp extends LitElement {
   @state() skillHubEditorTitle: string | null = null;
   @state() skillHubEditorSkillName: string | null = null;
   @state() skillHubEditorFile: File | null = null;
+  @state() skillHubEditorIconFile: File | null = null;
+  @state() skillHubEditorIconReset = false;
   @state() skillHubEditorDescription = "";
+  @state() skillHubEditorDisplayName = "";
+  @state() skillHubEditorCategory: import("./controllers/skill-hub.ts").SkillCategory | "" = "";
+  @state() skillHubEditorRevision = 0;
   @state() skillHubEditorPrompts = ["", "", ""];
   @state() skillHubEditorError: string | null = null;
   @state() skillHubEditorLoading = false;

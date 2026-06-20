@@ -383,6 +383,8 @@ export type AppViewState = {
     skillHubEditorTitle: string | null;
     skillHubEditorSkillName: string | null;
     skillHubEditorFile: File | null;
+    skillHubEditorIconFile: File | null;
+    skillHubEditorIconReset: boolean;
     skillHubEditorDescription: string;
     skillHubEditorPrompts: string[];
     skillHubEditorError: string | null;

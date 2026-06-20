@@ -125,8 +125,10 @@ describe("skillhub.transferOwnership gateway handler", () => {
 
     const updated = JSON.parse(await fs.readFile(metadataPath, "utf8")) as {
       owner: { accountId: string; name?: string };
+      updatedAt: string;
     };
     expect(updated.owner.accountId).toBe("target");
+    expect(updated.updatedAt).toBe("2026-05-21T00:00:00.000Z");
 
     respond = createRespond();
     await skillsHandlers["skillhub.transferOwnership"]({

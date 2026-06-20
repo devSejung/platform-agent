@@ -35,7 +35,7 @@ describe("skill hub snapshot refresh", () => {
     await fs.rm(workspaceDir, { recursive: true, force: true });
   });
 
-  it("bumps the workspace skills snapshot after installing a hub skill", async () => {
+  it("installs and updates a hub skill while refreshing the workspace snapshot", async () => {
     const slug = "jira-ticket-summarizer";
     const version = "1.0.0";
     const versionDir = path.join(stateDir, "skill-hub", "registry", "skills", slug, version);
@@ -68,7 +68,7 @@ describe("skill hub snapshot refresh", () => {
       ],
     });
 
-    const { installSkillFromHub } = await import("./skill-hub.js");
+    const { installSkillFromHub, updateSkillFromHub } = await import("./skill-hub.js");
     await installSkillFromHub({
       workspaceDir,
       actor: { employeeId: "emp-2", name: "User" },
@@ -80,6 +80,59 @@ describe("skill hub snapshot refresh", () => {
       reason: "manual",
       changedPath: path.join(workspaceDir, "skills", slug, "SKILL.md"),
     });
+
+    const nextVersion = "1.0.1";
+    const nextVersionDir = path.join(
+      stateDir,
+      "skill-hub",
+      "registry",
+      "skills",
+      slug,
+      nextVersion,
+    );
+    await fs.mkdir(nextVersionDir, { recursive: true });
+    await fs.writeFile(
+      path.join(nextVersionDir, "SKILL.md"),
+      [
+        "---",
+        "name: Jira Ticket Summarizer",
+        "description: Updated Jira ticket summary",
+        "---",
+      ].join("\n"),
+      "utf8",
+    );
+    const metadataPath = path.join(stateDir, "skill-hub", "metadata", `${slug}.json`);
+    const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8")) as {
+      latestVersion: string;
+      updatedAt: string;
+      versions: Array<{
+        version: string;
+        uploadedBy: { employeeId: string; name?: string };
+        uploadedAt: string;
+        path: string;
+      }>;
+    };
+    metadata.latestVersion = nextVersion;
+    metadata.updatedAt = "2026-05-22T00:00:00.000Z";
+    metadata.versions.push({
+      version: nextVersion,
+      uploadedBy: { employeeId: "emp-1", name: "Eon" },
+      uploadedAt: "2026-05-22T00:00:00.000Z",
+      path: `registry/skills/${slug}/${nextVersion}`,
+    });
+    await writeJson(metadataPath, metadata);
+
+    await expect(
+      updateSkillFromHub({
+        workspaceDir,
+        actor: { employeeId: "emp-2", name: "User" },
+        slug,
+      }),
+    ).resolves.toMatchObject({ version: nextVersion, updated: true });
+    await expect(
+      fs.readFile(path.join(workspaceDir, "skills", slug, "SKILL.md"), "utf8"),
+    ).resolves.toContain("Updated Jira ticket summary");
+    expect(bumpSkillsSnapshotVersionMock).toHaveBeenCalledTimes(2);
   });
 
   it("bumps the workspace skills snapshot after deleting a workspace-local skill", async () => {

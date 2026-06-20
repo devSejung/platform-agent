@@ -8,6 +8,7 @@ import {
 import { createServer as createHttpsServer } from "node:https";
 import type { TlsOptions } from "node:tls";
 import type { WebSocketServer } from "ws";
+import { handleKnoxFileLinksHttpRequest } from "../../extensions/knox/src/file-links.js";
 import { resolveAgentAvatar } from "../agents/identity-avatar.js";
 import { CANVAS_WS_PATH, handleA2uiHttpRequest } from "../canvas-host/a2ui.js";
 import type { CanvasHostHandler } from "../canvas-host/server.js";
@@ -36,6 +37,15 @@ import {
   type ControlUiRootState,
 } from "./control-ui.js";
 import { handleOpenAiEmbeddingsHttpRequest } from "./embeddings-http.js";
+import { handleEmployeeChatAttachmentsHttpRequest } from "./employee-chat-attachments.js";
+import { EMPLOYEE_BOOTSTRAP_PATH } from "./employee-ui-contract.js";
+import {
+  handleEmployeeAdSsoRequest,
+  handleEmployeeBootstrapRequest,
+  handleEmployeeLoginRequest,
+  handleEmployeeLogoutRequest,
+} from "./employee-web-auth.js";
+import { handleEmployeeWorkspaceFilesHttpRequest } from "./employee-workspace-files.js";
 import { applyHookMappings } from "./hooks-mapping.js";
 import {
   extractHookToken,
@@ -67,16 +77,6 @@ import { handleOpenAiModelsHttpRequest } from "./models-http.js";
 import { resolveRequestClientIp } from "./net.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
-import { EMPLOYEE_BOOTSTRAP_PATH } from "./employee-ui-contract.js";
-import {
-  handleEmployeeAdSsoRequest,
-  handleEmployeeBootstrapRequest,
-  handleEmployeeLoginRequest,
-  handleEmployeeLogoutRequest,
-} from "./employee-web-auth.js";
-import { handleEmployeeChatAttachmentsHttpRequest } from "./employee-chat-attachments.js";
-import { handleEmployeeWorkspaceFilesHttpRequest } from "./employee-workspace-files.js";
-import { handleKnoxFileLinksHttpRequest } from "../../extensions/knox/src/file-links.js";
 import { DEDUPE_MAX, DEDUPE_TTL_MS } from "./server-constants.js";
 import { authorizeCanvasRequest, isCanvasPath } from "./server/http-auth.js";
 import { resolvePluginRouteRuntimeOperatorScopes } from "./server/plugin-route-runtime-scopes.js";
@@ -91,6 +91,7 @@ import type { ReadinessChecker } from "./server/readiness.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
 import { handleSessionKillHttpRequest } from "./session-kill-http.js";
 import { handleSessionHistoryHttpRequest } from "./sessions-history-http.js";
+import { handleSkillHubIconHttpRequest } from "./skill-hub-icons-http.js";
 import { handleToolsInvokeHttpRequest } from "./tools-invoke-http.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
@@ -997,7 +998,10 @@ export function createGatewayHttpServer(opts: {
             context: {
               clientIp: resolveRequestClientIp(req, trustedProxies, allowRealIpFallback),
               gatewayUrl: resolveGatewayWebsocketUrl(req),
-              userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined,
+              userAgent:
+                typeof req.headers["user-agent"] === "string"
+                  ? req.headers["user-agent"]
+                  : undefined,
             },
             rateLimiter,
           }),
@@ -1014,7 +1018,10 @@ export function createGatewayHttpServer(opts: {
             context: {
               clientIp: resolveRequestClientIp(req, trustedProxies, allowRealIpFallback),
               gatewayUrl: resolveGatewayWebsocketUrl(req),
-              userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined,
+              userAgent:
+                typeof req.headers["user-agent"] === "string"
+                  ? req.headers["user-agent"]
+                  : undefined,
             },
             rateLimiter,
           }),
@@ -1028,12 +1035,7 @@ export function createGatewayHttpServer(opts: {
       requestStages.push({
         name: "employee-bootstrap",
         run: () =>
-          handleEmployeeBootstrapRequest(
-            req,
-            res,
-            configSnapshot,
-            resolveGatewayWebsocketUrl(req),
-          ),
+          handleEmployeeBootstrapRequest(req, res, configSnapshot, resolveGatewayWebsocketUrl(req)),
       });
 
       requestStages.push({
@@ -1056,6 +1058,11 @@ export function createGatewayHttpServer(opts: {
             config: configSnapshot,
             readJsonBody,
           }),
+      });
+
+      requestStages.push({
+        name: "skill-hub-icons",
+        run: () => handleSkillHubIconHttpRequest(req, res),
       });
 
       if (controlUiEnabled) {

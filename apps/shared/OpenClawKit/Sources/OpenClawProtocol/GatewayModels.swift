@@ -3215,21 +3215,25 @@ public struct SkillHubListParams: Codable, Sendable {
     public let query: String?
     public let scope: AnyCodable?
     public let sort: AnyCodable?
+    public let category: AnyCodable?
 
     public init(
         query: String?,
         scope: AnyCodable?,
-        sort: AnyCodable?)
+        sort: AnyCodable?,
+        category: AnyCodable?)
     {
         self.query = query
         self.scope = scope
         self.sort = sort
+        self.category = category
     }
 
     private enum CodingKeys: String, CodingKey {
         case query
         case scope
         case sort
+        case category
     }
 }
 
@@ -3282,6 +3286,7 @@ public struct SkillHubPublishParams: Codable, Sendable {
     public let expectedlocalchecksum: String
     public let expectedhubchecksum: AnyCodable?
     public let exampleprompts: [String]?
+    public let presentation: [String: AnyCodable]?
 
     public init(
         skillname: String,
@@ -3289,7 +3294,8 @@ public struct SkillHubPublishParams: Codable, Sendable {
         expectedslug: String?,
         expectedlocalchecksum: String,
         expectedhubchecksum: AnyCodable?,
-        exampleprompts: [String]?)
+        exampleprompts: [String]?,
+        presentation: [String: AnyCodable]?)
     {
         self.skillname = skillname
         self.intent = intent
@@ -3297,6 +3303,7 @@ public struct SkillHubPublishParams: Codable, Sendable {
         self.expectedlocalchecksum = expectedlocalchecksum
         self.expectedhubchecksum = expectedhubchecksum
         self.exampleprompts = exampleprompts
+        self.presentation = presentation
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3306,6 +3313,7 @@ public struct SkillHubPublishParams: Codable, Sendable {
         case expectedlocalchecksum = "expectedLocalChecksum"
         case expectedhubchecksum = "expectedHubChecksum"
         case exampleprompts = "examplePrompts"
+        case presentation
     }
 }
 
@@ -3314,17 +3322,20 @@ public struct SkillHubUploadParams: Codable, Sendable {
     public let contentbase64: String
     public let expectedhubchecksum: AnyCodable?
     public let exampleprompts: [String]?
+    public let presentation: [String: AnyCodable]?
 
     public init(
         filename: String,
         contentbase64: String,
         expectedhubchecksum: AnyCodable?,
-        exampleprompts: [String]?)
+        exampleprompts: [String]?,
+        presentation: [String: AnyCodable]?)
     {
         self.filename = filename
         self.contentbase64 = contentbase64
         self.expectedhubchecksum = expectedhubchecksum
         self.exampleprompts = exampleprompts
+        self.presentation = presentation
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3332,8 +3343,65 @@ public struct SkillHubUploadParams: Codable, Sendable {
         case contentbase64 = "contentBase64"
         case expectedhubchecksum = "expectedHubChecksum"
         case exampleprompts = "examplePrompts"
+        case presentation
     }
 }
+
+public struct SkillHubIconAuditParams: Codable, Sendable {}
+
+public struct SkillHubIconAuditResult: Codable, Sendable {
+    public let referencedassetids: [String]
+    public let invalidreferencedassetids: [String]
+    public let assetcount: Int
+    public let orphanassets: [[String: AnyCodable]]
+    public let missingassetids: [String]
+    public let issues: [[String: AnyCodable]]
+
+    public init(
+        referencedassetids: [String],
+        invalidreferencedassetids: [String],
+        assetcount: Int,
+        orphanassets: [[String: AnyCodable]],
+        missingassetids: [String],
+        issues: [[String: AnyCodable]])
+    {
+        self.referencedassetids = referencedassetids
+        self.invalidreferencedassetids = invalidreferencedassetids
+        self.assetcount = assetcount
+        self.orphanassets = orphanassets
+        self.missingassetids = missingassetids
+        self.issues = issues
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case referencedassetids = "referencedAssetIds"
+        case invalidreferencedassetids = "invalidReferencedAssetIds"
+        case assetcount = "assetCount"
+        case orphanassets = "orphanAssets"
+        case missingassetids = "missingAssetIds"
+        case issues
+    }
+}
+
+public struct SkillHubIconGcParams: Codable, Sendable {
+    public let dryrun: Bool?
+    public let gracedays: Double?
+
+    public init(
+        dryrun: Bool?,
+        gracedays: Double?)
+    {
+        self.dryrun = dryrun
+        self.gracedays = gracedays
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case dryrun = "dryRun"
+        case gracedays = "graceDays"
+    }
+}
+
+public struct SkillHubIconGcResult: Codable, Sendable {}
 
 public struct SkillHubWorkspacePublishListParams: Codable, Sendable {}
 
@@ -3452,6 +3520,44 @@ public struct SkillHubMetadataUpdateParams: Codable, Sendable {
         case slug
         case summary
         case exampleprompts = "examplePrompts"
+    }
+}
+
+public struct SkillHubPresentationUpdateParams: Codable, Sendable {
+    public let slug: String
+    public let expectedrevision: Int
+    public let displayname: AnyCodable
+    public let displaydescription: AnyCodable
+    public let category: AnyCodable
+    public let exampleprompts: [String]
+    public let iconchange: AnyCodable?
+
+    public init(
+        slug: String,
+        expectedrevision: Int,
+        displayname: AnyCodable,
+        displaydescription: AnyCodable,
+        category: AnyCodable,
+        exampleprompts: [String],
+        iconchange: AnyCodable?)
+    {
+        self.slug = slug
+        self.expectedrevision = expectedrevision
+        self.displayname = displayname
+        self.displaydescription = displaydescription
+        self.category = category
+        self.exampleprompts = exampleprompts
+        self.iconchange = iconchange
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case slug
+        case expectedrevision = "expectedRevision"
+        case displayname = "displayName"
+        case displaydescription = "displayDescription"
+        case category
+        case exampleprompts = "examplePrompts"
+        case iconchange = "iconChange"
     }
 }
 

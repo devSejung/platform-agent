@@ -122,7 +122,7 @@ import {
   transferSkillHubOwnershipAction,
   toggleLikeSkillHubSkill,
   updateSkillHubSkill,
-  updateSkillHubMetadataAction,
+  updateSkillHubPresentationAction,
   uploadSkillHubPackageWithPrompts,
 } from "./controllers/skill-hub.ts";
 import {
@@ -2187,6 +2187,7 @@ export function renderApp(state: AppViewState) {
                 error: state.skillHubError,
                 scope: state.skillHubScope,
                 sort: state.skillHubSort,
+                category: state.skillHubCategory,
                 query: state.skillHubQuery,
                 detail: state.skillHubDetail,
                 detailSlug: state.skillHubDetailSlug,
@@ -2205,7 +2206,15 @@ export function renderApp(state: AppViewState) {
                 editorTitle: state.skillHubEditorTitle,
                 editorSkillName: state.skillHubEditorSkillName,
                 editorFile: state.skillHubEditorFile,
+                editorIconFile: state.skillHubEditorIconFile,
+                editorIconReset: state.skillHubEditorIconReset,
+                editorHasUploadedIcon:
+                  state.skillHubEditorMode === "edit-metadata" &&
+                  state.skillHubDetail?.slug === state.skillHubEditorSlug &&
+                  state.skillHubDetail.presentation.icon.source === "uploaded",
+                editorDisplayName: state.skillHubEditorDisplayName,
                 editorDescription: state.skillHubEditorDescription,
+                editorCategory: state.skillHubEditorCategory,
                 editorPrompts: state.skillHubEditorPrompts,
                 editorError: state.skillHubEditorError,
                 editorLoading: state.skillHubEditorLoading,
@@ -2223,6 +2232,10 @@ export function renderApp(state: AppViewState) {
                 },
                 onSortChange: (sort) => {
                   state.skillHubSort = sort;
+                  void loadSkillHub(state);
+                },
+                onCategoryChange: (category) => {
+                  state.skillHubCategory = category;
                   void loadSkillHub(state);
                 },
                 onQueryChange: (query) => {
@@ -2315,7 +2328,12 @@ export function renderApp(state: AppViewState) {
                   state.skillHubEditorSkillName = skillName;
                   state.skillHubEditorSlug = null;
                   state.skillHubEditorFile = null;
+                  state.skillHubEditorIconFile = null;
+                  state.skillHubEditorIconReset = false;
+                  state.skillHubEditorDisplayName = "";
                   state.skillHubEditorDescription = "";
+                  state.skillHubEditorCategory = "";
+                  state.skillHubEditorRevision = 0;
                   state.skillHubEditorPrompts = ["", "", ""];
                   state.skillHubEditorError = null;
                   state.skillHubEditorLoading = true;
@@ -2333,7 +2351,11 @@ export function renderApp(state: AppViewState) {
                         return;
                       }
                       state.skillHubEditorSlug = existing?.slug ?? null;
-                      state.skillHubEditorDescription = "";
+                      state.skillHubEditorDisplayName =
+                        existing?.presentationEdit.displayName ?? "";
+                      state.skillHubEditorDescription =
+                        existing?.presentationEdit.displayDescription ?? "";
+                      state.skillHubEditorCategory = existing?.presentationEdit.category ?? "";
                       state.skillHubEditorPrompts = toEditorPrompts(existing?.examplePrompts ?? []);
                     } catch (err) {
                       if (
@@ -2362,7 +2384,12 @@ export function renderApp(state: AppViewState) {
                   state.skillHubEditorSkillName = null;
                   state.skillHubEditorSlug = null;
                   state.skillHubEditorFile = null;
+                  state.skillHubEditorIconFile = null;
+                  state.skillHubEditorIconReset = false;
+                  state.skillHubEditorDisplayName = "";
                   state.skillHubEditorDescription = "";
+                  state.skillHubEditorCategory = "";
+                  state.skillHubEditorRevision = 0;
                   state.skillHubEditorPrompts = ["", "", ""];
                   state.skillHubEditorError = null;
                   state.skillHubEditorLoading = false;
@@ -2370,18 +2397,24 @@ export function renderApp(state: AppViewState) {
                 onToggleWorkspacePanel: () => {
                   state.skillHubWorkspacePanelOpen = !state.skillHubWorkspacePanelOpen;
                 },
-                onOpenEditMetadataEditor: (slug, title, summary, prompts) => {
+                onOpenEditMetadataEditor: (detail) => {
                   state.skillHubEditorOpen = true;
                   state.skillHubEditorMode = "edit-metadata";
-                  state.skillHubEditorTitle = title;
+                  state.skillHubEditorTitle = detail.presentation.displayName;
                   state.skillHubEditorSkillName = null;
-                  state.skillHubEditorSlug = slug;
+                  state.skillHubEditorSlug = detail.slug;
                   state.skillHubEditorFile = null;
-                  state.skillHubEditorDescription = summary;
+                  state.skillHubEditorIconFile = null;
+                  state.skillHubEditorIconReset = false;
+                  state.skillHubEditorDisplayName = detail.presentationEdit.displayName ?? "";
+                  state.skillHubEditorDescription =
+                    detail.presentationEdit.displayDescription ?? "";
+                  state.skillHubEditorCategory = detail.presentationEdit.category ?? "";
+                  state.skillHubEditorRevision = detail.presentationEdit.revision;
                   state.skillHubEditorPrompts = [
-                    prompts[0] ?? "",
-                    prompts[1] ?? "",
-                    prompts[2] ?? "",
+                    detail.examplePrompts[0] ?? "",
+                    detail.examplePrompts[1] ?? "",
+                    detail.examplePrompts[2] ?? "",
                   ];
                   state.skillHubEditorError = null;
                   state.skillHubEditorLoading = false;
@@ -2393,13 +2426,24 @@ export function renderApp(state: AppViewState) {
                   state.skillHubEditorSkillName = null;
                   state.skillHubEditorSlug = null;
                   state.skillHubEditorFile = null;
+                  state.skillHubEditorIconFile = null;
+                  state.skillHubEditorIconReset = false;
+                  state.skillHubEditorDisplayName = "";
                   state.skillHubEditorDescription = "";
+                  state.skillHubEditorCategory = "";
+                  state.skillHubEditorRevision = 0;
                   state.skillHubEditorPrompts = ["", "", ""];
                   state.skillHubEditorError = null;
                   state.skillHubEditorLoading = false;
                 },
+                onEditorDisplayNameChange: (value) => {
+                  state.skillHubEditorDisplayName = value.slice(0, 80);
+                },
                 onEditorDescriptionChange: (value) => {
-                  state.skillHubEditorDescription = value.slice(0, 220);
+                  state.skillHubEditorDescription = value.slice(0, 100);
+                },
+                onEditorCategoryChange: (value) => {
+                  state.skillHubEditorCategory = value;
                 },
                 onEditorPromptChange: (index, value) => {
                   const next = state.skillHubEditorPrompts.slice(0, 3);
@@ -2411,6 +2455,16 @@ export function renderApp(state: AppViewState) {
                 },
                 onEditorFileChange: (file) => {
                   state.skillHubEditorFile = file;
+                  state.skillHubEditorError = null;
+                },
+                onEditorIconFileChange: (file) => {
+                  state.skillHubEditorIconFile = file;
+                  state.skillHubEditorIconReset = false;
+                  state.skillHubEditorError = null;
+                },
+                onEditorIconReset: () => {
+                  state.skillHubEditorIconFile = null;
+                  state.skillHubEditorIconReset = true;
                   state.skillHubEditorError = null;
                 },
                 onEditorSubmit: () => {
@@ -2434,7 +2488,12 @@ export function renderApp(state: AppViewState) {
                             "발행 상태가 변경되었습니다. Skill Hub를 새로고침해주세요.";
                           return;
                         }
-                        await publishWorkspaceSkillWithPrompts(state, publishEntry, prompts);
+                        await publishWorkspaceSkillWithPrompts(state, publishEntry, prompts, {
+                          displayName: state.skillHubEditorDisplayName,
+                          displayDescription: state.skillHubEditorDescription,
+                          category: state.skillHubEditorCategory,
+                          iconFile: state.skillHubEditorIconFile,
+                        });
                       } else if (state.skillHubEditorMode === "upload") {
                         if (!state.skillHubEditorFile) {
                           state.skillHubEditorError = "Choose a .skill file first.";
@@ -2444,16 +2503,27 @@ export function renderApp(state: AppViewState) {
                           state,
                           state.skillHubEditorFile,
                           prompts,
+                          {
+                            displayName: state.skillHubEditorDisplayName,
+                            displayDescription: state.skillHubEditorDescription,
+                            category: state.skillHubEditorCategory,
+                            iconFile: state.skillHubEditorIconFile,
+                          },
                         );
                       } else if (state.skillHubEditorMode === "edit-metadata") {
                         if (!state.skillHubEditorSlug) {
                           state.skillHubEditorError = "Missing skill id.";
                           return;
                         }
-                        await updateSkillHubMetadataAction(state, {
+                        await updateSkillHubPresentationAction(state, {
                           slug: state.skillHubEditorSlug,
-                          summary: state.skillHubEditorDescription,
+                          expectedRevision: state.skillHubEditorRevision,
+                          displayName: state.skillHubEditorDisplayName,
+                          displayDescription: state.skillHubEditorDescription,
+                          category: state.skillHubEditorCategory,
                           examplePrompts: prompts,
+                          iconFile: state.skillHubEditorIconFile,
+                          resetIcon: state.skillHubEditorIconReset,
                         });
                       }
                       state.skillHubEditorOpen = false;
@@ -2462,7 +2532,12 @@ export function renderApp(state: AppViewState) {
                       state.skillHubEditorSkillName = null;
                       state.skillHubEditorSlug = null;
                       state.skillHubEditorFile = null;
+                      state.skillHubEditorIconFile = null;
+                      state.skillHubEditorIconReset = false;
+                      state.skillHubEditorDisplayName = "";
                       state.skillHubEditorDescription = "";
+                      state.skillHubEditorCategory = "";
+                      state.skillHubEditorRevision = 0;
                       state.skillHubEditorPrompts = ["", "", ""];
                       state.skillHubEditorError = null;
                       state.skillHubEditorLoading = false;
@@ -2497,10 +2572,23 @@ export function renderApp(state: AppViewState) {
                       query: "",
                       limit: 12,
                     });
+                    if (
+                      !state.skillHubTransferOpen ||
+                      state.skillHubTransferSlug !== slug ||
+                      state.skillHubTransferQuery !== ""
+                    ) {
+                      return;
+                    }
                     state.skillHubTransferResults = result.entries;
                     state.skillHubTransferError = result.error;
                   } finally {
-                    state.skillHubTransferLoading = false;
+                    if (
+                      state.skillHubTransferOpen &&
+                      state.skillHubTransferSlug === slug &&
+                      state.skillHubTransferQuery === ""
+                    ) {
+                      state.skillHubTransferLoading = false;
+                    }
                   }
                 },
                 onCloseTransfer: () => {
@@ -2516,7 +2604,9 @@ export function renderApp(state: AppViewState) {
                 },
                 onTransferQueryChange: async (value) => {
                   state.skillHubTransferQuery = value;
+                  state.skillHubTransferTargetAccountId = null;
                   state.skillHubTransferLoading = true;
+                  const transferSlug = state.skillHubTransferSlug;
                   try {
                     const result = await searchDirectoryAccounts({
                       client: state.client,
@@ -2524,10 +2614,23 @@ export function renderApp(state: AppViewState) {
                       query: value,
                       limit: 12,
                     });
+                    if (
+                      !state.skillHubTransferOpen ||
+                      state.skillHubTransferSlug !== transferSlug ||
+                      state.skillHubTransferQuery !== value
+                    ) {
+                      return;
+                    }
                     state.skillHubTransferResults = result.entries;
                     state.skillHubTransferError = result.error;
                   } finally {
-                    state.skillHubTransferLoading = false;
+                    if (
+                      state.skillHubTransferOpen &&
+                      state.skillHubTransferSlug === transferSlug &&
+                      state.skillHubTransferQuery === value
+                    ) {
+                      state.skillHubTransferLoading = false;
+                    }
                   }
                 },
                 onTransferTargetSelect: (accountId) => {

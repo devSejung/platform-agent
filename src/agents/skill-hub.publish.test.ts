@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
+import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 async function writeSkill(workspaceDir: string, name: string, body = "initial") {
@@ -353,6 +354,164 @@ describe("skill hub workspace publishing", () => {
         contentBase64: await makeArchive("other change"),
       }),
     ).rejects.toThrow("only the current skill owner");
+  });
+
+  it("commits workspace presentation metadata without bumping an unchanged content version", async () => {
+    const skillDir = await writeSkill(workspaceDir, "presented-skill");
+    const icon = await sharp({
+      create: { width: 20, height: 20, channels: 4, background: "blue" },
+    })
+      .png()
+      .toBuffer();
+    const { computeSkillDirectoryChecksum, publishWorkspaceSkillToHub } =
+      await import("./skill-hub.js");
+    const checksum = await computeSkillDirectoryChecksum(skillDir);
+    const actor = { employeeId: "owner", name: "Owner" };
+    await publishWorkspaceSkillToHub({
+      workspaceDir,
+      actor,
+      skillName: "presented-skill",
+      intent: "create",
+      expectedLocalChecksum: checksum,
+    });
+    const metadataPath = path.join(stateDir, "skill-hub", "metadata", "presented-skill.json");
+    const before = JSON.parse(await fs.readFile(metadataPath, "utf8")) as {
+      latestVersion: string;
+      updatedAt: string;
+      contentChecksum: string;
+    };
+
+    const result = await publishWorkspaceSkillToHub({
+      workspaceDir,
+      actor,
+      skillName: "presented-skill",
+      intent: "update",
+      expectedSlug: "presented-skill",
+      expectedLocalChecksum: checksum,
+      expectedHubChecksum: checksum,
+      presentation: {
+        displayName: "Presented Skill",
+        displayDescription: "A concise listing description",
+        category: "utility",
+        iconUpload: { mimeType: "image/png", dataBase64: icon.toString("base64") },
+      },
+    });
+    expect(result).toMatchObject({
+      version: "1.0.0",
+      noOp: true,
+      presentationUpdated: true,
+    });
+    const after = JSON.parse(await fs.readFile(metadataPath, "utf8")) as {
+      latestVersion: string;
+      updatedAt: string;
+      contentChecksum: string;
+      presentation: {
+        displayName: string;
+        displayDescription: string;
+        category: string;
+        icon: { assetId: string };
+        revision: number;
+        updatedAt: string;
+      };
+    };
+    expect(after).toMatchObject({
+      latestVersion: before.latestVersion,
+      updatedAt: before.updatedAt,
+      contentChecksum: before.contentChecksum,
+      presentation: {
+        displayName: "Presented Skill",
+        displayDescription: "A concise listing description",
+        category: "utility",
+        revision: 1,
+      },
+    });
+    expect(after.presentation.icon.assetId).toMatch(/^[a-f0-9]{64}$/);
+    expect(after.presentation.updatedAt).not.toBe(before.updatedAt);
+    await expect(
+      fs.access(
+        path.join(
+          stateDir,
+          "skill-hub",
+          "assets",
+          "icons",
+          `${after.presentation.icon.assetId}.png`,
+        ),
+      ),
+    ).resolves.toBeUndefined();
+
+    await publishWorkspaceSkillToHub({
+      workspaceDir,
+      actor,
+      skillName: "presented-skill",
+      intent: "update",
+      expectedSlug: "presented-skill",
+      expectedLocalChecksum: checksum,
+      expectedHubChecksum: checksum,
+      presentation: { displayName: null, displayDescription: null, category: null },
+    });
+    const cleared = JSON.parse(await fs.readFile(metadataPath, "utf8")) as {
+      latestVersion: string;
+      updatedAt: string;
+      presentation: Record<string, unknown>;
+    };
+    expect(cleared.latestVersion).toBe("1.0.0");
+    expect(cleared.updatedAt).toBe(before.updatedAt);
+    expect(cleared.presentation).not.toHaveProperty("displayName");
+    expect(cleared.presentation).not.toHaveProperty("displayDescription");
+    expect(cleared.presentation).not.toHaveProperty("category");
+  });
+
+  it("stores upload presentation metadata and rejects invalid drafts before publishing", async () => {
+    const makeArchive = async (name: string) => {
+      const zip = new JSZip();
+      zip.file(
+        `${name}/SKILL.md`,
+        ["---", `name: ${name}`, `description: ${name} source`, "---"].join("\n"),
+      );
+      return (await zip.generateAsync({ type: "nodebuffer" })).toString("base64");
+    };
+    const { uploadSkillPackageToHub } = await import("./skill-hub.js");
+    await uploadSkillPackageToHub({
+      actor: { employeeId: "owner" },
+      filename: "upload-presented.skill",
+      contentBase64: await makeArchive("upload-presented"),
+      presentation: {
+        displayName: "Upload Presented",
+        displayDescription: "Uploaded with listing metadata",
+        category: "knowledge",
+      },
+    });
+    const stored = JSON.parse(
+      await fs.readFile(
+        path.join(stateDir, "skill-hub", "metadata", "upload-presented.json"),
+        "utf8",
+      ),
+    ) as { presentation: Record<string, unknown> };
+    expect(stored.presentation).toMatchObject({
+      displayName: "Upload Presented",
+      displayDescription: "Uploaded with listing metadata",
+      category: "knowledge",
+    });
+
+    await expect(
+      uploadSkillPackageToHub({
+        actor: { employeeId: "owner" },
+        filename: "invalid-presentation.skill",
+        contentBase64: await makeArchive("invalid-presentation"),
+        presentation: { category: "invalid" as "other" },
+      }),
+    ).rejects.toThrow("invalid skill category");
+    await expect(
+      fs.access(path.join(stateDir, "skill-hub", "metadata", "invalid-presentation.json")),
+    ).rejects.toThrow();
+    await expect(
+      uploadSkillPackageToHub({
+        actor: { employeeId: "owner" },
+        filename: "invalid-length.skill",
+        contentBase64: await makeArchive("invalid-length"),
+        presentation: { displayName: "x".repeat(81) },
+      }),
+    ).rejects.toThrow("displayName must be 80 characters or fewer");
   });
 
   it("hard-deletes Hub identity and allows the retained local skill to be published again", async () => {

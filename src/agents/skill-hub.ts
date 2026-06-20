@@ -7,6 +7,18 @@ import type { OpenClawConfig } from "../config/config.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { safeParseJson } from "../utils.js";
 import { CONFIG_DIR, ensureDir } from "../utils.js";
+import {
+  isSkillHubIconAssetId,
+  normalizeAndStoreSkillHubIcon,
+  withSkillHubIconAssetsLock,
+} from "./skill-hub-icon-assets.js";
+import {
+  normalizeSkillCategory,
+  resolveSkillPresentation,
+  type ResolvedSkillHubPresentation,
+  type SkillCategory,
+  type SkillHubPresentationIcon,
+} from "./skill-hub-presentation.js";
 import { extractArchive } from "./skills-install-extract.js";
 import { loadWorkspaceSkillEntries, type SkillEntry } from "./skills.js";
 import { loadSkillsFromDirSafe } from "./skills/local-loader.js";
@@ -27,6 +39,8 @@ const WORKSPACE_INSTALL_STATE_FILE = ".skill-hub-installed.json";
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)$/;
 const MAX_EXAMPLE_PROMPTS = 3;
 const MAX_EXAMPLE_PROMPT_CHARS = 200;
+const MAX_PRESENTATION_DISPLAY_NAME_CHARS = 80;
+const MAX_PRESENTATION_DESCRIPTION_CHARS = 100;
 const publishQueues = new Map<string, Promise<void>>();
 
 function trimOrNull(value: string | null | undefined): string | null {
@@ -76,6 +90,7 @@ export type SkillHubMetadata = {
   slug: string;
   displayName: string;
   summary: string;
+  sourceDescription?: string;
   uploader: {
     employeeId: string;
     name?: string;
@@ -95,7 +110,13 @@ export type SkillHubMetadata = {
     installerCount: number;
   };
   presentation: {
+    displayName?: string;
+    displayDescription?: string;
+    category?: SkillCategory;
+    icon?: SkillHubPresentationIcon;
     examplePrompts: string[];
+    revision?: number;
+    updatedAt?: string;
   };
   engagement: {
     likeCount: number;
@@ -109,11 +130,13 @@ export type SkillHubLikesState = {
 
 export type SkillHubListScope = "discover" | "installed" | "uploads" | "updates";
 export type SkillHubSort = "recent" | "installs" | "likes" | "az";
+export type SkillHubCategoryFilter = "all" | SkillCategory;
 
 export type SkillHubListEntry = {
   slug: string;
   displayName: string;
   summary: string;
+  presentation: ResolvedSkillHubPresentation;
   uploaderName: string;
   uploaderEmployeeId: string;
   ownerAccountId: string;
@@ -137,6 +160,14 @@ export type SkillHubListEntry = {
 };
 
 export type SkillHubDetail = SkillHubListEntry & {
+  sourceDescription?: string;
+  presentationEdit: {
+    displayName?: string;
+    displayDescription?: string;
+    category?: SkillCategory;
+    revision: number;
+    updatedAt?: string;
+  };
   examplePrompts: string[];
   versions: SkillHubVersionRecord[];
 };
@@ -189,6 +220,13 @@ type PublishPreparedSkill = {
 };
 
 export type SkillHubPublishIntent = "create" | "update";
+
+export type SkillHubPublishPresentationDraft = {
+  displayName?: string | null;
+  displayDescription?: string | null;
+  category?: SkillCategory | null;
+  iconUpload?: { mimeType: "image/png"; dataBase64: string };
+};
 
 const CHECKSUM_IGNORED_DIRECTORY_NAMES = new Set([
   ".git",
@@ -248,18 +286,97 @@ function sanitizeExamplePrompts(value: unknown): string[] {
   return prompts;
 }
 
+function normalizePresentationText(
+  value: string | null,
+  maxChars: number,
+  fieldName: string,
+): string | undefined {
+  const normalized = value?.replace(/\s+/g, " ").trim() ?? "";
+  if (normalized.length > maxChars) {
+    throw new Error(`${fieldName} must be ${maxChars} characters or fewer`);
+  }
+  return normalized || undefined;
+}
+
+function decodeSkillHubIconBase64(value: string): Buffer {
+  const encoded = value.trim();
+  if (
+    !encoded ||
+    encoded.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)
+  ) {
+    throw new Error("Skill Hub icon data is not valid base64");
+  }
+  return Buffer.from(encoded, "base64");
+}
+
+function normalizePublishPresentationDraft(
+  draft: SkillHubPublishPresentationDraft | undefined,
+): Omit<SkillHubPublishPresentationDraft, "iconUpload"> & {
+  iconUpload?: SkillHubPublishPresentationDraft["iconUpload"];
+} {
+  if (!draft) {
+    return {};
+  }
+  const displayName =
+    draft.displayName === undefined
+      ? undefined
+      : (normalizePresentationText(
+          draft.displayName,
+          MAX_PRESENTATION_DISPLAY_NAME_CHARS,
+          "displayName",
+        ) ?? null);
+  const displayDescription =
+    draft.displayDescription === undefined
+      ? undefined
+      : (normalizePresentationText(
+          draft.displayDescription,
+          MAX_PRESENTATION_DESCRIPTION_CHARS,
+          "displayDescription",
+        ) ?? null);
+  const category =
+    draft.category === undefined || draft.category === null
+      ? draft.category
+      : normalizeSkillCategory(draft.category);
+  if (draft.category !== undefined && draft.category !== null && !category) {
+    throw new Error("invalid skill category");
+  }
+  return {
+    ...(displayName !== undefined ? { displayName } : {}),
+    ...(displayDescription !== undefined ? { displayDescription } : {}),
+    ...(category !== undefined ? { category } : {}),
+    ...(draft.iconUpload ? { iconUpload: draft.iconUpload } : {}),
+  };
+}
+
+function stringArraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 function normalizeSkillHubMetadata(
   value: SkillHubMetadata | Record<string, unknown>,
 ): SkillHubMetadata {
   const raw = value as Partial<SkillHubMetadata> & {
-    presentation?: { examplePrompts?: unknown };
+    presentation?: {
+      displayName?: unknown;
+      displayDescription?: unknown;
+      category?: unknown;
+      icon?: { type?: unknown; assetId?: unknown };
+      examplePrompts?: unknown;
+      revision?: unknown;
+      updatedAt?: unknown;
+    };
     engagement?: { likeCount?: unknown };
   };
+  const category = normalizeSkillCategory(raw.presentation?.category);
   return {
     ...raw,
     slug: String(raw.slug ?? ""),
     displayName: String(raw.displayName ?? ""),
     summary: String(raw.summary ?? ""),
+    ...(typeof raw.sourceDescription === "string" && raw.sourceDescription.trim()
+      ? { sourceDescription: raw.sourceDescription.trim() }
+      : {}),
     uploader: {
       employeeId: String(raw.uploader?.employeeId ?? ""),
       ...(raw.uploader?.name ? { name: String(raw.uploader.name) } : {}),
@@ -292,7 +409,28 @@ function normalizeSkillHubMetadata(
           : 0,
     },
     presentation: {
+      ...(typeof raw.presentation?.displayName === "string" && raw.presentation.displayName.trim()
+        ? { displayName: raw.presentation.displayName.trim() }
+        : {}),
+      ...(typeof raw.presentation?.displayDescription === "string" &&
+      raw.presentation.displayDescription.trim()
+        ? { displayDescription: raw.presentation.displayDescription.trim() }
+        : {}),
+      ...(category ? { category } : {}),
+      ...(raw.presentation?.icon?.type === "uploaded" &&
+      typeof raw.presentation.icon.assetId === "string" &&
+      isSkillHubIconAssetId(raw.presentation.icon.assetId.trim())
+        ? { icon: { type: "uploaded" as const, assetId: raw.presentation.icon.assetId.trim() } }
+        : {}),
       examplePrompts: sanitizeExamplePrompts(raw.presentation?.examplePrompts),
+      ...(typeof raw.presentation?.revision === "number" &&
+      Number.isInteger(raw.presentation.revision) &&
+      raw.presentation.revision >= 0
+        ? { revision: raw.presentation.revision }
+        : {}),
+      ...(typeof raw.presentation?.updatedAt === "string" && raw.presentation.updatedAt.trim()
+        ? { updatedAt: raw.presentation.updatedAt.trim() }
+        : {}),
     },
     engagement: {
       likeCount:
@@ -423,6 +561,33 @@ async function listSkillHubMetadata(): Promise<SkillHubMetadata[]> {
   return entries
     .filter((entry): entry is SkillHubMetadata => Boolean(entry))
     .toSorted((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+export async function listReferencedSkillHubIconAssetIds(): Promise<string[]> {
+  let names: string[];
+  try {
+    names = (await fsp.readdir(METADATA_ROOT)).filter((entry) => entry.endsWith(".json"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+  const assetIds = new Set<string>();
+  for (const name of names) {
+    const filePath = path.join(METADATA_ROOT, name);
+    const raw = await fsp.readFile(filePath, "utf8");
+    const value = safeParseJson<Record<string, unknown>>(raw);
+    if (!value) {
+      throw new Error(`could not read Skill Hub metadata: ${name}`);
+    }
+    const presentation = value.presentation as Record<string, unknown> | undefined;
+    const icon = presentation?.icon as Record<string, unknown> | undefined;
+    if (icon?.type === "uploaded" && typeof icon.assetId === "string") {
+      assetIds.add(icon.assetId.trim());
+    }
+  }
+  return [...assetIds].toSorted();
 }
 
 async function readWorkspaceInstallState(workspaceDir: string): Promise<SkillHubInstallState> {
@@ -776,6 +941,7 @@ type PublishPreparedSkillResult = {
   version: string;
   created: boolean;
   noOp: boolean;
+  presentationUpdated?: boolean;
 };
 
 async function publishPreparedSkillUnlocked(params: {
@@ -785,6 +951,7 @@ async function publishPreparedSkillUnlocked(params: {
   expectedSlug?: string;
   expectedLocalChecksum?: string;
   expectedHubChecksum?: string | null;
+  presentation?: SkillHubPublishPresentationDraft;
 }): Promise<PublishPreparedSkillResult> {
   await ensureSkillHubDirs();
   const slug = toSlug(params.prepared.displayName);
@@ -816,15 +983,83 @@ async function publishPreparedSkillUnlocked(params: {
       throw new Error("Hub 스킬이 변경되었습니다. 목록을 새로고침한 후 다시 시도해주세요.");
     }
   }
-  if (
+  const normalizedDraft = normalizePublishPresentationDraft(params.presentation);
+  let draftIcon = existing?.presentation.icon;
+  if (normalizedDraft.iconUpload) {
+    const stored = await normalizeAndStoreSkillHubIcon({
+      data: decodeSkillHubIconBase64(normalizedDraft.iconUpload.dataBase64),
+      mimeType: normalizedDraft.iconUpload.mimeType,
+    });
+    draftIcon = { type: "uploaded", assetId: stored.assetId };
+  }
+  const currentPresentation = existing?.presentation ?? { examplePrompts: [] };
+  const nextPresentation: SkillHubMetadata["presentation"] = {
+    ...currentPresentation,
+    ...(draftIcon ? { icon: draftIcon } : {}),
+    examplePrompts:
+      params.prepared.examplePrompts.length > 0
+        ? params.prepared.examplePrompts
+        : currentPresentation.examplePrompts,
+  };
+  if (normalizedDraft.displayName !== undefined) {
+    if (normalizedDraft.displayName) {
+      nextPresentation.displayName = normalizedDraft.displayName;
+    } else {
+      delete nextPresentation.displayName;
+    }
+  }
+  if (normalizedDraft.displayDescription !== undefined) {
+    if (normalizedDraft.displayDescription) {
+      nextPresentation.displayDescription = normalizedDraft.displayDescription;
+    } else {
+      delete nextPresentation.displayDescription;
+    }
+  }
+  if (normalizedDraft.category !== undefined) {
+    if (normalizedDraft.category) {
+      nextPresentation.category = normalizedDraft.category;
+    } else {
+      delete nextPresentation.category;
+    }
+  }
+  const presentationChanged =
+    currentPresentation.displayName !== nextPresentation.displayName ||
+    currentPresentation.displayDescription !== nextPresentation.displayDescription ||
+    currentPresentation.category !== nextPresentation.category ||
+    currentPresentation.icon?.assetId !== nextPresentation.icon?.assetId ||
+    !stringArraysEqual(currentPresentation.examplePrompts, nextPresentation.examplePrompts);
+  const contentUnchanged =
     existing?.contentChecksum === params.prepared.contentChecksum &&
-    flagsEqual(existing.flags, params.prepared.flags)
-  ) {
+    flagsEqual(existing.flags, params.prepared.flags);
+  if (existing && contentUnchanged && !presentationChanged) {
     return {
       slug,
       version: existing.latestVersion,
       created: false,
       noOp: true,
+    };
+  }
+  if (existing && contentUnchanged) {
+    const presentationUpdatedAt = new Date().toISOString();
+    existing.presentation = {
+      ...nextPresentation,
+      revision: (existing.presentation.revision ?? 0) + 1,
+      updatedAt: presentationUpdatedAt,
+    };
+    await writeSkillHubMetadata(existing);
+    await appendEventLog("skill-presentation.ndjson", {
+      ts: presentationUpdatedAt,
+      slug,
+      actor: params.actor,
+      revision: existing.presentation.revision,
+      source: "publish",
+    });
+    return {
+      slug,
+      version: existing.latestVersion,
+      created: false,
+      noOp: true,
+      presentationUpdated: true,
     };
   }
   const version = chooseNextVersion(existing);
@@ -876,7 +1111,8 @@ async function publishPreparedSkillUnlocked(params: {
           installerCount: 0,
         },
         presentation: {
-          examplePrompts: params.prepared.examplePrompts,
+          ...nextPresentation,
+          ...(presentationChanged ? { revision: 1, updatedAt: nowIso } : {}),
         },
         engagement: {
           likeCount: 0,
@@ -895,10 +1131,10 @@ async function publishPreparedSkillUnlocked(params: {
       };
   if (existing) {
     metadata.presentation = {
-      examplePrompts:
-        params.prepared.examplePrompts.length > 0
-          ? params.prepared.examplePrompts
-          : existing.presentation.examplePrompts,
+      ...nextPresentation,
+      ...(presentationChanged
+        ? { revision: (existing.presentation.revision ?? 0) + 1, updatedAt: nowIso }
+        : {}),
     };
     metadata.engagement = existing.engagement ?? { likeCount: 0 };
   }
@@ -932,8 +1168,17 @@ async function publishPreparedSkill(params: {
   expectedSlug?: string;
   expectedLocalChecksum?: string;
   expectedHubChecksum?: string | null;
+  presentation?: SkillHubPublishPresentationDraft;
 }): Promise<PublishPreparedSkillResult> {
   const slug = toSlug(params.prepared.displayName);
+  return await withSkillHubSlugLock(slug, () =>
+    params.presentation?.iconUpload
+      ? withSkillHubIconAssetsLock(() => publishPreparedSkillUnlocked(params))
+      : publishPreparedSkillUnlocked(params),
+  );
+}
+
+async function withSkillHubSlugLock<T>(slug: string, task: () => Promise<T>): Promise<T> {
   const previous = publishQueues.get(slug) ?? Promise.resolve();
   let release!: () => void;
   const current = new Promise<void>((resolve) => {
@@ -943,7 +1188,7 @@ async function publishPreparedSkill(params: {
   publishQueues.set(slug, queued);
   await previous;
   try {
-    return await publishPreparedSkillUnlocked(params);
+    return await task();
   } finally {
     release();
     if (publishQueues.get(slug) === queued) {
@@ -962,6 +1207,7 @@ export async function publishWorkspaceSkillToHub(params: {
   expectedSlug?: string;
   expectedLocalChecksum: string;
   expectedHubChecksum?: string | null;
+  presentation?: SkillHubPublishPresentationDraft;
 }) {
   const prepared = await prepareWorkspacePublishSkill({
     workspaceDir: params.workspaceDir,
@@ -976,6 +1222,7 @@ export async function publishWorkspaceSkillToHub(params: {
     expectedSlug: params.expectedSlug,
     expectedLocalChecksum: params.expectedLocalChecksum,
     expectedHubChecksum: params.expectedHubChecksum,
+    presentation: params.presentation,
   });
 }
 
@@ -985,6 +1232,7 @@ export async function uploadSkillPackageToHub(params: {
   contentBase64: string;
   examplePrompts?: string[];
   expectedHubChecksum?: string | null;
+  presentation?: SkillHubPublishPresentationDraft;
 }) {
   const prepared = await prepareUploadedSkill({
     filename: params.filename,
@@ -996,6 +1244,7 @@ export async function uploadSkillPackageToHub(params: {
       actor: params.actor,
       prepared,
       expectedHubChecksum: params.expectedHubChecksum,
+      presentation: params.presentation,
     });
   } finally {
     if (prepared.cleanupDir) {
@@ -1031,10 +1280,17 @@ async function mapMetadataToListEntry(params: {
   const likesState = await readLikesState(params.metadata.slug);
   const actorIsOwner = params.metadata.owner.accountId === params.actor.employeeId;
   const actorIsAdmin = params.actor.globalRole === "admin";
+  const presentation = resolveSkillPresentation({
+    slug: params.metadata.slug,
+    sourceDescription: params.metadata.sourceDescription,
+    legacySummary: params.metadata.summary,
+    presentation: params.metadata.presentation,
+  });
   return {
     slug: params.metadata.slug,
     displayName: params.metadata.displayName,
     summary: params.metadata.summary,
+    presentation,
     uploaderName:
       params.metadata.owner.name ??
       params.metadata.uploader.name ??
@@ -1069,6 +1325,7 @@ export async function listSkillHubEntries(params: {
   query?: string;
   scope?: SkillHubListScope;
   sort?: SkillHubSort;
+  category?: SkillHubCategoryFilter;
 }): Promise<SkillHubListEntry[]> {
   const all = await listSkillHubMetadata();
   const installState = await readWorkspaceInstallState(params.workspaceDir);
@@ -1076,17 +1333,33 @@ export async function listSkillHubEntries(params: {
   const entries = (
     await Promise.all(
       all.map((metadata) =>
-        mapMetadataToListEntry({ metadata, actor: params.actor, installState }),
+        mapMetadataToListEntry({ metadata, actor: params.actor, installState }).then((entry) => ({
+          entry,
+          sourceDescription: metadata.sourceDescription ?? "",
+        })),
       ),
     )
   )
-    .filter((entry) => {
+    .filter(({ entry, sourceDescription }) => {
       if (!query) {
         return true;
       }
-      return [entry.displayName, entry.summary, entry.slug].join(" ").toLowerCase().includes(query);
+      return [
+        entry.presentation.displayName,
+        entry.slug,
+        entry.presentation.displayDescription,
+        sourceDescription,
+        entry.presentation.category,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
     })
-    .filter((entry) => {
+    .filter(({ entry }) => {
+      const category = params.category ?? "all";
+      return category === "all" || entry.presentation.category === category;
+    })
+    .filter(({ entry }) => {
       switch (params.scope) {
         case "installed":
           return entry.installed;
@@ -1099,12 +1372,13 @@ export async function listSkillHubEntries(params: {
           return !entry.hidden || entry.installed || entry.uploadedByYou;
       }
     })
-    .filter((entry) => {
+    .filter(({ entry }) => {
       if (params.scope === "uploads") {
         return true;
       }
       return !entry.hidden || entry.installed || entry.uploadedByYou;
-    });
+    })
+    .map(({ entry }) => entry);
   const sort = params.sort ?? "recent";
   return entries.toSorted((a, b) => {
     const pinned = Number(b.uploadedByYou) - Number(a.uploadedByYou);
@@ -1123,7 +1397,7 @@ export async function listSkillHubEntries(params: {
         }
         break;
       case "az":
-        return a.displayName.localeCompare(b.displayName);
+        return a.presentation.displayName.localeCompare(b.presentation.displayName);
       case "recent":
       default:
         if (b.updatedAt !== a.updatedAt) {
@@ -1131,7 +1405,7 @@ export async function listSkillHubEntries(params: {
         }
         break;
     }
-    return a.displayName.localeCompare(b.displayName);
+    return a.presentation.displayName.localeCompare(b.presentation.displayName);
   });
 }
 
@@ -1237,13 +1511,13 @@ export async function getSkillHubOverview(params: {
     updateAvailableCount: installedEntries.filter((entry) => entry.updateAvailable).length,
     localSkillCount: localEntries.length,
     installedSkillCount: Object.keys(installState.skills).length,
-    recentUpdates: allMetadata
-      .filter((entry) => !entry.hidden || entry.owner.accountId === params.actor.employeeId)
+    recentUpdates: installedEntries
+      .filter((entry) => !entry.hidden || entry.ownerAccountId === params.actor.employeeId)
       .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
       .slice(0, 5)
       .map((entry) => ({
         slug: entry.slug,
-        displayName: entry.displayName,
+        displayName: entry.presentation.displayName,
         latestVersion: entry.latestVersion,
         updatedAt: entry.updatedAt,
       })),
@@ -1262,6 +1536,18 @@ export async function getSkillHubDetail(params: {
   const installState = await readWorkspaceInstallState(params.workspaceDir);
   return {
     ...(await mapMetadataToListEntry({ metadata, actor: params.actor, installState })),
+    ...(metadata.sourceDescription ? { sourceDescription: metadata.sourceDescription } : {}),
+    presentationEdit: {
+      ...(metadata.presentation.displayName
+        ? { displayName: metadata.presentation.displayName }
+        : {}),
+      ...(metadata.presentation.displayDescription
+        ? { displayDescription: metadata.presentation.displayDescription }
+        : {}),
+      ...(metadata.presentation.category ? { category: metadata.presentation.category } : {}),
+      revision: metadata.presentation.revision ?? 0,
+      ...(metadata.presentation.updatedAt ? { updatedAt: metadata.presentation.updatedAt } : {}),
+    },
     examplePrompts: metadata.presentation.examplePrompts,
     versions: metadata.versions.slice().toSorted((a, b) => compareSemver(b.version, a.version)),
   };
@@ -1286,7 +1572,7 @@ async function recalculateInstallerCount(slug: string): Promise<number> {
       if (entry.name !== WORKSPACE_INSTALL_STATE_FILE) {
         continue;
       }
-      const state = await readJsonFile(fullPath, { skills: {} });
+      const state = await readJsonFile<SkillHubInstallState>(fullPath, { skills: {} });
       if (state.skills[slug]) {
         count += 1;
       }
@@ -1313,7 +1599,7 @@ async function detachHubInstallReferences(slug: string): Promise<void> {
       if (entry.name !== WORKSPACE_INSTALL_STATE_FILE) {
         continue;
       }
-      const state = await readJsonFile(fullPath, { skills: {} });
+      const state = await readJsonFile<SkillHubInstallState>(fullPath, { skills: {} });
       if (!state.skills[slug]) {
         continue;
       }
@@ -1330,38 +1616,40 @@ async function installSkillHubVersionToWorkspace(params: {
   slug: string;
   version: string;
 }) {
-  const metadata = await readSkillHubMetadata(params.slug);
-  if (!metadata) {
-    throw new Error(`skill not found: ${params.slug}`);
-  }
-  if (metadata.hidden) {
-    const current = await readWorkspaceInstallState(params.workspaceDir);
-    if (!current.skills[params.slug]) {
-      throw new Error("skill is hidden and cannot be newly installed");
+  return await withSkillHubSlugLock(params.slug, async () => {
+    const metadata = await readSkillHubMetadata(params.slug);
+    if (!metadata) {
+      throw new Error(`skill not found: ${params.slug}`);
     }
-  }
-  const versionDir = resolveSkillHubVersionDir(params.slug, params.version);
-  const destinationDir = path.join(params.workspaceDir, "skills", params.slug);
-  await copySkillDirectory(versionDir, destinationDir);
-  const state = await readWorkspaceInstallState(params.workspaceDir);
-  const nowIso = new Date().toISOString();
-  state.skills[params.slug] = {
-    slug: params.slug,
-    displayName: metadata.displayName,
-    installedVersion: params.version,
-    source: "hub",
-    installedAt: state.skills[params.slug]?.installedAt ?? nowIso,
-    updatedAt: nowIso,
-    installedPath: destinationDir,
-  };
-  await writeWorkspaceInstallState(params.workspaceDir, state);
-  metadata.stats.installCount += 1;
-  metadata.stats.installerCount = await recalculateInstallerCount(params.slug);
-  await writeSkillHubMetadata(metadata);
-  bumpSkillsSnapshotVersion({
-    workspaceDir: params.workspaceDir,
-    reason: "manual",
-    changedPath: path.join(destinationDir, "SKILL.md"),
+    if (metadata.hidden) {
+      const current = await readWorkspaceInstallState(params.workspaceDir);
+      if (!current.skills[params.slug]) {
+        throw new Error("skill is hidden and cannot be newly installed");
+      }
+    }
+    const versionDir = resolveSkillHubVersionDir(params.slug, params.version);
+    const destinationDir = path.join(params.workspaceDir, "skills", params.slug);
+    await copySkillDirectory(versionDir, destinationDir);
+    const state = await readWorkspaceInstallState(params.workspaceDir);
+    const nowIso = new Date().toISOString();
+    state.skills[params.slug] = {
+      slug: params.slug,
+      displayName: metadata.displayName,
+      installedVersion: params.version,
+      source: "hub",
+      installedAt: state.skills[params.slug]?.installedAt ?? nowIso,
+      updatedAt: nowIso,
+      installedPath: destinationDir,
+    };
+    await writeWorkspaceInstallState(params.workspaceDir, state);
+    metadata.stats.installCount += 1;
+    metadata.stats.installerCount = await recalculateInstallerCount(params.slug);
+    await writeSkillHubMetadata(metadata);
+    bumpSkillsSnapshotVersion({
+      workspaceDir: params.workspaceDir,
+      reason: "manual",
+      changedPath: path.join(destinationDir, "SKILL.md"),
+    });
   });
 }
 
@@ -1434,36 +1722,38 @@ export async function updateSkillFromHub(params: {
 }
 
 export async function deleteSkillFromHub(params: { slug: string; actor: SkillHubActor }) {
-  const metadata = await readSkillHubMetadata(params.slug);
-  if (!metadata) {
-    throw new Error(`skill not found: ${params.slug}`);
-  }
-  const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
-  const actorIsAdmin = params.actor.globalRole === "admin";
-  if (!actorIsOwner && !actorIsAdmin) {
-    throw new Error("only the skill owner or an admin can delete this skill from Skill Hub");
-  }
-  const nowIso = new Date().toISOString();
-  await removeDirIfExists(resolveSkillHubMetadataPath(params.slug));
-  await removeDirIfExists(path.join(REGISTRY_ROOT, params.slug));
-  await removeDirIfExists(resolveLikesStatePath(params.slug));
-  await detachHubInstallReferences(params.slug);
-  await refreshSkillHubAggregates();
-  await appendEventLog("hub-deletes.ndjson", {
-    ts: nowIso,
-    slug: params.slug,
-    actor: params.actor,
-    by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
-  });
-  appendSkillOwnershipEvent({
-    slug: params.slug,
-    actorAccountId: params.actor.employeeId,
-    eventType: "skill.deleted.from_hub",
-    payload: {
+  return await withSkillHubSlugLock(params.slug, async () => {
+    const metadata = await readSkillHubMetadata(params.slug);
+    if (!metadata) {
+      throw new Error(`skill not found: ${params.slug}`);
+    }
+    const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
+    const actorIsAdmin = params.actor.globalRole === "admin";
+    if (!actorIsOwner && !actorIsAdmin) {
+      throw new Error("only the skill owner or an admin can delete this skill from Skill Hub");
+    }
+    const nowIso = new Date().toISOString();
+    await removeDirIfExists(resolveSkillHubMetadataPath(params.slug));
+    await removeDirIfExists(path.join(REGISTRY_ROOT, params.slug));
+    await removeDirIfExists(resolveLikesStatePath(params.slug));
+    await detachHubInstallReferences(params.slug);
+    await refreshSkillHubAggregates();
+    await appendEventLog("hub-deletes.ndjson", {
+      ts: nowIso,
+      slug: params.slug,
+      actor: params.actor,
       by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
-      previousOwnerAccountId: metadata.owner.accountId,
-      previousUploaderEmployeeId: metadata.uploader.employeeId,
-    },
+    });
+    appendSkillOwnershipEvent({
+      slug: params.slug,
+      actorAccountId: params.actor.employeeId,
+      eventType: "skill.deleted.from_hub",
+      payload: {
+        by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
+        previousOwnerAccountId: metadata.owner.accountId,
+        previousUploaderEmployeeId: metadata.uploader.employeeId,
+      },
+    });
   });
 }
 
@@ -1471,34 +1761,36 @@ export async function toggleSkillHubLike(params: {
   slug: string;
   actor: SkillHubActor;
 }): Promise<{ slug: string; liked: boolean; likeCount: number }> {
-  const metadata = await readSkillHubMetadata(params.slug);
-  if (!metadata) {
-    throw new Error(`skill not found: ${params.slug}`);
-  }
-  const state = await readLikesState(params.slug);
-  const actorId = params.actor.employeeId;
-  let liked = false;
-  if (state.actors[actorId]) {
-    delete state.actors[actorId];
-    liked = false;
-  } else {
-    state.actors[actorId] = { likedAt: new Date().toISOString() };
-    liked = true;
-  }
-  await writeLikesState(params.slug, state);
-  metadata.engagement.likeCount = await recalculateLikeCount(params.slug);
-  await writeSkillHubMetadata(metadata);
-  await appendEventLog("likes.ndjson", {
-    ts: new Date().toISOString(),
-    slug: params.slug,
-    actor: params.actor,
-    liked,
+  return await withSkillHubSlugLock(params.slug, async () => {
+    const metadata = await readSkillHubMetadata(params.slug);
+    if (!metadata) {
+      throw new Error(`skill not found: ${params.slug}`);
+    }
+    const state = await readLikesState(params.slug);
+    const actorId = params.actor.employeeId;
+    let liked = false;
+    if (state.actors[actorId]) {
+      delete state.actors[actorId];
+      liked = false;
+    } else {
+      state.actors[actorId] = { likedAt: new Date().toISOString() };
+      liked = true;
+    }
+    await writeLikesState(params.slug, state);
+    metadata.engagement.likeCount = await recalculateLikeCount(params.slug);
+    await writeSkillHubMetadata(metadata);
+    await appendEventLog("likes.ndjson", {
+      ts: new Date().toISOString(),
+      slug: params.slug,
+      actor: params.actor,
+      liked,
+    });
+    return {
+      slug: params.slug,
+      liked,
+      likeCount: metadata.engagement.likeCount,
+    };
   });
-  return {
-    slug: params.slug,
-    liked,
-    likeCount: metadata.engagement.likeCount,
-  };
 }
 
 export async function updateSkillHubExamplePrompts(params: {
@@ -1506,29 +1798,33 @@ export async function updateSkillHubExamplePrompts(params: {
   actor: SkillHubActor;
   examplePrompts: string[];
 }): Promise<{ slug: string; examplePrompts: string[] }> {
-  const metadata = await readSkillHubMetadata(params.slug);
-  if (!metadata) {
-    throw new Error(`skill not found: ${params.slug}`);
-  }
-  const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
-  const actorIsAdmin = params.actor.globalRole === "admin";
-  if (!actorIsOwner && !actorIsAdmin) {
-    throw new Error("only the skill owner or an admin can edit example prompts");
-  }
-  metadata.presentation.examplePrompts = sanitizeExamplePrompts(params.examplePrompts);
-  metadata.updatedAt = new Date().toISOString();
-  await writeSkillHubMetadata(metadata);
-  await appendEventLog("example-prompts.ndjson", {
-    ts: metadata.updatedAt,
-    slug: params.slug,
-    actor: params.actor,
-    count: metadata.presentation.examplePrompts.length,
-    by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
+  return await withSkillHubSlugLock(params.slug, async () => {
+    const metadata = await readSkillHubMetadata(params.slug);
+    if (!metadata) {
+      throw new Error(`skill not found: ${params.slug}`);
+    }
+    const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
+    const actorIsAdmin = params.actor.globalRole === "admin";
+    if (!actorIsOwner && !actorIsAdmin) {
+      throw new Error("only the skill owner or an admin can edit example prompts");
+    }
+    metadata.presentation.examplePrompts = sanitizeExamplePrompts(params.examplePrompts);
+    const presentationUpdatedAt = new Date().toISOString();
+    metadata.presentation.revision = (metadata.presentation.revision ?? 0) + 1;
+    metadata.presentation.updatedAt = presentationUpdatedAt;
+    await writeSkillHubMetadata(metadata);
+    await appendEventLog("example-prompts.ndjson", {
+      ts: presentationUpdatedAt,
+      slug: params.slug,
+      actor: params.actor,
+      count: metadata.presentation.examplePrompts.length,
+      by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
+    });
+    return {
+      slug: params.slug,
+      examplePrompts: metadata.presentation.examplePrompts,
+    };
   });
-  return {
-    slug: params.slug,
-    examplePrompts: metadata.presentation.examplePrompts,
-  };
 }
 
 export async function updateSkillHubMetadata(params: {
@@ -1537,38 +1833,177 @@ export async function updateSkillHubMetadata(params: {
   summary: string;
   examplePrompts: string[];
 }): Promise<{ slug: string; summary: string; examplePrompts: string[] }> {
-  const metadata = await readSkillHubMetadata(params.slug);
-  if (!metadata) {
-    throw new Error(`skill not found: ${params.slug}`);
-  }
-  const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
-  const actorIsAdmin = params.actor.globalRole === "admin";
-  if (!actorIsOwner && !actorIsAdmin) {
-    throw new Error("only the skill owner or an admin can edit this skill");
-  }
-  metadata.summary = trimSummary(params.summary);
-  metadata.presentation.examplePrompts = sanitizeExamplePrompts(params.examplePrompts);
-  metadata.updatedAt = new Date().toISOString();
-  await writeSkillHubMetadata(metadata);
-  await appendEventLog("skill-metadata.ndjson", {
-    ts: metadata.updatedAt,
-    slug: params.slug,
-    actor: params.actor,
-    by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
-  });
-  appendSkillOwnershipEvent({
-    slug: params.slug,
-    actorAccountId: params.actor.employeeId,
-    eventType: "skill.metadata.updated",
-    payload: {
+  return await withSkillHubSlugLock(params.slug, async () => {
+    const metadata = await readSkillHubMetadata(params.slug);
+    if (!metadata) {
+      throw new Error(`skill not found: ${params.slug}`);
+    }
+    const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
+    const actorIsAdmin = params.actor.globalRole === "admin";
+    if (!actorIsOwner && !actorIsAdmin) {
+      throw new Error("only the skill owner or an admin can edit this skill");
+    }
+    metadata.summary = trimSummary(params.summary);
+    metadata.presentation.examplePrompts = sanitizeExamplePrompts(params.examplePrompts);
+    const presentationUpdatedAt = new Date().toISOString();
+    metadata.presentation.revision = (metadata.presentation.revision ?? 0) + 1;
+    metadata.presentation.updatedAt = presentationUpdatedAt;
+    await writeSkillHubMetadata(metadata);
+    await appendEventLog("skill-metadata.ndjson", {
+      ts: presentationUpdatedAt,
+      slug: params.slug,
+      actor: params.actor,
       by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
-    },
+    });
+    appendSkillOwnershipEvent({
+      slug: params.slug,
+      actorAccountId: params.actor.employeeId,
+      eventType: "skill.metadata.updated",
+      payload: {
+        by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
+      },
+    });
+    return {
+      slug: params.slug,
+      summary: metadata.summary,
+      examplePrompts: metadata.presentation.examplePrompts,
+    };
   });
-  return {
-    slug: params.slug,
-    summary: metadata.summary,
-    examplePrompts: metadata.presentation.examplePrompts,
-  };
+}
+
+export async function updateSkillHubPresentation(params: {
+  slug: string;
+  actor: SkillHubActor;
+  expectedRevision: number;
+  displayName: string | null;
+  displayDescription: string | null;
+  category: SkillCategory | null;
+  examplePrompts: string[];
+  iconChange?:
+    | { action: "upload"; mimeType: "image/png"; dataBase64: string }
+    | { action: "reset" };
+}): Promise<{
+  slug: string;
+  presentation: ResolvedSkillHubPresentation;
+  revision: number;
+  updatedAt?: string;
+  noOp: boolean;
+}> {
+  return await withSkillHubSlugLock(params.slug, () =>
+    withSkillHubIconAssetsLock(async () => {
+      const metadata = await readSkillHubMetadata(params.slug);
+      if (!metadata) {
+        throw new Error(`skill not found: ${params.slug}`);
+      }
+      const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
+      const actorIsAdmin = params.actor.globalRole === "admin";
+      if (!actorIsOwner && !actorIsAdmin) {
+        throw new Error("only the skill owner or an admin can edit presentation metadata");
+      }
+      const currentRevision = metadata.presentation.revision ?? 0;
+      if (params.expectedRevision !== currentRevision) {
+        throw new Error("skill presentation changed; refresh the detail and try again");
+      }
+      const displayName = normalizePresentationText(
+        params.displayName,
+        MAX_PRESENTATION_DISPLAY_NAME_CHARS,
+        "displayName",
+      );
+      const displayDescription = normalizePresentationText(
+        params.displayDescription,
+        MAX_PRESENTATION_DESCRIPTION_CHARS,
+        "displayDescription",
+      );
+      if (params.category !== null && !normalizeSkillCategory(params.category)) {
+        throw new Error("invalid skill category");
+      }
+      const category = params.category ?? undefined;
+      const examplePrompts = sanitizeExamplePrompts(params.examplePrompts);
+      let icon = metadata.presentation.icon;
+      if (params.iconChange?.action === "upload") {
+        const encoded = params.iconChange.dataBase64.trim();
+        if (
+          !encoded ||
+          encoded.length % 4 !== 0 ||
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)
+        ) {
+          throw new Error("Skill Hub icon data is not valid base64");
+        }
+        const stored = await normalizeAndStoreSkillHubIcon({
+          data: Buffer.from(encoded, "base64"),
+          mimeType: params.iconChange.mimeType,
+        });
+        icon = { type: "uploaded", assetId: stored.assetId };
+      } else if (params.iconChange?.action === "reset") {
+        icon = undefined;
+      }
+      const noOp =
+        metadata.presentation.displayName === displayName &&
+        metadata.presentation.displayDescription === displayDescription &&
+        metadata.presentation.category === category &&
+        metadata.presentation.icon?.assetId === icon?.assetId &&
+        stringArraysEqual(metadata.presentation.examplePrompts, examplePrompts);
+      if (noOp) {
+        return {
+          slug: metadata.slug,
+          presentation: resolveSkillPresentation({
+            slug: metadata.slug,
+            sourceDescription: metadata.sourceDescription,
+            legacySummary: metadata.summary,
+            presentation: metadata.presentation,
+          }),
+          revision: currentRevision,
+          ...(metadata.presentation.updatedAt
+            ? { updatedAt: metadata.presentation.updatedAt }
+            : {}),
+          noOp: true,
+        };
+      }
+      const nowIso = new Date().toISOString();
+      metadata.presentation = {
+        ...metadata.presentation,
+        ...(displayName ? { displayName } : {}),
+        ...(displayDescription ? { displayDescription } : {}),
+        ...(category ? { category } : {}),
+        ...(icon ? { icon } : {}),
+        examplePrompts,
+        revision: currentRevision + 1,
+        updatedAt: nowIso,
+      };
+      if (!displayName) {
+        delete metadata.presentation.displayName;
+      }
+      if (!displayDescription) {
+        delete metadata.presentation.displayDescription;
+      }
+      if (!category) {
+        delete metadata.presentation.category;
+      }
+      if (!icon) {
+        delete metadata.presentation.icon;
+      }
+      await writeSkillHubMetadata(metadata);
+      await appendEventLog("skill-presentation.ndjson", {
+        ts: nowIso,
+        slug: params.slug,
+        actor: params.actor,
+        revision: currentRevision + 1,
+        by: actorIsAdmin && !actorIsOwner ? "admin" : "owner",
+      });
+      return {
+        slug: metadata.slug,
+        presentation: resolveSkillPresentation({
+          slug: metadata.slug,
+          sourceDescription: metadata.sourceDescription,
+          legacySummary: metadata.summary,
+          presentation: metadata.presentation,
+        }),
+        revision: currentRevision + 1,
+        updatedAt: nowIso,
+        noOp: false,
+      };
+    }),
+  );
 }
 
 export async function transferSkillHubOwnership(params: {
@@ -1577,54 +2012,56 @@ export async function transferSkillHubOwnership(params: {
   targetAccountId: string;
   reason?: string | null;
 }): Promise<{ slug: string; ownerAccountId: string; ownerName: string }> {
-  const metadata = await readSkillHubMetadata(params.slug);
-  if (!metadata) {
-    throw new Error(`skill not found: ${params.slug}`);
-  }
-  const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
-  const actorIsAdmin = params.actor.globalRole === "admin";
-  if (!actorIsOwner && !actorIsAdmin) {
-    throw new Error("only the current owner or an admin can transfer skill ownership");
-  }
-  const target = getAccountById(params.targetAccountId);
-  if (!target || target.status !== "active") {
-    throw new Error("target account not found");
-  }
-  if (actorIsAdmin && !actorIsOwner && !trimOrNull(params.reason)) {
-    throw new Error("admins must provide a transfer reason");
-  }
-  const previousOwnerAccountId = metadata.owner.accountId;
-  metadata.owner = {
-    accountId: target.id,
-    ...(resolveAccountDisplayName(target.id)
-      ? { name: resolveAccountDisplayName(target.id)! }
-      : {}),
-  };
-  metadata.updatedAt = new Date().toISOString();
-  await writeSkillHubMetadata(metadata);
-  await appendEventLog("ownership-transfers.ndjson", {
-    ts: metadata.updatedAt,
-    slug: params.slug,
-    actor: params.actor,
-    previousOwnerAccountId,
-    nextOwnerAccountId: target.id,
-    reason: trimOrNull(params.reason),
-  });
-  appendSkillOwnershipEvent({
-    slug: params.slug,
-    actorAccountId: params.actor.employeeId,
-    eventType: "skill.ownership.transferred",
-    payload: {
+  return await withSkillHubSlugLock(params.slug, async () => {
+    const metadata = await readSkillHubMetadata(params.slug);
+    if (!metadata) {
+      throw new Error(`skill not found: ${params.slug}`);
+    }
+    const actorIsOwner = metadata.owner.accountId === params.actor.employeeId;
+    const actorIsAdmin = params.actor.globalRole === "admin";
+    if (!actorIsOwner && !actorIsAdmin) {
+      throw new Error("only the current owner or an admin can transfer skill ownership");
+    }
+    const target = getAccountById(params.targetAccountId);
+    if (!target || target.status !== "active") {
+      throw new Error("target account not found");
+    }
+    if (actorIsAdmin && !actorIsOwner && !trimOrNull(params.reason)) {
+      throw new Error("admins must provide a transfer reason");
+    }
+    const previousOwnerAccountId = metadata.owner.accountId;
+    metadata.owner = {
+      accountId: target.id,
+      ...(resolveAccountDisplayName(target.id)
+        ? { name: resolveAccountDisplayName(target.id)! }
+        : {}),
+    };
+    const transferredAt = new Date().toISOString();
+    await writeSkillHubMetadata(metadata);
+    await appendEventLog("ownership-transfers.ndjson", {
+      ts: transferredAt,
+      slug: params.slug,
+      actor: params.actor,
       previousOwnerAccountId,
       nextOwnerAccountId: target.id,
       reason: trimOrNull(params.reason),
-    },
+    });
+    appendSkillOwnershipEvent({
+      slug: params.slug,
+      actorAccountId: params.actor.employeeId,
+      eventType: "skill.ownership.transferred",
+      payload: {
+        previousOwnerAccountId,
+        nextOwnerAccountId: target.id,
+        reason: trimOrNull(params.reason),
+      },
+    });
+    return {
+      slug: params.slug,
+      ownerAccountId: target.id,
+      ownerName: resolveAccountDisplayName(target.id) ?? target.id,
+    };
   });
-  return {
-    slug: params.slug,
-    ownerAccountId: target.id,
-    ownerName: resolveAccountDisplayName(target.id) ?? target.id,
-  };
 }
 
 export async function deleteSkillFromWorkspace(params: {
@@ -1648,8 +2085,14 @@ export async function deleteSkillFromWorkspace(params: {
     await writeWorkspaceInstallState(params.workspaceDir, state);
     const metadata = await readSkillHubMetadata(hubSlug);
     if (metadata) {
-      metadata.stats.installerCount = await recalculateInstallerCount(hubSlug);
-      await writeSkillHubMetadata(metadata);
+      await withSkillHubSlugLock(hubSlug, async () => {
+        const latestMetadata = await readSkillHubMetadata(hubSlug);
+        if (!latestMetadata) {
+          return;
+        }
+        latestMetadata.stats.installerCount = await recalculateInstallerCount(hubSlug);
+        await writeSkillHubMetadata(latestMetadata);
+      });
     }
     await appendEventLog("deletes.ndjson", {
       ts: new Date().toISOString(),
@@ -1795,7 +2238,11 @@ export function formatHubPublishMessage(params: {
   version: string;
   created: boolean;
   noOp?: boolean;
+  presentationUpdated?: boolean;
 }): string {
+  if (params.presentationUpdated) {
+    return "스킬 표시 정보가 저장되었습니다.";
+  }
   if (params.noOp) {
     return "이미 최신 상태입니다.";
   }

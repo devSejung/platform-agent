@@ -148,6 +148,7 @@ import {
   loadSessionEntry,
   readSessionMessages,
 } from "./session-utils.js";
+import { startSkillHubIconGcScheduler } from "./skill-hub-icon-gc-scheduler.js";
 import {
   ensureGatewayStartupAuth,
   mergeGatewayAuthConfig,
@@ -885,6 +886,7 @@ export async function startGatewayServer(
   let skillsChangeUnsub = () => {};
   let channelHealthMonitor: ReturnType<typeof startChannelHealthMonitor> | null = null;
   let stopModelPricingRefresh = () => {};
+  let stopSkillHubIconGc = () => {};
   let mcpServer: { port: number; close: () => Promise<void> } | undefined;
   let configReloader: { stop: () => Promise<void> } = { stop: async () => {} };
   const closeOnStartupFailure = async () => {
@@ -913,6 +915,7 @@ export async function startGatewayServer(
       cron,
       heartbeatRunner,
       updateCheckStop: stopGatewayUpdateCheck,
+      stopSkillHubIconGc,
       nodePresenceTimers,
       broadcast,
       tickInterval,
@@ -1017,6 +1020,12 @@ export async function startGatewayServer(
 
     if (!minimalTestGateway) {
       startTaskRegistryMaintenance();
+      stopSkillHubIconGc = startSkillHubIconGcScheduler({
+        log: {
+          info: (message) => log.info(message),
+          warn: (message) => log.warn(message),
+        },
+      });
       ({ tickInterval, healthInterval, dedupeCleanup, mediaCleanup } =
         startGatewayMaintenanceTimers({
           broadcast,
@@ -1688,6 +1697,7 @@ export async function startGatewayServer(
     cron,
     heartbeatRunner,
     updateCheckStop: stopGatewayUpdateCheck,
+    stopSkillHubIconGc,
     stopTaskRegistryMaintenance,
     nodePresenceTimers,
     broadcast,

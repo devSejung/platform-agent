@@ -2,6 +2,26 @@ import type { GatewayBrowserClient } from "../gateway.ts";
 
 export type SkillHubScope = "discover" | "installed" | "uploads" | "updates";
 export type SkillHubSort = "recent" | "installs" | "likes" | "az";
+export type SkillCategory = "knowledge" | "automation" | "utility" | "other";
+export type SkillHubCategoryFilter = "all" | SkillCategory;
+
+export type SkillHubPublishPresentationDraft = {
+  displayName: string;
+  displayDescription: string;
+  category: SkillCategory | "";
+  iconFile: File | null;
+};
+
+export type SkillHubPresentation = {
+  displayName: string;
+  displayDescription: string;
+  category: SkillCategory;
+  icon: {
+    source: "uploaded" | "category_default";
+    assetUrl?: string;
+    fallbackKey: SkillCategory;
+  };
+};
 export type WorkspacePublishState =
   | "new_local_skill"
   | "update_available_from_local"
@@ -43,6 +63,7 @@ export type SkillHubEntry = {
   slug: string;
   displayName: string;
   summary: string;
+  presentation: SkillHubPresentation;
   uploaderName: string;
   uploaderEmployeeId: string;
   ownerAccountId: string;
@@ -69,6 +90,14 @@ export type SkillHubEntry = {
 };
 
 export type SkillHubDetail = SkillHubEntry & {
+  sourceDescription?: string;
+  presentationEdit: {
+    displayName?: string;
+    displayDescription?: string;
+    category?: SkillCategory;
+    revision: number;
+    updatedAt?: string;
+  };
   examplePrompts: string[];
   versions: Array<{
     version: string;
@@ -89,6 +118,7 @@ export type SkillHubState = {
   skillHubError: string | null;
   skillHubScope: SkillHubScope;
   skillHubSort: SkillHubSort;
+  skillHubCategory: SkillHubCategoryFilter;
   skillHubQuery: string;
   skillHubDetail: SkillHubDetail | null;
   skillHubDetailSlug: string | null;
@@ -107,7 +137,12 @@ export type SkillHubState = {
   skillHubEditorTitle: string | null;
   skillHubEditorSkillName: string | null;
   skillHubEditorFile: File | null;
+  skillHubEditorIconFile: File | null;
+  skillHubEditorIconReset: boolean;
   skillHubEditorDescription: string;
+  skillHubEditorDisplayName: string;
+  skillHubEditorCategory: SkillCategory | "";
+  skillHubEditorRevision: number;
   skillHubEditorPrompts: string[];
   skillHubEditorError: string | null;
   skillHubEditorLoading: boolean;
@@ -130,6 +165,7 @@ export async function loadSkillHub(state: SkillHubState) {
     const result = await state.client.request<{ entries: SkillHubEntry[] }>("skillhub.list", {
       scope: state.skillHubScope,
       sort: state.skillHubSort,
+      ...(state.skillHubCategory !== "all" ? { category: state.skillHubCategory } : {}),
       ...(state.skillHubQuery.trim() ? { query: state.skillHubQuery.trim() } : {}),
     });
     state.skillHubEntries = result?.entries ?? [];
@@ -207,7 +243,11 @@ function padEditorPrompts(prompts: string[]): string[] {
 export async function resolveExistingSkillHubPromptsForSkillName(
   state: SkillHubState,
   skillName: string,
-): Promise<{ slug: string; examplePrompts: string[] } | null> {
+): Promise<{
+  slug: string;
+  examplePrompts: string[];
+  presentationEdit: SkillHubDetail["presentationEdit"];
+} | null> {
   if (!state.client || !state.connected) {
     return null;
   }
@@ -224,6 +264,7 @@ export async function resolveExistingSkillHubPromptsForSkillName(
     return {
       slug: state.skillHubDetail.slug,
       examplePrompts: [...state.skillHubDetail.examplePrompts],
+      presentationEdit: state.skillHubDetail.presentationEdit,
     };
   }
 
@@ -249,6 +290,7 @@ export async function resolveExistingSkillHubPromptsForSkillName(
     return {
       slug,
       examplePrompts: [...state.skillHubDetail.examplePrompts],
+      presentationEdit: state.skillHubDetail.presentationEdit,
     };
   }
 
@@ -265,6 +307,7 @@ export async function resolveExistingSkillHubPromptsForSkillName(
   return {
     slug,
     examplePrompts: [...result.detail.examplePrompts],
+    presentationEdit: result.detail.presentationEdit,
   };
 }
 
@@ -276,7 +319,7 @@ async function runMutation(
   state: SkillHubState,
   slug: string,
   request: Promise<{ message?: string; version?: string }>,
-  options?: { clearDetailOnSuccess?: boolean },
+  options?: { clearDetailOnSuccess?: boolean; rethrowOnError?: boolean },
 ) {
   state.skillHubBusySlug = slug;
   state.skillHubMessage = null;
@@ -300,6 +343,9 @@ async function runMutation(
       kind: "error",
       text: getErrorMessage(err),
     };
+    if (options?.rethrowOnError) {
+      throw err;
+    }
   } finally {
     state.skillHubBusySlug = null;
   }
@@ -405,10 +451,39 @@ export async function toggleLikeSkillHubSkill(state: SkillHubState, slug: string
   }
 }
 
+async function encodePngIconFile(file: File | null) {
+  if (!file) {
+    return undefined;
+  }
+  if (file.type !== "image/png") {
+    throw new Error("Choose a PNG icon file.");
+  }
+  if (file.size > 256 * 1024) {
+    throw new Error("PNG icon must be 256 KB or smaller.");
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return { mimeType: "image/png" as const, dataBase64: btoa(binary) };
+}
+
+async function buildPublishPresentationDraft(draft: SkillHubPublishPresentationDraft) {
+  const iconUpload = await encodePngIconFile(draft.iconFile);
+  return {
+    displayName: draft.displayName.trim() || null,
+    displayDescription: draft.displayDescription.trim() || null,
+    category: draft.category || null,
+    ...(iconUpload ? { iconUpload } : {}),
+  };
+}
+
 export async function publishWorkspaceSkillWithPrompts(
   state: SkillHubState,
   entry: WorkspacePublishEntry,
   examplePrompts: string[],
+  presentationDraft?: SkillHubPublishPresentationDraft,
 ) {
   if (!state.client || !state.connected) {
     return;
@@ -422,6 +497,9 @@ export async function publishWorkspaceSkillWithPrompts(
   state.skillHubWorkspacePublishing = true;
   state.skillHubWorkspacePendingKeys = [...state.skillHubWorkspacePendingKeys, entry.skillKey];
   try {
+    const presentation = presentationDraft
+      ? await buildPublishPresentationDraft(presentationDraft)
+      : undefined;
     const result = await state.client.request<{ message?: string }>("skillhub.publish", {
       skillName: entry.skillName,
       intent: entry.state === "new_local_skill" ? "create" : "update",
@@ -429,6 +507,7 @@ export async function publishWorkspaceSkillWithPrompts(
       expectedLocalChecksum: entry.localChecksum,
       expectedHubChecksum: entry.hubChecksum ?? null,
       examplePrompts,
+      ...(presentation ? { presentation } : {}),
     });
     state.skillHubMessage = {
       kind: "success",
@@ -456,6 +535,7 @@ export async function uploadSkillHubPackageWithPrompts(
   state: SkillHubState,
   file: File,
   examplePrompts: string[],
+  presentationDraft?: SkillHubPublishPresentationDraft,
 ) {
   if (!state.client || !state.connected) {
     return;
@@ -470,10 +550,14 @@ export async function uploadSkillHubPackageWithPrompts(
       binary += String.fromCharCode(...chunk);
     }
     const contentBase64 = btoa(binary);
+    const presentation = presentationDraft
+      ? await buildPublishPresentationDraft(presentationDraft)
+      : undefined;
     const result = await state.client.request<{ message?: string }>("skillhub.upload", {
       filename: file.name,
       contentBase64,
       examplePrompts,
+      ...(presentation ? { presentation } : {}),
     });
     state.skillHubMessage = {
       kind: "success",
@@ -512,21 +596,45 @@ export async function updateSkillHubExamplePromptsAction(
   );
 }
 
-export async function updateSkillHubMetadataAction(
+export async function updateSkillHubPresentationAction(
   state: SkillHubState,
-  params: { slug: string; summary: string; examplePrompts: string[] },
+  params: {
+    slug: string;
+    expectedRevision: number;
+    displayName: string;
+    displayDescription: string;
+    category: SkillCategory | "";
+    examplePrompts: string[];
+    iconFile: File | null;
+    resetIcon: boolean;
+  },
 ) {
   if (!state.client || !state.connected) {
     return;
   }
+  let iconChange:
+    | { action: "upload"; mimeType: "image/png"; dataBase64: string }
+    | { action: "reset" }
+    | undefined;
+  if (params.iconFile) {
+    const upload = await encodePngIconFile(params.iconFile);
+    iconChange = upload ? { action: "upload", ...upload } : undefined;
+  } else if (params.resetIcon) {
+    iconChange = { action: "reset" };
+  }
   await runMutation(
     state,
     params.slug,
-    state.client.request("skillhub.metadata.update", {
+    state.client.request("skillhub.presentation.update", {
       slug: params.slug,
-      summary: params.summary,
+      expectedRevision: params.expectedRevision,
+      displayName: params.displayName.trim() || null,
+      displayDescription: params.displayDescription.trim() || null,
+      category: params.category || null,
       examplePrompts: params.examplePrompts,
+      ...(iconChange ? { iconChange } : {}),
     }),
+    { rethrowOnError: true },
   );
 }
 

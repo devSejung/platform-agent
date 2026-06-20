@@ -466,9 +466,12 @@ describe("handleToolExecutionEnd media emission", () => {
     });
 
     expect(ctx.emitBlockReply).toHaveBeenCalledWith({
-      text: "핵심 결과 그래프야.",
       mediaUrls: ["/tmp/plot.png"],
       assistantArtifactDelivery: true,
+      assistantArtifact: {
+        caption: "핵심 결과 그래프야.",
+        deliveryId: `${ctx.params.runId}:tc-artifact`,
+      },
     });
     expect(ctx.state.pendingToolMediaUrls).toEqual([]);
   });

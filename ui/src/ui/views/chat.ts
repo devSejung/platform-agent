@@ -12,6 +12,10 @@ import type {
   RunPhaseStatus,
 } from "../app-tool-stream.ts";
 import {
+  renderArtifactFocusViewer,
+  type ArtifactFocusItem,
+} from "../chat/artifact-focus-viewer.ts";
+import {
   CHAT_ATTACHMENT_ACCEPT,
   isSupportedChatAttachmentMimeType,
 } from "../chat/attachment-support.ts";
@@ -105,6 +109,9 @@ export type ChatProps = {
   onNavigateToAgent?: () => void;
   onSessionSelect?: (sessionKey: string) => void;
   onOpenSidebar?: (content: string) => void;
+  artifactFocus?: ArtifactFocusItem | null;
+  onOpenArtifact?: (artifact: ArtifactFocusItem) => void;
+  onCloseArtifact?: () => void;
   onCloseSidebar?: () => void;
   onSplitRatioChange?: (ratio: number) => void;
   onChatScroll?: (event: Event) => void;
@@ -1816,6 +1823,7 @@ export function renderChat(props: ChatProps) {
               }
               return renderMessageGroup(item, {
                 onOpenSidebar: props.onOpenSidebar,
+                onOpenArtifact: props.onOpenArtifact,
                 showReasoning,
                 showToolCalls: props.showToolCalls,
                 assistantName: props.assistantName,
@@ -1962,6 +1970,10 @@ export function renderChat(props: ChatProps) {
       @drop=${(e: DragEvent) => handleDrop(e, props)}
       @dragover=${(e: DragEvent) => e.preventDefault()}
     >
+      ${renderArtifactFocusViewer({
+        artifact: props.artifactFocus,
+        onClose: props.onCloseArtifact,
+      })}
       ${props.disabledReason ? html`<div class="callout">${props.disabledReason}</div>` : nothing}
       ${renderRequestStatus(props, liveRunViewState)}
       ${props.focusMode

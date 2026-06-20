@@ -315,9 +315,10 @@ describe("gateway server chat", () => {
           {
             dispatcher: {
               sendBlockReply: (payload: {
-                text: string;
+                text?: string;
                 mediaUrls: string[];
                 assistantArtifactDelivery: boolean;
+                assistantArtifact?: { caption?: string; deliveryId?: string };
               }) => boolean;
               sendFinalReply: (payload: { text: string }) => boolean;
               markComplete: () => void;
@@ -400,15 +401,12 @@ describe("gateway server chat", () => {
       ).resolves.toBe("plot image");
       expect(artifactMessage).toMatchObject({
         role: "assistant",
-        content: expect.arrayContaining([
-          expect.objectContaining({ type: "text", text: "그래프 생성했습니다." }),
-          expect.objectContaining({ workspacePath: attachment?.workspacePath }),
-        ]),
+        content: [expect.objectContaining({ workspacePath: attachment?.workspacePath })],
       });
     });
   });
 
-  test("chat.send keeps final text when assistant artifact copy fails", async () => {
+  test("chat.send skips only a failed artifact and keeps later artifacts and final text", async () => {
     await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
       await connectOk(ws);
       const sessionDir = await createSessionDir();
@@ -418,6 +416,7 @@ describe("gateway server chat", () => {
       const hardlinkPath = path.join(workspaceDir, "plot-hardlink.png");
       await fs.writeFile(sourcePath, "plot image");
       await fs.link(sourcePath, hardlinkPath);
+      await fs.writeFile(path.join(workspaceDir, "result.txt"), "result");
       await writeGatewayConfig({
         agents: {
           defaults: {
@@ -446,6 +445,11 @@ describe("gateway server chat", () => {
         params.dispatcher.sendBlockReply({
           text: "텍스트는 유지됩니다.",
           mediaUrls: ["./plot-hardlink.png"],
+          assistantArtifactDelivery: true,
+        });
+        params.dispatcher.sendBlockReply({
+          text: "caption must not become body text",
+          mediaUrls: ["./result.txt"],
           assistantArtifactDelivery: true,
         });
         params.dispatcher.sendFinalReply({ text: "완료했습니다." });
@@ -488,7 +492,7 @@ describe("gateway server chat", () => {
       ]);
 
       const messages = await fetchHistoryMessages(ws);
-      const artifactAttempt = messages.find((message) => {
+      const artifactMessages = messages.filter((message) => {
         const content = (message as { content?: unknown }).content;
         return (
           Array.isArray(content) &&
@@ -496,33 +500,31 @@ describe("gateway server chat", () => {
             (block) =>
               block &&
               typeof block === "object" &&
-              (block as { text?: unknown }).text === "텍스트는 유지됩니다.",
+              (block as { type?: unknown }).type === "attachment",
           )
         );
-      }) as { content?: unknown[] } | undefined;
-      expect(artifactAttempt).toMatchObject({
-        role: "assistant",
-        content: [expect.objectContaining({ type: "text", text: "텍스트는 유지됩니다." })],
-      });
-      expect(
-        artifactAttempt?.content?.some(
-          (block) =>
-            block &&
-            typeof block === "object" &&
-            (block as { type?: unknown }).type === "attachment",
-        ),
-      ).toBe(false);
+      }) as Array<{ content?: unknown[] }>;
+      expect(artifactMessages).toHaveLength(1);
+      expect(artifactMessages[0]?.content).toEqual([
+        expect.objectContaining({
+          type: "attachment",
+          fileName: "result.txt",
+          mimeType: "text/plain",
+        }),
+      ]);
     });
   });
 
-  test("chat.send preserves multiple assistant artifact deliveries in history order", async () => {
+  test("chat.send preserves mixed assistant artifact messages and final text in history order", async () => {
     await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
       await connectOk(ws);
       const sessionDir = await createSessionDir();
       const workspaceDir = path.join(sessionDir, "workspace");
       await fs.mkdir(workspaceDir, { recursive: true });
-      await fs.writeFile(path.join(workspaceDir, "test-a-result.png"), "test a");
-      await fs.writeFile(path.join(workspaceDir, "test-b-result.png"), "test b");
+      await fs.writeFile(path.join(workspaceDir, "result.txt"), "result");
+      await fs.writeFile(path.join(workspaceDir, "report.pdf"), "%PDF-1.4\n%%EOF\n");
+      await fs.writeFile(path.join(workspaceDir, "graph.png"), "graph image");
+      await fs.writeFile(path.join(workspaceDir, "dashboard.html"), "<h1>Dashboard</h1>");
       await writeGatewayConfig({
         agents: {
           defaults: {
@@ -537,9 +539,10 @@ describe("gateway server chat", () => {
           {
             dispatcher: {
               sendBlockReply: (payload: {
-                text: string;
+                text?: string;
                 mediaUrls: string[];
                 assistantArtifactDelivery: boolean;
+                assistantArtifact?: { caption?: string; deliveryId?: string };
               }) => boolean;
               sendFinalReply: (payload: { text: string }) => boolean;
               markComplete: () => void;
@@ -549,16 +552,26 @@ describe("gateway server chat", () => {
           },
         ];
         params.dispatcher.sendBlockReply({
-          text: "테스트 A 결과야.",
-          mediaUrls: ["./test-a-result.png"],
+          mediaUrls: ["./result.txt"],
           assistantArtifactDelivery: true,
+          assistantArtifact: { caption: "raw result", deliveryId: "artifact-1" },
         });
         params.dispatcher.sendBlockReply({
-          text: "테스트 B 결과야.",
-          mediaUrls: ["./test-b-result.png"],
+          mediaUrls: ["./report.pdf"],
           assistantArtifactDelivery: true,
+          assistantArtifact: { deliveryId: "artifact-2" },
         });
-        params.dispatcher.sendFinalReply({ text: "전체 확인 완료." });
+        params.dispatcher.sendBlockReply({
+          mediaUrls: ["./graph.png"],
+          assistantArtifactDelivery: true,
+          assistantArtifact: { caption: "latency graph", deliveryId: "artifact-3" },
+        });
+        params.dispatcher.sendBlockReply({
+          mediaUrls: ["./dashboard.html"],
+          assistantArtifactDelivery: true,
+          assistantArtifact: { deliveryId: "artifact-4" },
+        });
+        params.dispatcher.sendFinalReply({ text: "위 파일들을 생성해서 첨부했어." });
         params.dispatcher.markComplete();
         await params.dispatcher.waitForIdle();
         return {
@@ -598,9 +611,9 @@ describe("gateway server chat", () => {
         (message): message is { role?: string; content?: unknown[] } =>
           Boolean(
             message &&
-              typeof message === "object" &&
-              (message as { role?: unknown }).role === "assistant" &&
-              Array.isArray((message as { content?: unknown }).content),
+            typeof message === "object" &&
+            (message as { role?: unknown }).role === "assistant" &&
+            Array.isArray((message as { content?: unknown }).content),
           ),
       );
       const delivered = assistantMessages.filter((message) =>
@@ -612,31 +625,46 @@ describe("gateway server chat", () => {
         ),
       );
 
-      expect(delivered).toHaveLength(2);
-      expect(delivered[0]?.content).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ type: "text", text: "테스트 A 결과야." }),
-          expect.objectContaining({
-            type: "attachment",
-            attachmentType: "image",
-            fileName: "test-a-result.png",
-            mimeType: "image/png",
-          }),
-        ]),
-      );
-      expect(delivered[1]?.content).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ type: "text", text: "테스트 B 결과야." }),
-          expect.objectContaining({
-            type: "attachment",
-            attachmentType: "image",
-            fileName: "test-b-result.png",
-            mimeType: "image/png",
-          }),
-        ]),
-      );
+      expect(delivered).toHaveLength(4);
+      expect(delivered.map((message) => message.content?.[0])).toEqual([
+        expect.objectContaining({
+          type: "attachment",
+          attachmentType: "file",
+          fileName: "result.txt",
+          mimeType: "text/plain",
+          caption: "raw result",
+        }),
+        expect.objectContaining({
+          type: "attachment",
+          attachmentType: "file",
+          fileName: "report.pdf",
+          mimeType: "application/pdf",
+        }),
+        expect.objectContaining({
+          type: "attachment",
+          attachmentType: "image",
+          fileName: "graph.png",
+          mimeType: "image/png",
+          caption: "latency graph",
+        }),
+        expect.objectContaining({
+          type: "attachment",
+          attachmentType: "file",
+          fileName: "dashboard.html",
+          mimeType: "text/html",
+        }),
+      ]);
+      expect(delivered.every((message) => message.content?.length === 1)).toBe(true);
+      expect(
+        delivered.some((message) =>
+          message.content?.some(
+            (block) =>
+              block && typeof block === "object" && (block as { type?: unknown }).type === "text",
+          ),
+        ),
+      ).toBe(false);
       expect(assistantMessages.at(-1)?.content).toEqual([
-        expect.objectContaining({ type: "text", text: "전체 확인 완료." }),
+        expect.objectContaining({ type: "text", text: "위 파일들을 생성해서 첨부했어." }),
       ]);
     });
   });

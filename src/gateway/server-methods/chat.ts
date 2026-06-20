@@ -48,7 +48,10 @@ import {
   isWebchatClient,
   normalizeMessageChannel,
 } from "../../utils/message-channel.js";
-import { materializeAssistantArtifacts } from "../assistant-artifacts.js";
+import {
+  materializeAssistantArtifacts,
+  withAssistantArtifactCaption,
+} from "../assistant-artifacts.js";
 import {
   abortChatRunById,
   type ChatAbortControllerEntry,
@@ -1930,52 +1933,42 @@ export const chatHandlers: GatewayRequestHandlers = {
         [];
       const appendAssistantArtifactDelivery = async (payload: ReplyPayload) => {
         const mediaUrls = resolveSendableOutboundReplyParts(payload).mediaUrls;
-        if (mediaUrls.length === 0 && !payload.text?.trim()) {
+        if (mediaUrls.length === 0) {
           return;
         }
         const artifactBlocks: Array<Record<string, unknown>> = [];
-        if (mediaUrls.length > 0) {
-          try {
-            artifactBlocks.push(
-              ...(
-                await materializeAssistantArtifacts({
-                  mediaUrls,
-                  workspaceDir: resolveAgentWorkspaceDir(cfg, agentId),
-                  log: context.logGateway,
-                })
-              ).contentBlocks,
-            );
-          } catch (err) {
-            context.logGateway.warn(
-              `assistant artifact materialization skipped: ${formatForLog(err)}`,
-            );
-          }
+        try {
+          const materialized = (
+            await materializeAssistantArtifacts({
+              mediaUrls,
+              workspaceDir: resolveAgentWorkspaceDir(cfg, agentId),
+              log: context.logGateway,
+            })
+          ).contentBlocks;
+          artifactBlocks.push(
+            ...materialized.map((block) =>
+              withAssistantArtifactCaption(block, payload.assistantArtifact?.caption),
+            ),
+          );
+        } catch (err) {
+          context.logGateway.warn(
+            `assistant artifact materialization skipped: ${formatForLog(err)}`,
+          );
         }
-        const assistantContent: Array<Record<string, unknown>> = [];
-        const text = payload.text?.trim();
-        if (text) {
-          assistantContent.push({ type: "text", text });
-        } else if (artifactBlocks.length > 0) {
-          assistantContent.push({ type: "text", text: "Attached artifact" });
-        }
-        assistantContent.push(...artifactBlocks);
-        if (assistantContent.length === 0) {
+        if (artifactBlocks.length === 0) {
           return;
         }
         const { storePath: latestStorePath, entry: latestEntry } = loadSessionEntry(sessionKey);
         const sessionId = latestEntry?.sessionId ?? entry?.sessionId ?? clientRunId;
         const appended = appendAssistantTranscriptMessage({
-          message: text || "Attached artifact",
-          content: assistantContent,
+          message: "Attached artifact",
+          content: artifactBlocks,
           sessionId,
           storePath: latestStorePath,
           sessionFile: latestEntry?.sessionFile,
           agentId,
           createIfMissing: true,
-          idempotencyKey:
-            typeof payload.channelData?.artifactDeliveryId === "string"
-              ? payload.channelData.artifactDeliveryId
-              : undefined,
+          idempotencyKey: payload.assistantArtifact?.deliveryId,
         });
         if (!appended.ok) {
           context.logGateway.warn(

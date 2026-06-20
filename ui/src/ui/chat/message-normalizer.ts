@@ -62,6 +62,7 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
       workspacePath: typeof item.workspacePath === "string" ? item.workspacePath : undefined,
       mimeType: typeof item.mimeType === "string" ? item.mimeType : undefined,
       sizeBytes: typeof item.sizeBytes === "number" ? item.sizeBytes : undefined,
+      caption: typeof item.caption === "string" ? item.caption : undefined,
     }));
   } else if (typeof m.text === "string") {
     content = [{ type: "text", text: m.text }];

@@ -38,6 +38,45 @@ const MAX_UPLOAD_REQUEST_BYTES = 650 * 1024 * 1024;
 const MAX_TEXT_PREVIEW_BYTES = 1024 * 1024;
 const MAX_ARCHIVE_PREVIEW_BYTES = 32 * 1024 * 1024;
 const MAX_ARCHIVE_PREVIEW_ENTRIES = 200;
+const HTML_ARTIFACT_RESIZE_MESSAGE = "platformclaw:artifact-resize";
+const HTML_ARTIFACT_RESIZE_REQUEST = "platformclaw:artifact-resize-request";
+const GENERATED_ARTIFACT_WORKSPACE_PREFIX = "outbox/generated-artifacts/";
+const HTML_ARTIFACT_RESIZE_BRIDGE = `<script data-platformclaw-artifact-resize>
+(() => {
+  let scheduled = false;
+  const measure = () => {
+    scheduled = false;
+    const body = document.body;
+    if (!body) return;
+    const bodyRect = body.getBoundingClientRect();
+    const bodyStyle = getComputedStyle(body);
+    const marginBottom = Number.parseFloat(bodyStyle.marginBottom) || 0;
+    let contentBottom = Math.max(bodyRect.bottom, body.offsetHeight);
+    for (const child of body.children) {
+      contentBottom = Math.max(contentBottom, child.getBoundingClientRect().bottom);
+    }
+    const height = Math.ceil(contentBottom + marginBottom);
+    parent.postMessage({ type: "${HTML_ARTIFACT_RESIZE_MESSAGE}", height }, "*");
+  };
+  const schedule = () => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(measure);
+  };
+  addEventListener("message", (event) => {
+    if (event.source === parent && event.data?.type === "${HTML_ARTIFACT_RESIZE_REQUEST}") {
+      schedule();
+    }
+  });
+  addEventListener("load", schedule);
+  document.addEventListener("DOMContentLoaded", schedule);
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(schedule).observe(document.documentElement);
+    if (document.body) new ResizeObserver(schedule).observe(document.body);
+  }
+  setTimeout(schedule, 250);
+})();
+</script>`;
 const RESERVED_WINDOWS_NAMES = new Set([
   "con",
   "prn",
@@ -784,6 +823,10 @@ function wantsInlineWorkspaceResponse(url: URL): boolean {
   return inline === "1" || inline === "true";
 }
 
+export function appendHtmlArtifactResizeBridge(html: string): string {
+  return `${html}${HTML_ARTIFACT_RESIZE_BRIDGE}`;
+}
+
 function buildRequestForMultipart(req: IncomingMessage): Request {
   return new Request("http://localhost/upload", {
     method: req.method ?? "POST",
@@ -915,7 +958,6 @@ export async function handleEmployeeWorkspaceFilesHttpRequest(params: {
         "Content-Disposition",
         `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(path.posix.basename(relativePath))}`,
       );
-      params.res.setHeader("Content-Length", String(opened.stat.size));
       appendWorkspaceAuditEvent({
         actorAccountId: context.accountId,
         eventType: "workspace.files.download",
@@ -926,6 +968,18 @@ export async function handleEmployeeWorkspaceFilesHttpRequest(params: {
           size: opened.stat.size,
         },
       });
+      if (
+        inline &&
+        detectedMime === "text/html" &&
+        relativePath.startsWith(GENERATED_ARTIFACT_WORKSPACE_PREFIX)
+      ) {
+        params.res.setHeader(
+          "Content-Length",
+          String(opened.stat.size + Buffer.byteLength(HTML_ARTIFACT_RESIZE_BRIDGE)),
+        );
+      } else {
+        params.res.setHeader("Content-Length", String(opened.stat.size));
+      }
       const stream = opened.handle.createReadStream();
       stream.on("error", () => {
         void opened.handle.close().catch(() => {});
@@ -939,7 +993,20 @@ export async function handleEmployeeWorkspaceFilesHttpRequest(params: {
       stream.on("close", () => {
         void opened.handle.close().catch(() => {});
       });
-      stream.pipe(params.res);
+      const appendResizeBridge =
+        inline &&
+        detectedMime === "text/html" &&
+        relativePath.startsWith(GENERATED_ARTIFACT_WORKSPACE_PREFIX);
+      if (appendResizeBridge) {
+        stream.on("end", () => {
+          if (!params.res.destroyed) {
+            params.res.end(HTML_ARTIFACT_RESIZE_BRIDGE);
+          }
+        });
+        stream.pipe(params.res, { end: false });
+      } else {
+        stream.pipe(params.res);
+      }
       return true;
     }
 

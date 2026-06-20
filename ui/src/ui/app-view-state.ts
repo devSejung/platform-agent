@@ -4,6 +4,7 @@ import type {
 } from "../../../src/gateway/employee-ui-contract.ts";
 import type { EventLogEntry } from "./app-events.ts";
 import type { CompactionStatus, FallbackStatus, RunPhaseStatus } from "./app-tool-stream.ts";
+import type { ArtifactFocusItem } from "./chat/artifact-focus-viewer.ts";
 import type { AccountDirectoryEntry } from "./controllers/accounts.ts";
 import type { AdminAccountDetail, AdminAccountEntry } from "./controllers/admin-accounts.ts";
 import type { CronModelSuggestionsState, CronState } from "./controllers/cron.ts";
@@ -101,6 +102,7 @@ export type AppViewState = {
   chatSending: boolean;
   chatMessage: string;
   chatAttachments: ChatAttachment[];
+  artifactFocus: ArtifactFocusItem | null;
   chatMessages: unknown[];
   chatToolMessages: unknown[];
   chatStreamSegments: Array<{ text: string; ts: number }>;

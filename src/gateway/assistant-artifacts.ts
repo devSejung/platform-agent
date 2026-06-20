@@ -16,14 +16,7 @@ const MAX_ASSISTANT_ARTIFACT_BYTES = 25 * 1024 * 1024;
 const MANAGED_GLOBAL_MEDIA_SUBDIRS = new Set(["outbound"]);
 const GLOBAL_DOCS_DIRNAME = "global_docs";
 const SENSITIVE_ARTIFACT_NAME_RE = /(?:secret|token|credential|password|private-key)/i;
-const BLOCKED_ARTIFACT_EXTENSIONS = new Set([
-  ".cer",
-  ".crt",
-  ".key",
-  ".p12",
-  ".pfx",
-  ".pem",
-]);
+const BLOCKED_ARTIFACT_EXTENSIONS = new Set([".cer", ".crt", ".key", ".p12", ".pfx", ".pem"]);
 // AIDEV-TODO: Add generated artifact retention/cleanup config for this root.
 // Today these files are session-history durable and should be pruned by an explicit policy,
 // not by transient media TTL cleanup.
@@ -49,6 +42,7 @@ export type AssistantArtifactAttachment = {
   mimeType: string;
   sizeBytes: number;
   promptMode: "workspace";
+  caption?: string;
 };
 
 export type AssistantArtifactContentBlock = {
@@ -60,6 +54,7 @@ export type AssistantArtifactContentBlock = {
   mimeType: string;
   sizeBytes: number;
   promptMode: "workspace";
+  caption?: string;
 };
 
 type AssistantArtifactsLog = {
@@ -221,6 +216,14 @@ function toArtifactAttachment(params: {
   };
 }
 
+export function withAssistantArtifactCaption(
+  block: AssistantArtifactContentBlock,
+  caption: string | undefined,
+): AssistantArtifactContentBlock {
+  const normalized = caption?.trim();
+  return normalized ? { ...block, caption: normalized } : block;
+}
+
 export function assistantArtifactToContentBlock(
   attachment: AssistantArtifactAttachment,
 ): AssistantArtifactContentBlock {
@@ -233,6 +236,7 @@ export function assistantArtifactToContentBlock(
     mimeType: attachment.mimeType,
     sizeBytes: attachment.sizeBytes,
     promptMode: "workspace",
+    ...(attachment.caption ? { caption: attachment.caption } : {}),
   };
 }
 

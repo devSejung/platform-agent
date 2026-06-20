@@ -177,7 +177,6 @@ describe("chat context notice", () => {
               role: "assistant",
               timestamp: Date.now(),
               content: [
-                { type: "text", text: "붙였습니다." },
                 {
                   type: "attachment",
                   attachmentType: "image",
@@ -186,6 +185,7 @@ describe("chat context notice", () => {
                   mimeType: "image/png",
                   sizeBytes: 1234,
                   promptMode: "workspace",
+                  caption: "latency graph",
                 },
               ],
             },
@@ -202,7 +202,8 @@ describe("chat context notice", () => {
     expect(container.querySelector(".chat-group--image-artifact")).not.toBeNull();
     expect(container.querySelector(".chat-bubble--artifact-preview")).not.toBeNull();
     expect(container.querySelector(".chat-bubble--image-artifact")).not.toBeNull();
-    expect(image?.getAttribute("alt")).toBe("plot.png");
+    expect(image?.getAttribute("alt")).toBe("latency graph");
+    expect(container.querySelector(".chat-text")).toBeNull();
     expect(image?.getAttribute("src")).toContain(
       "path=outbox%2Fgenerated-artifacts%2F2026-06-16%2Fplot-abcd1234.png",
     );
@@ -220,7 +221,6 @@ describe("chat context notice", () => {
               role: "assistant",
               timestamp: Date.now(),
               content: [
-                { type: "text", text: "차트입니다." },
                 {
                   type: "attachment",
                   attachmentType: "file",
@@ -229,6 +229,7 @@ describe("chat context notice", () => {
                   mimeType: "text/html",
                   sizeBytes: 4096,
                   promptMode: "workspace",
+                  caption: "dashboard preview",
                 },
               ],
             },
@@ -247,7 +248,9 @@ describe("chat context notice", () => {
     expect(container.querySelector(".chat-group--html-artifact")).not.toBeNull();
     expect(container.querySelector(".chat-bubble--artifact-preview")).not.toBeNull();
     expect(container.querySelector(".chat-bubble--html-artifact")).not.toBeNull();
-    expect(frame?.getAttribute("title")).toBe("chart.html");
+    expect(frame?.getAttribute("title")).toBe("dashboard preview");
+    expect(container.querySelector(".chat-text")).toBeNull();
+    expect(container.textContent).toContain("dashboard preview");
     expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
     expect(frame?.getAttribute("src")).toContain(
       "path=outbox%2Fgenerated-artifacts%2F2026-06-19%2Fchart-abcd1234.html",
@@ -262,5 +265,307 @@ describe("chat context notice", () => {
       "path=outbox%2Fgenerated-artifacts%2F2026-06-19%2Fchart-abcd1234.html",
     );
     expect(downloadLink?.getAttribute("href")).not.toContain("inline=1");
+
+    frame?.dispatchEvent(new Event("load"));
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "platformclaw:artifact-resize", height: 320.4 },
+        source: frame?.contentWindow ?? null,
+      }),
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(frame?.style.height).toBe("321px");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "platformclaw:artifact-resize", height: 500 },
+        source: window,
+      }),
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(frame?.style.height).toBe("321px");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "platformclaw:artifact-resize", height: 100 },
+        source: frame?.contentWindow ?? null,
+      }),
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(frame?.style.height).toBe("240px");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "platformclaw:artifact-resize", height: 2_000 },
+        source: frame?.contentWindow ?? null,
+      }),
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(frame?.style.height).toBe("900px");
+  });
+
+  it("opens and closes an image artifact focus viewer", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const message = {
+      role: "assistant",
+      timestamp: Date.now(),
+      content: [
+        {
+          type: "attachment",
+          attachmentType: "image",
+          fileName: "result.png",
+          workspacePath: "outbox/generated-artifacts/2026-06-20/result-abcd1234.png",
+          mimeType: "image/png",
+          promptMode: "workspace",
+        },
+      ],
+    };
+    let artifactFocus: Parameters<NonNullable<ChatProps["onOpenArtifact"]>>[0] | null = null;
+    const renderView = () => {
+      render(
+        renderChat(
+          createProps({
+            messages: [message],
+            artifactFocus,
+            onOpenArtifact: (artifact) => {
+              artifactFocus = artifact;
+              renderView();
+            },
+            onCloseArtifact: () => {
+              artifactFocus = null;
+              renderView();
+            },
+          }),
+        ),
+        container,
+      );
+    };
+    renderView();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    const openButton = container.querySelector<HTMLButtonElement>(
+      ".chat-artifact-focus-btn--image",
+    );
+    expect(openButton).not.toBeNull();
+    expect(openButton?.classList.contains("artifact-action-btn")).toBe(true);
+    expect(openButton?.classList.contains("btn")).toBe(true);
+    expect(openButton?.classList.contains("btn--sm")).toBe(true);
+    const compactDownload = container.querySelector<HTMLAnchorElement>(
+      ".chat-artifact-download-btn--image",
+    );
+    expect(compactDownload?.classList.contains("artifact-action-btn")).toBe(true);
+    expect(compactDownload?.classList.contains("btn")).toBe(true);
+    expect(compactDownload?.getAttribute("href")).toContain(
+      "path=outbox%2Fgenerated-artifacts%2F2026-06-20%2Fresult-abcd1234.png",
+    );
+    expect(compactDownload?.getAttribute("href")).not.toContain("inline=1");
+    openButton?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    const viewerImage = container.querySelector<HTMLImageElement>(".artifact-focus-viewer__image");
+    expect(viewerImage?.getAttribute("src")).toContain(
+      "path=outbox%2Fgenerated-artifacts%2F2026-06-20%2Fresult-abcd1234.png",
+    );
+    expect(viewerImage?.getAttribute("src")).toContain("inline=1");
+    const download = container.querySelector<HTMLAnchorElement>(
+      ".artifact-focus-viewer__action[href]",
+    );
+    expect(download?.getAttribute("href")).toContain(
+      "path=outbox%2Fgenerated-artifacts%2F2026-06-20%2Fresult-abcd1234.png",
+    );
+    expect(download?.getAttribute("href")).not.toContain("inline=1");
+
+    container.querySelector<HTMLButtonElement>(".artifact-focus-viewer__close")?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(container.querySelector(".artifact-focus-viewer")).toBeNull();
+    expect(container.querySelector(".chat-message-image")).not.toBeNull();
+  });
+
+  it("does not add artifact focus controls to user image attachments", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    render(
+      renderChat(
+        createProps({
+          messages: [
+            {
+              role: "user",
+              timestamp: Date.now(),
+              content: [
+                {
+                  type: "attachment",
+                  attachmentType: "image",
+                  fileName: "input.png",
+                  workspacePath: "inbox/chat-attachments/2026-06-20/input.png",
+                  mimeType: "image/png",
+                  promptMode: "workspace",
+                },
+              ],
+            },
+          ],
+          onOpenArtifact: () => undefined,
+        }),
+      ),
+      container,
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    expect(container.querySelector(".chat-message-image")).not.toBeNull();
+    expect(container.querySelector(".chat-artifact-focus-btn")).toBeNull();
+    expect(container.querySelector(".chat-artifact-download-btn--image")).toBeNull();
+  });
+
+  it("keeps assistant image downloads available without a focus viewer callback", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    render(
+      renderChat(
+        createProps({
+          messages: [
+            {
+              role: "assistant",
+              timestamp: Date.now(),
+              content: [
+                {
+                  type: "attachment",
+                  attachmentType: "image",
+                  fileName: "standalone.png",
+                  workspacePath: "outbox/generated-artifacts/2026-06-20/standalone.png",
+                  mimeType: "image/png",
+                  promptMode: "workspace",
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    expect(container.querySelector(".chat-artifact-download-btn--image")).not.toBeNull();
+    expect(container.querySelector(".chat-artifact-focus-btn")).toBeNull();
+  });
+
+  it("keeps multiple image artifact actions bound to their own files", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const opened: string[] = [];
+    render(
+      renderChat(
+        createProps({
+          messages: [
+            {
+              role: "assistant",
+              timestamp: Date.now(),
+              content: [
+                {
+                  type: "attachment",
+                  attachmentType: "image",
+                  fileName: "first image.png",
+                  workspacePath: "outbox/generated-artifacts/2026-06-20/first image.png",
+                  mimeType: "image/png",
+                },
+                {
+                  type: "attachment",
+                  attachmentType: "image",
+                  fileName: "second#image.png",
+                  workspacePath: "outbox/generated-artifacts/2026-06-20/second#image.png",
+                  mimeType: "image/png",
+                },
+              ],
+            },
+          ],
+          onOpenArtifact: (artifact) => opened.push(artifact.workspacePath),
+        }),
+      ),
+      container,
+    );
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    const downloads = Array.from(
+      container.querySelectorAll<HTMLAnchorElement>(".chat-artifact-download-btn--image"),
+    );
+    const focusButtons = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(".chat-artifact-focus-btn--image"),
+    );
+    expect(downloads).toHaveLength(2);
+    expect(focusButtons).toHaveLength(2);
+    expect(downloads[0]?.getAttribute("href")).toContain("first%20image.png");
+    expect(downloads[1]?.getAttribute("href")).toContain("second%23image.png");
+
+    focusButtons[1]?.click();
+    expect(opened).toEqual(["outbox/generated-artifacts/2026-06-20/second#image.png"]);
+  });
+
+  it("opens an html artifact focus viewer and closes it with Escape", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const message = {
+      role: "assistant",
+      timestamp: Date.now(),
+      content: [
+        {
+          type: "attachment",
+          attachmentType: "file",
+          fileName: "dashboard.html",
+          workspacePath: "outbox/generated-artifacts/2026-06-20/dashboard-abcd1234.html",
+          mimeType: "text/html",
+          promptMode: "workspace",
+        },
+      ],
+    };
+    let artifactFocus: Parameters<NonNullable<ChatProps["onOpenArtifact"]>>[0] | null = null;
+    const renderView = () => {
+      render(
+        renderChat(
+          createProps({
+            messages: [message],
+            artifactFocus,
+            onOpenArtifact: (artifact) => {
+              artifactFocus = artifact;
+              renderView();
+            },
+            onCloseArtifact: () => {
+              artifactFocus = null;
+              renderView();
+            },
+          }),
+        ),
+        container,
+      );
+    };
+    renderView();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    const openButton = container.querySelector<HTMLButtonElement>(
+      ".chat-message-attachments__html .chat-artifact-focus-btn",
+    );
+    expect(openButton).not.toBeNull();
+    expect(openButton?.classList.contains("artifact-action-btn")).toBe(true);
+    expect(openButton?.classList.contains("btn")).toBe(true);
+    expect(
+      container
+        .querySelector(".chat-message-attachments__download")
+        ?.classList.contains("artifact-action-btn"),
+    ).toBe(true);
+    openButton?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    const viewer = container.querySelector<HTMLElement>(".artifact-focus-viewer");
+    const frame = container.querySelector<HTMLIFrameElement>(".artifact-focus-viewer__html");
+    expect(viewer).not.toBeNull();
+    expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame?.getAttribute("src")).toContain(
+      "path=outbox%2Fgenerated-artifacts%2F2026-06-20%2Fdashboard-abcd1234.html",
+    );
+    expect(frame?.getAttribute("src")).toContain("inline=1");
+    expect(container.querySelector(".artifact-focus-viewer__action[href]")).not.toBeNull();
+
+    viewer?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(container.querySelector(".artifact-focus-viewer")).toBeNull();
+    expect(container.querySelector(".chat-message-attachments__html-frame")).not.toBeNull();
   });
 });

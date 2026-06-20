@@ -1,6 +1,5 @@
 import { html, nothing } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
-import { EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH } from "../../../../src/gateway/employee-workspace-files-contract.ts";
 import { getSafeLocalStorage } from "../../local-storage.ts";
 import type { AssistantIdentity } from "../assistant-identity.ts";
 import { icons } from "../icons.ts";
@@ -10,6 +9,8 @@ import { detectTextDirection } from "../text-direction.ts";
 import type { MessageGroup, ToolCard } from "../types/chat-types.ts";
 import type { ChatSendFailure } from "../ui-types.ts";
 import { agentLogoUrl } from "../views/agents-utils.ts";
+import type { ArtifactFocusItem } from "./artifact-focus-viewer.ts";
+import { buildWorkspaceDownloadUrl, buildWorkspaceInlineUrl } from "./artifact-urls.ts";
 import { renderCopyAsMarkdownButton } from "./copy-as-markdown.ts";
 import {
   extractTextCached,
@@ -23,6 +24,7 @@ import { extractToolCards, renderToolCardSidebar } from "./tool-cards.ts";
 type ImageBlock = {
   url: string;
   alt?: string;
+  artifact?: ArtifactFocusItem;
 };
 
 type AudioClip = {
@@ -36,18 +38,70 @@ type MessageAttachment = {
   mimeType?: string;
   sizeBytes?: number;
   promptMode?: string;
+  caption?: string;
 };
 
-function buildWorkspaceDownloadUrl(relativePath: string): string {
-  return `${EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH}?path=${encodeURIComponent(relativePath)}`;
+const HTML_ARTIFACT_RESIZE_MESSAGE = "platformclaw:artifact-resize";
+const HTML_ARTIFACT_RESIZE_REQUEST = "platformclaw:artifact-resize-request";
+const HTML_ARTIFACT_MIN_HEIGHT = 240;
+const HTML_ARTIFACT_MAX_HEIGHT = 900;
+const pendingHtmlArtifactHeights = new WeakMap<HTMLIFrameElement, number>();
+let htmlArtifactResizeListenerInstalled = false;
+
+function installHtmlArtifactResizeListener(): void {
+  if (htmlArtifactResizeListenerInstalled || typeof window === "undefined") {
+    return;
+  }
+  htmlArtifactResizeListenerInstalled = true;
+  window.addEventListener("message", (event: MessageEvent) => {
+    const data = event.data as { type?: unknown; height?: unknown } | null;
+    if (
+      !data ||
+      data.type !== HTML_ARTIFACT_RESIZE_MESSAGE ||
+      typeof data.height !== "number" ||
+      !Number.isFinite(data.height)
+    ) {
+      return;
+    }
+    const frame = Array.from(
+      document.querySelectorAll<HTMLIFrameElement>(".chat-message-attachments__html-frame"),
+    ).find((candidate) => candidate.contentWindow === event.source);
+    if (!frame) {
+      return;
+    }
+    pendingHtmlArtifactHeights.set(frame, data.height);
+    if (frame.dataset.resizePending === "true") {
+      return;
+    }
+    frame.dataset.resizePending = "true";
+    requestAnimationFrame(() => {
+      frame.dataset.resizePending = "false";
+      if (!frame.isConnected) {
+        return;
+      }
+      const measured = pendingHtmlArtifactHeights.get(frame);
+      if (measured === undefined) {
+        return;
+      }
+      const height = Math.min(
+        HTML_ARTIFACT_MAX_HEIGHT,
+        Math.max(HTML_ARTIFACT_MIN_HEIGHT, Math.ceil(measured)),
+      );
+      if (frame.style.height === `${height}px`) {
+        return;
+      }
+      frame.style.height = `${height}px`;
+    });
+  });
 }
 
-function buildWorkspaceInlineImageUrl(relativePath: string): string {
-  return `${EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH}?path=${encodeURIComponent(relativePath)}&inline=1`;
-}
-
-function buildWorkspaceInlineArtifactUrl(relativePath: string): string {
-  return `${EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH}?path=${encodeURIComponent(relativePath)}&inline=1`;
+function handleHtmlArtifactFrameLoad(event: Event): void {
+  installHtmlArtifactResizeListener();
+  const frame = event.currentTarget;
+  if (!(frame instanceof HTMLIFrameElement)) {
+    return;
+  }
+  frame.contentWindow?.postMessage({ type: HTML_ARTIFACT_RESIZE_REQUEST }, "*");
 }
 
 function isHtmlAttachment(attachment: MessageAttachment): boolean {
@@ -102,8 +156,14 @@ function extractImages(message: unknown): ImageBlock[] {
     const attachmentImages = extractAttachments(message)
       .filter((attachment) => attachment.type === "image" && attachment.workspacePath)
       .map((attachment) => ({
-        url: buildWorkspaceInlineImageUrl(attachment.workspacePath!),
-        alt: attachment.fileName,
+        url: buildWorkspaceInlineUrl(attachment.workspacePath!),
+        alt: attachment.caption || attachment.fileName,
+        artifact: {
+          kind: "image" as const,
+          fileName: attachment.fileName,
+          workspacePath: attachment.workspacePath!,
+          ...(attachment.caption ? { caption: attachment.caption } : {}),
+        },
       }));
     images.push(...attachmentImages);
   }
@@ -150,7 +210,7 @@ function extractAttachments(message: unknown): MessageAttachment[] {
       })
     : [];
   return [...fromTopLevel, ...fromContent]
-    .map((value) => {
+    .map((value): MessageAttachment | null => {
       if (!value || typeof value !== "object") {
         return null;
       }
@@ -170,6 +230,7 @@ function extractAttachments(message: unknown): MessageAttachment[] {
         mimeType: typeof candidate.mimeType === "string" ? candidate.mimeType : undefined,
         sizeBytes: typeof candidate.sizeBytes === "number" ? candidate.sizeBytes : undefined,
         promptMode: typeof candidate.promptMode === "string" ? candidate.promptMode : undefined,
+        caption: typeof candidate.caption === "string" ? candidate.caption : undefined,
       } satisfies MessageAttachment;
     })
     .filter((value): value is MessageAttachment => value !== null);
@@ -188,7 +249,10 @@ function formatAttachmentSize(sizeBytes?: number): string | null {
   return `${sizeBytes} B`;
 }
 
-function renderMessageAttachments(attachments: MessageAttachment[]) {
+function renderMessageAttachments(
+  attachments: MessageAttachment[],
+  onOpenArtifact?: (artifact: ArtifactFocusItem) => void,
+) {
   const fileAttachments = attachments.filter((attachment) => attachment.type !== "image");
   if (fileAttachments.length === 0) {
     return nothing;
@@ -197,37 +261,60 @@ function renderMessageAttachments(attachments: MessageAttachment[]) {
     <div class="chat-message-attachments">
       ${fileAttachments.map((attachment) => {
         const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
-        const detail = [attachment.promptMode, sizeLabel].filter(Boolean).join(" · ");
+        const detail = [attachment.caption, attachment.promptMode, sizeLabel]
+          .filter(Boolean)
+          .join(" · ");
         if (attachment.workspacePath && isHtmlAttachment(attachment)) {
           return html`
             <div class="chat-message-attachments__html">
               <div class="chat-message-attachments__html-header">
-                <span class="chat-message-attachments__icon">${icons.file}</span>
+                <span class="chat-message-attachments__icon">${icons.fileText}</span>
                 <span class="chat-message-attachments__body">
                   <span class="chat-message-attachments__name">${attachment.fileName}</span>
                   ${detail
                     ? html`<span class="chat-message-attachments__meta">${detail}</span>`
                     : nothing}
                 </span>
-                <a
-                  class="chat-message-attachments__download"
-                  href=${buildWorkspaceDownloadUrl(attachment.workspacePath)}
-                  title=${attachment.workspacePath}
-                >
-                  ${icons.download}
-                </a>
+                <div class="chat-artifact-actions">
+                  <a
+                    class="btn btn--sm artifact-action-btn chat-message-attachments__download"
+                    href=${buildWorkspaceDownloadUrl(attachment.workspacePath)}
+                    title="Download"
+                    aria-label=${`Download ${attachment.fileName}`}
+                  >
+                    ${icons.download}
+                  </a>
+                  ${onOpenArtifact
+                    ? html`<button
+                        class="btn btn--sm artifact-action-btn chat-artifact-focus-btn"
+                        type="button"
+                        title="Open large preview"
+                        aria-label=${`Open ${attachment.fileName} in artifact viewer`}
+                        @click=${() =>
+                          onOpenArtifact({
+                            kind: "html",
+                            fileName: attachment.fileName,
+                            workspacePath: attachment.workspacePath!,
+                            ...(attachment.caption ? { caption: attachment.caption } : {}),
+                          })}
+                      >
+                        ${icons.maximize}
+                      </button>`
+                    : nothing}
+                </div>
               </div>
               <iframe
                 class="chat-message-attachments__html-frame"
-                src=${buildWorkspaceInlineArtifactUrl(attachment.workspacePath)}
-                title=${attachment.fileName}
+                src=${buildWorkspaceInlineUrl(attachment.workspacePath)}
+                title=${attachment.caption || attachment.fileName}
                 sandbox="allow-scripts"
+                @load=${handleHtmlArtifactFrameLoad}
               ></iframe>
             </div>
           `;
         }
         const content = html`
-          <span class="chat-message-attachments__icon">${icons.file}</span>
+          <span class="chat-message-attachments__icon">${icons.fileText}</span>
           <span class="chat-message-attachments__body">
             <span class="chat-message-attachments__name">${attachment.fileName}</span>
             ${detail
@@ -239,7 +326,7 @@ function renderMessageAttachments(attachments: MessageAttachment[]) {
           ? html`<a
               class="chat-message-attachments__item"
               href=${buildWorkspaceDownloadUrl(attachment.workspacePath)}
-              title=${attachment.workspacePath}
+              title=${attachment.caption || attachment.fileName}
             >
               ${content}
             </a>`
@@ -303,6 +390,7 @@ export function renderMessageGroup(
   group: MessageGroup,
   opts: {
     onOpenSidebar?: (content: string) => void;
+    onOpenArtifact?: (artifact: ArtifactFocusItem) => void;
     showReasoning: boolean;
     showToolCalls?: boolean;
     assistantName?: string;
@@ -317,6 +405,8 @@ export function renderMessageGroup(
   },
 ) {
   const normalizedRole = normalizeRoleForGrouping(group.role);
+  const allowArtifactActions = normalizedRole === "assistant";
+  const artifactOpener = normalizedRole === "assistant" ? opts.onOpenArtifact : undefined;
   const assistantName = opts.assistantName ?? "Assistant";
   const userLabel = group.senderLabel?.trim();
   const who =
@@ -383,6 +473,8 @@ export function renderMessageGroup(
                 showToolCalls: opts.showToolCalls ?? true,
               },
               opts.onOpenSidebar,
+              artifactOpener,
+              allowArtifactActions,
             )}
             ${failure
               ? renderSendFailure(failure, {
@@ -821,7 +913,11 @@ function isAvatarUrl(value: string): boolean {
   );
 }
 
-function renderMessageImages(images: ImageBlock[]) {
+function renderMessageImages(
+  images: ImageBlock[],
+  onOpenArtifact?: (artifact: ArtifactFocusItem) => void,
+  allowArtifactActions = false,
+) {
   if (images.length === 0) {
     return nothing;
   }
@@ -834,12 +930,38 @@ function renderMessageImages(images: ImageBlock[]) {
     <div class="chat-message-images">
       ${images.map(
         (img) => html`
-          <img
-            src=${img.url}
-            alt=${img.alt ?? "Attached image"}
-            class="chat-message-image"
-            @click=${() => openImage(img.url)}
-          />
+          <div class="chat-message-image-wrap">
+            <img
+              src=${img.url}
+              alt=${img.alt ?? "Attached image"}
+              class="chat-message-image"
+              @click=${() =>
+                img.artifact && onOpenArtifact ? onOpenArtifact(img.artifact) : openImage(img.url)}
+            />
+            ${img.artifact && allowArtifactActions
+              ? html`<div class="chat-artifact-actions chat-artifact-actions--image">
+                  <a
+                    class="btn btn--sm artifact-action-btn chat-artifact-download-btn--image"
+                    href=${buildWorkspaceDownloadUrl(img.artifact.workspacePath)}
+                    title="Download"
+                    aria-label=${`Download ${img.artifact.fileName}`}
+                  >
+                    ${icons.download}
+                  </a>
+                  ${onOpenArtifact
+                    ? html`<button
+                        class="btn btn--sm artifact-action-btn chat-artifact-focus-btn chat-artifact-focus-btn--image"
+                        type="button"
+                        title="Open large preview"
+                        aria-label=${`Open ${img.artifact.fileName} in artifact viewer`}
+                        @click=${() => onOpenArtifact(img.artifact!)}
+                      >
+                        ${icons.maximize}
+                      </button>`
+                    : nothing}
+                </div>`
+              : nothing}
+          </div>
         `,
       )}
     </div>
@@ -958,6 +1080,8 @@ function renderGroupedMessage(
   message: unknown,
   opts: { isStreaming: boolean; showReasoning: boolean; showToolCalls?: boolean },
   onOpenSidebar?: (content: string) => void,
+  onOpenArtifact?: (artifact: ArtifactFocusItem) => void,
+  allowArtifactActions = false,
 ) {
   const m = message as Record<string, unknown>;
   const role = typeof m.role === "string" ? m.role : "unknown";
@@ -1046,8 +1170,9 @@ function renderGroupedMessage(
                     : nothing}
               </summary>
               <div class="chat-tool-msg-body">
-                ${renderMessageImages(images)} ${renderMessageAudio(audioClips)}
-                ${renderMessageAttachments(attachments)}
+                ${renderMessageImages(images, onOpenArtifact, allowArtifactActions)}
+                ${renderMessageAudio(audioClips)}
+                ${renderMessageAttachments(attachments, onOpenArtifact)}
                 ${reasoningMarkdown
                   ? html`<div class="chat-thinking">
                       ${unsafeHTML(toSanitizedMarkdownHtml(reasoningMarkdown))}
@@ -1071,8 +1196,9 @@ function renderGroupedMessage(
             </details>
           `
         : html`
-            ${renderMessageImages(images)} ${renderMessageAudio(audioClips)}
-            ${renderMessageAttachments(attachments)}
+            ${renderMessageImages(images, onOpenArtifact, allowArtifactActions)}
+            ${renderMessageAudio(audioClips)}
+            ${renderMessageAttachments(attachments, onOpenArtifact)}
             ${reasoningMarkdown
               ? html`<div class="chat-thinking">
                   ${unsafeHTML(toSanitizedMarkdownHtml(reasoningMarkdown))}

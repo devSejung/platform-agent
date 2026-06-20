@@ -330,8 +330,7 @@ function isAssistantArtifactDeliveryToolResult(params: {
   };
 } {
   return (
-    params.toolName === "attach_artifact" &&
-    params.mediaReply?.assistantArtifactDelivery === true
+    params.toolName === "attach_artifact" && params.mediaReply?.assistantArtifactDelivery === true
   );
 }
 
@@ -423,12 +422,13 @@ function readExecApprovalUnavailableDetails(result: unknown): {
 async function emitToolResultOutput(params: {
   ctx: ToolHandlerContext;
   toolName: string;
+  toolCallId: string;
   meta?: string;
   isToolError: boolean;
   result: unknown;
   sanitizedResult: unknown;
 }) {
-  const { ctx, toolName, meta, isToolError, result, sanitizedResult } = params;
+  const { ctx, toolName, toolCallId, meta, isToolError, result, sanitizedResult } = params;
   const hasStructuredMedia =
     result &&
     typeof result === "object" &&
@@ -527,9 +527,12 @@ async function emitToolResultOutput(params: {
       return;
     }
     ctx.emitBlockReply({
-      ...(mediaReply.caption ? { text: mediaReply.caption } : {}),
       mediaUrls,
       assistantArtifactDelivery: true,
+      assistantArtifact: {
+        deliveryId: `${ctx.params.runId}:${toolCallId}`,
+        ...(mediaReply.caption ? { caption: mediaReply.caption } : {}),
+      },
     });
     return;
   }
@@ -1095,7 +1098,15 @@ export async function handleToolExecutionEnd(
     `embedded run tool end: runId=${ctx.params.runId} tool=${toolName} toolCallId=${toolCallId}`,
   );
 
-  await emitToolResultOutput({ ctx, toolName, meta, isToolError, result, sanitizedResult });
+  await emitToolResultOutput({
+    ctx,
+    toolName,
+    toolCallId,
+    meta,
+    isToolError,
+    result,
+    sanitizedResult,
+  });
 
   // Run after_tool_call plugin hook (fire-and-forget)
   const hookRunnerAfter = ctx.hookRunner ?? getGlobalHookRunner();

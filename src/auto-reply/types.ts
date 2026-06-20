@@ -174,6 +174,11 @@ export type ReplyPayload = {
   channelData?: Record<string, unknown>;
   /** Internal Web UI marker: materialize mediaUrls as assistant-delivered artifacts. */
   assistantArtifactDelivery?: boolean;
+  /** Internal metadata for an assistant-delivered artifact. Never rendered as message text. */
+  assistantArtifact?: {
+    caption?: string;
+    deliveryId?: string;
+  };
 };
 
 export type ReplyPayloadMetadata = {

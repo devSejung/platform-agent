@@ -895,6 +895,7 @@ export function renderApp(state: AppViewState) {
           sessionKey: state.sessionKey,
           onSessionKeyChange: async (next) => {
             if (await switchChatSession(state, next)) {
+              state.artifactFocus = null;
               state.chatAttachments = [];
               void refreshChatAvatar(state);
             }
@@ -925,6 +926,7 @@ export function renderApp(state: AppViewState) {
           sessions: state.sessionsResult,
           focusMode: chatFocus,
           onRefresh: () => {
+            state.artifactFocus = null;
             state.resetToolStream();
             return Promise.all([loadChatHistory(state), refreshChatAvatar(state)]);
           },
@@ -955,6 +957,7 @@ export function renderApp(state: AppViewState) {
               return;
             }
             try {
+              state.artifactFocus = null;
               await state.client.request("sessions.reset", { key: state.sessionKey });
               state.chatMessages = [];
               state.chatStream = null;
@@ -969,6 +972,7 @@ export function renderApp(state: AppViewState) {
           agentsList: state.agentsList,
           currentAgentId: resolvedAgentId ?? "main",
           onAgentChange: (agentId: string) => {
+            state.artifactFocus = null;
             state.sessionKey = buildAgentMainSessionKey({ agentId });
             state.chatMessages = [];
             state.chatStream = null;
@@ -992,6 +996,7 @@ export function renderApp(state: AppViewState) {
           onSessionSelect: state.employeeMode
             ? undefined
             : async (key: string) => {
+                state.artifactFocus = null;
                 await switchChatSession(state, key);
               },
           showNewMessages: state.chatNewMessagesBelow && !state.chatManualRefreshInFlight,
@@ -1001,6 +1006,13 @@ export function renderApp(state: AppViewState) {
           sidebarError: state.sidebarError,
           splitRatio: state.splitRatio,
           onOpenSidebar: (content: string) => state.handleOpenSidebar(content),
+          artifactFocus: state.artifactFocus,
+          onOpenArtifact: (artifact) => {
+            state.artifactFocus = artifact;
+          },
+          onCloseArtifact: () => {
+            state.artifactFocus = null;
+          },
           onCloseSidebar: () => state.handleCloseSidebar(),
           onSplitRatioChange: (ratio: number) => state.handleSplitRatioChange(ratio),
           assistantName: state.assistantName,

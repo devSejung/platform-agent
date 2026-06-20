@@ -31,6 +31,7 @@ export type MessageContentItem = Record<string, unknown> & {
   workspacePath?: string;
   mimeType?: string;
   sizeBytes?: number;
+  caption?: string;
 };
 
 /** Normalized message structure for rendering */

@@ -1,0 +1,116 @@
+.artifact-action-btn {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  padding: 0;
+  box-sizing: border-box;
+  text-decoration: none;
+}
+
+.artifact-action-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+.artifact-focus-viewer {
+  position: absolute;
+  inset: 0;
+  z-index: 140;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  outline: none;
+}
+
+.artifact-focus-viewer__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.artifact-focus-viewer__identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.artifact-focus-viewer__name,
+.artifact-focus-viewer__caption {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-focus-viewer__name {
+  font-size: 0.86rem;
+}
+
+.artifact-focus-viewer__caption {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.artifact-focus-viewer__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.artifact-focus-viewer__action {
+  font: inherit;
+}
+
+.artifact-focus-viewer__content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  background: color-mix(in srgb, var(--panel) 72%, var(--bg));
+}
+
+.artifact-focus-viewer__image {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 16px;
+  box-sizing: border-box;
+  object-fit: contain;
+}
+
+.artifact-focus-viewer__html {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: #fff;
+}
+
+@media (max-width: 640px) {
+  .artifact-focus-viewer {
+    border-radius: 0;
+  }
+
+  .artifact-focus-viewer__toolbar {
+    padding: 8px;
+  }
+
+  .artifact-focus-viewer__image {
+    padding: 8px;
+  }
+}

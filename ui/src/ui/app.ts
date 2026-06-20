@@ -59,6 +59,7 @@ import {
 } from "./app-tool-stream.ts";
 import type { AppViewState } from "./app-view-state.ts";
 import { normalizeAssistantIdentity } from "./assistant-identity.ts";
+import type { ArtifactFocusItem } from "./chat/artifact-focus-viewer.ts";
 import { exportChatMarkdown } from "./chat/export.ts";
 import type { AccountDirectoryEntry } from "./controllers/accounts.ts";
 import type { AdminAccountDetail, AdminAccountEntry } from "./controllers/admin-accounts.ts";
@@ -254,6 +255,7 @@ export class OpenClawApp extends LitElement {
   @state() chatModelCatalog: ModelCatalogEntry[] = [];
   @state() chatQueue: ChatQueueItem[] = [];
   @state() chatAttachments: ChatAttachment[] = [];
+  @state() artifactFocus: ArtifactFocusItem | null = null;
   @state() chatSendDrafts: Record<string, ChatSendDraft> = {};
   @state() chatSendFailures: Record<string, ChatSendFailure> = {};
   @state() chatManualRefreshInFlight = false;
@@ -684,6 +686,11 @@ export class OpenClawApp extends LitElement {
     onPopStateInternal(this as unknown as Parameters<typeof onPopStateInternal>[0]);
   private topbarObserver: ResizeObserver | null = null;
   private globalKeydownHandler = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && this.artifactFocus) {
+      e.preventDefault();
+      this.artifactFocus = null;
+      return;
+    }
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === "k") {
       e.preventDefault();
       this.paletteOpen = !this.paletteOpen;
@@ -811,6 +818,9 @@ export class OpenClawApp extends LitElement {
   }
 
   setTab(next: Tab) {
+    if (next !== "chat") {
+      this.artifactFocus = null;
+    }
     setTabInternal(this as unknown as Parameters<typeof setTabInternal>[0], next);
     this.navDrawerOpen = false;
   }

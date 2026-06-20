@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createWorkspaceDirectory,
   deleteWorkspacePaths,
+  appendHtmlArtifactResizeBridge,
   listWorkspaceDirectory,
   normalizeWorkspaceRelativePath,
   readWorkspaceFilePreview,
@@ -30,6 +31,17 @@ afterEach(async () => {
 });
 
 describe("employee workspace files", () => {
+  it("appends the adaptive preview bridge without parsing HTML-like script text", () => {
+    const original =
+      '<!doctype html><html><body><script>const example = "</body>";</script></body></html>';
+    const preview = appendHtmlArtifactResizeBridge(original);
+
+    expect(preview.startsWith(original)).toBe(true);
+    expect(preview).toContain("data-platformclaw-artifact-resize");
+    expect(preview).toContain("platformclaw:artifact-resize-request");
+    expect(original).not.toContain("data-platformclaw-artifact-resize");
+  });
+
   it("normalizes relative paths and rejects traversal", () => {
     expect(normalizeWorkspaceRelativePath("docs/report.txt")).toBe("docs/report.txt");
     expect(normalizeWorkspaceRelativePath("docs\\report.txt")).toBe("docs/report.txt");

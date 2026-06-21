@@ -59,6 +59,25 @@ describe("employee release note read state", () => {
     expect(stored.employees.eon.readVersions["2026.6.21"]).toBeTruthy();
   });
 
+  it("treats an empty mounted state file as unread initial state", async () => {
+    await prepareStateDir();
+    const statePath = resolveEmployeeReleaseReadStatePath();
+    await fs.mkdir(path.dirname(statePath), { recursive: true });
+    await fs.writeFile(statePath, "", "utf8");
+
+    expect(await readEmployeeReleaseNotesStatus("eon")).toEqual({
+      latestVersion: "2026.6.21",
+      readVersion: null,
+      shouldAutoOpen: true,
+    });
+
+    await markEmployeeReleaseNotesRead("eon", "2026.6.21");
+    expect(await readEmployeeReleaseNotesStatus("eon")).toMatchObject({
+      readVersion: "2026.6.21",
+      shouldAutoOpen: false,
+    });
+  });
+
   it("does not allow an old or unknown release to replace latest read state", async () => {
     await prepareStateDir();
 

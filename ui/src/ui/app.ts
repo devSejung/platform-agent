@@ -1172,8 +1172,9 @@ export class OpenClawApp extends LitElement {
         if (status.shouldAutoOpen) {
           await this.handleOpenReleaseNotes({ auto: true });
         }
-      } catch {
+      } catch (error) {
         // Release note status must never block employee login.
+        console.warn("[release-notes] automatic check failed", error);
       }
     };
     this.releaseNotesAutoCheckPromise = check();

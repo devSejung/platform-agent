@@ -717,7 +717,7 @@ export function renderReleaseNotesDialog(state: AppViewState) {
     }
     try {
       if (el.open) {
-        el.close();
+        el.removeAttribute("open");
       }
       el.showModal();
     } catch {

@@ -6,6 +6,72 @@ import { renderReleaseNotesDialog } from "./app-render.ts";
 import type { AppViewState } from "./app-view-state.ts";
 
 describe("release note dialog", () => {
+  it("keeps the dialog open when selecting another release rerenders it", () => {
+    const showModal = vi.fn(function (this: HTMLDialogElement) {
+      this.setAttribute("open", "");
+    });
+    const close = vi.fn(function (this: HTMLDialogElement) {
+      this.removeAttribute("open");
+    });
+    Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+      configurable: true,
+      value: showModal,
+    });
+    Object.defineProperty(HTMLDialogElement.prototype, "close", {
+      configurable: true,
+      value: close,
+    });
+    const container = document.createElement("div");
+    const state = {
+      employeeMode: true,
+      employeeProfile: { employeeId: "eon" },
+      releaseNotesOpen: true,
+      releaseNotesLoading: false,
+      releaseNotesError: null,
+      releaseNotesIndex: {
+        name: "PlatformClaw",
+        latest: "2026.6.21",
+        releases: [
+          {
+            version: "2026.6.21",
+            date: "2026-06-21",
+            title: "최신 업데이트",
+            path: "docs/platformclaw/releases/2026.6.21.md",
+          },
+          {
+            version: "2026.6.18",
+            date: "2026-06-18",
+            title: "이전 업데이트",
+            path: "docs/platformclaw/releases/2026.6.18.md",
+          },
+        ],
+      },
+      releaseNotesSelectedVersion: "2026.6.21",
+      releaseNotesMarkdownByVersion: { "2026.6.21": "# PlatformClaw v2026.6.21" },
+      releaseNotesReadVersion: null,
+      releaseNotesAutoMode: false,
+      releaseNotesMobileDetail: false,
+      releaseNotesReadSubmitting: false,
+      handleSelectReleaseNotesVersion: vi.fn(),
+      handleReleaseNotesBackToList: vi.fn(),
+      handleConfirmReleaseNotes: vi.fn(),
+      handleCloseReleaseNotes: vi.fn(),
+    } as unknown as AppViewState;
+
+    try {
+      render(renderReleaseNotesDialog(state), container);
+      state.releaseNotesSelectedVersion = "2026.6.18";
+      state.releaseNotesMarkdownByVersion["2026.6.18"] = "# PlatformClaw v2026.6.18";
+      render(renderReleaseNotesDialog(state), container);
+
+      expect(showModal).toHaveBeenCalled();
+      expect(close).not.toHaveBeenCalled();
+    } finally {
+      Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
+      Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
+    }
+  });
+
   it("renders the release list, selected content, and unread confirmation actions", () => {
     const container = document.createElement("div");
     const state = {

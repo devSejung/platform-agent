@@ -71,7 +71,11 @@ export function resolveEmployeeReleaseReadStatePath(env: NodeJS.ProcessEnv = pro
 
 async function readReleaseReadStore(filePath: string): Promise<EmployeeReleaseReadStore> {
   try {
-    return parseReadStore(JSON.parse(await fs.readFile(filePath, "utf8")));
+    const raw = await fs.readFile(filePath, "utf8");
+    if (!raw.trim()) {
+      return emptyReadStore();
+    }
+    return parseReadStore(JSON.parse(raw));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return emptyReadStore();

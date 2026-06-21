@@ -30,6 +30,7 @@ export type EmployeeBootstrapState = {
   employeeBootstrapToken: string | null;
   employeeBootstrapReady: boolean;
   employeeBootstrapError: string | null;
+  maybeOpenUnreadReleaseNotes?: () => Promise<void>;
 };
 
 export async function loadEmployeeBootstrap(
@@ -106,6 +107,9 @@ export async function loadEmployeeBootstrap(
     state.employeeBootstrapToken = parsed.token;
     state.employeeBootstrapReady = true;
     state.employeeBootstrapError = null;
+    if (!background) {
+      void state.maybeOpenUnreadReleaseNotes?.();
+    }
   } catch (error) {
     if (!background) {
       state.employeeBootstrapError = error instanceof Error ? error.message : String(error);

@@ -14,7 +14,7 @@ describe("sidebar connection status", () => {
         version: "1.2.3",
         product: {
           name: "PlatformClaw",
-          version: "2026.6.18",
+          version: "2026.6.21",
         },
       },
     } as never;
@@ -24,7 +24,7 @@ describe("sidebar connection status", () => {
     const version = app.querySelector<HTMLElement>(".sidebar-version");
     const statusDot = app.querySelector<HTMLElement>(".sidebar-version__status");
     expect(version).not.toBeNull();
-    expect(version?.textContent).toContain("PlatformClaw v2026.6.18");
+    expect(version?.textContent).toContain("PlatformClaw v2026.6.21");
     expect(statusDot).not.toBeNull();
     expect(statusDot?.getAttribute("aria-label")).toContain("Online");
   });

@@ -698,12 +698,19 @@ function resolveProductVersion(state: AppViewState): { name: string; version: st
   };
 }
 
-function renderReleaseNotesDialog(state: AppViewState) {
+export function renderReleaseNotesDialog(state: AppViewState) {
   if (!state.releaseNotesOpen) {
     return nothing;
   }
-  const product = resolveProductVersion(state);
-  const title = product ? `${product.name} v${product.version}` : "PlatformClaw Release Notes";
+  const index = state.releaseNotesIndex;
+  const selectedVersion = state.releaseNotesSelectedVersion;
+  const selectedRelease = index?.releases.find((release) => release.version === selectedVersion);
+  const selectedMarkdown = selectedVersion
+    ? state.releaseNotesMarkdownByVersion[selectedVersion]
+    : null;
+  const selectedIsLatest = Boolean(index && selectedVersion === index.latest);
+  const latestIsUnread = Boolean(index && state.releaseNotesReadVersion !== index.latest);
+  const hasEmployeeSession = Boolean(state.employeeProfile?.employeeId?.trim());
   const ensureOpen = (el?: Element) => {
     if (!(el instanceof HTMLDialogElement) || el.matches(":modal")) {
       return;
@@ -731,19 +738,117 @@ function renderReleaseNotesDialog(state: AppViewState) {
     >
       <div class="md-preview-dialog__panel">
         <div class="md-preview-dialog__header">
-          <div class="md-preview-dialog__title">${title}</div>
-          <button class="btn btn--sm" type="button" @click=${() => state.handleCloseReleaseNotes()}>
-            Close
+          <div>
+            <div class="md-preview-dialog__title">업데이트 내역</div>
+            <div class="release-notes-dialog__subtitle">PlatformClaw 릴리즈 기록</div>
+          </div>
+          <button
+            class="btn btn--icon release-notes-dialog__close"
+            type="button"
+            aria-label="닫기"
+            title="닫기"
+            @click=${() => state.handleCloseReleaseNotes()}
+          >
+            ${icons.x}
           </button>
         </div>
-        <div class="md-preview-dialog__body sidebar-markdown">
-          ${state.releaseNotesLoading
-            ? html`<p>Loading release notes...</p>`
-            : state.releaseNotesError
-              ? html`<p>${state.releaseNotesError}</p>`
-              : state.releaseNotesMarkdown
-                ? unsafeHTML(toSanitizedMarkdownHtml(state.releaseNotesMarkdown))
-                : html`<p>Release notes unavailable.</p>`}
+        <div
+          class="release-notes-layout ${state.releaseNotesMobileDetail
+            ? "release-notes-layout--detail"
+            : ""}"
+        >
+          <aside class="release-notes-list" aria-label="릴리즈 목록">
+            <div class="release-notes-list__heading">릴리즈 목록</div>
+            <div class="release-notes-list__items">
+              ${index
+                ? index.releases.map((release) => {
+                    const isLatest = release.version === index.latest;
+                    const isSelected = release.version === selectedVersion;
+                    return html`
+                      <button
+                        class="release-notes-list__item ${isSelected ? "is-selected" : ""}"
+                        type="button"
+                        aria-current=${isSelected ? "true" : "false"}
+                        @click=${() => state.handleSelectReleaseNotesVersion(release.version)}
+                      >
+                        <span class="release-notes-list__version-row">
+                          ${isLatest && latestIsUnread
+                            ? html`<span
+                                class="release-notes-list__unread"
+                                aria-label="읽지 않은 최신 릴리즈"
+                              ></span>`
+                            : nothing}
+                          <strong>v${release.version}</strong>
+                          ${isLatest
+                            ? html`<span class="release-notes-list__latest">최신</span>`
+                            : nothing}
+                        </span>
+                        <span class="release-notes-list__title">${release.title}</span>
+                        <span class="release-notes-list__date"
+                          >${release.date.replaceAll("-", ".")}</span
+                        >
+                      </button>
+                    `;
+                  })
+                : state.releaseNotesLoading
+                  ? html`<div class="release-notes-list__empty">목록을 불러오는 중입니다.</div>`
+                  : nothing}
+            </div>
+          </aside>
+          <section class="release-notes-detail" aria-live="polite">
+            <button
+              class="release-notes-detail__back"
+              type="button"
+              @click=${() => state.handleReleaseNotesBackToList()}
+            >
+              <span aria-hidden="true">${icons.arrowLeft}</span>
+              릴리즈 목록
+            </button>
+            ${selectedRelease
+              ? html`
+                  <div class="release-notes-detail__meta">
+                    <span>${selectedRelease.date}</span>
+                    ${selectedIsLatest
+                      ? html`<span class="release-notes-list__latest">최신</span>`
+                      : nothing}
+                  </div>
+                `
+              : nothing}
+            <div class="md-preview-dialog__body release-notes-detail__content sidebar-markdown">
+              ${state.releaseNotesLoading
+                ? html`<p>릴리즈 노트를 불러오는 중입니다.</p>`
+                : state.releaseNotesError
+                  ? html`<p class="release-notes-detail__error">${state.releaseNotesError}</p>`
+                  : selectedMarkdown
+                    ? unsafeHTML(toSanitizedMarkdownHtml(selectedMarkdown))
+                    : html`<p>표시할 릴리즈 노트가 없습니다.</p>`}
+            </div>
+          </section>
+        </div>
+        <div class="release-notes-dialog__footer">
+          ${state.employeeMode && hasEmployeeSession && selectedIsLatest && latestIsUnread
+            ? html`
+                <button class="btn" type="button" @click=${() => state.handleCloseReleaseNotes()}>
+                  ${state.releaseNotesAutoMode ? "나중에" : "닫기"}
+                </button>
+                <button
+                  class="btn primary"
+                  type="button"
+                  ?disabled=${state.releaseNotesReadSubmitting || !selectedMarkdown}
+                  @click=${() => state.handleConfirmReleaseNotes()}
+                >
+                  ${state.releaseNotesReadSubmitting ? "저장 중..." : "확인"}
+                </button>
+              `
+            : html`
+                <button
+                  class="btn primary"
+                  type="button"
+                  @click=${() => state.handleCloseReleaseNotes()}
+                >
+                  닫기
+                </button>
+              `}
         </div>
       </div>
     </dialog>

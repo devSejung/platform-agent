@@ -34,6 +34,7 @@ export type EmployeeLoginState = {
   chatRunId?: string | null;
   chatSendDrafts?: Record<string, unknown>;
   chatSendFailures?: Record<string, unknown>;
+  resetReleaseNotesSession?: () => void;
 } & Parameters<typeof loadEmployeeBootstrap>[0];
 
 export async function submitEmployeeLogin(state: EmployeeLoginState) {
@@ -125,6 +126,7 @@ export async function logoutEmployee(state: EmployeeLoginState) {
       credentials: "include",
     });
   } finally {
+    state.resetReleaseNotesSession?.();
     state.client?.stop?.();
     state.connected = false;
     state.employeeBootstrapReady = false;

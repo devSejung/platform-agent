@@ -9,8 +9,23 @@ import { handleControlUiAvatarRequest, handleControlUiHttpRequest } from "./cont
 import { makeMockHttpResponse } from "./test-http-response.js";
 
 vi.mock("../platformclaw-release.js", () => ({
+  readPlatformClawReleaseIndex: vi.fn(() => ({
+    name: "PlatformClaw",
+    latest: "2026.6.18",
+    releases: [
+      {
+        version: "2026.6.18",
+        date: "2026-06-18",
+        title: "첨부파일 및 로그인 화면 개선",
+        path: "docs/platformclaw/releases/2026.6.18.md",
+      },
+    ],
+  })),
+  readPlatformClawReleaseNotes: vi.fn((version: string) =>
+    version === "2026.6.18" ? "# PlatformClaw v2026.6.18\n\n## 추가\n\n- Test\n" : null,
+  ),
   readLatestPlatformClawReleaseNotes: vi.fn(
-    () => "# PlatformClaw v2026.6.18\n\n## Added\n\n- Test\n",
+    () => "# PlatformClaw v2026.6.18\n\n## 추가\n\n- Test\n",
   ),
 }));
 
@@ -157,6 +172,34 @@ describe("handleControlUiHttpRequest", () => {
         expect(res.statusCode).toBe(200);
         expect(setHeader).toHaveBeenCalledWith("Content-Type", "text/markdown; charset=utf-8");
         expect(String(end.mock.calls[0]?.[0] ?? "")).toContain("# PlatformClaw v2026.6.18");
+      },
+    });
+  });
+
+  it("serves the PlatformClaw release index and a versioned release note", async () => {
+    await withControlUiRoot({
+      fn: async (tmp) => {
+        const indexResponse = runControlUiRequest({
+          url: "/__openclaw/release-notes/index.json",
+          method: "GET",
+          rootPath: tmp,
+        });
+        expect(indexResponse.handled).toBe(true);
+        expect(indexResponse.res.statusCode).toBe(200);
+        expect(JSON.parse(String(indexResponse.end.mock.calls[0]?.[0] ?? ""))).toMatchObject({
+          latest: "2026.6.18",
+        });
+
+        const noteResponse = runControlUiRequest({
+          url: "/__openclaw/release-notes/2026.6.18.md",
+          method: "GET",
+          rootPath: tmp,
+        });
+        expect(noteResponse.handled).toBe(true);
+        expect(noteResponse.res.statusCode).toBe(200);
+        expect(String(noteResponse.end.mock.calls[0]?.[0] ?? "")).toContain(
+          "# PlatformClaw v2026.6.18",
+        );
       },
     });
   });

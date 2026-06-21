@@ -4,6 +4,7 @@ import type {
   EmployeeUiAccountSummary,
   EmployeeUiLoginNotice,
 } from "../../../src/gateway/employee-ui-contract.ts";
+import type { PlatformClawReleaseIndex } from "../../../src/platformclaw-release.ts";
 import { i18n, I18nController, isSupportedLocale } from "../i18n/index.ts";
 import {
   handleChannelConfigReload as handleChannelConfigReloadInternal,
@@ -78,6 +79,12 @@ import {
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
 import type { GroupDetail, GroupEntry, GroupScopeOption } from "./controllers/groups.ts";
+import {
+  confirmEmployeeReleaseNotesRead,
+  loadEmployeeReleaseNotesStatus,
+  loadPlatformClawReleaseIndex,
+  loadPlatformClawReleaseMarkdown,
+} from "./controllers/release-notes.ts";
 import type { SkillHubDetail, SkillHubEntry, SkillHubScope } from "./controllers/skill-hub.ts";
 import type {
   ClawHubSearchResult,
@@ -222,7 +229,16 @@ export class OpenClawApp extends LitElement {
   @state() releaseNotesOpen = false;
   @state() releaseNotesLoading = false;
   @state() releaseNotesError: string | null = null;
-  @state() releaseNotesMarkdown: string | null = null;
+  @state() releaseNotesIndex: PlatformClawReleaseIndex | null = null;
+  @state() releaseNotesSelectedVersion: string | null = null;
+  @state() releaseNotesMarkdownByVersion: Record<string, string> = {};
+  @state() releaseNotesReadVersion: string | null = null;
+  @state() releaseNotesAutoMode = false;
+  @state() releaseNotesMobileDetail = false;
+  @state() releaseNotesReadSubmitting = false;
+  private releaseNotesLoadGeneration = 0;
+  private releaseNotesAutoCheckEmployeeId: string | null = null;
+  private releaseNotesAutoCheckPromise: Promise<void> | null = null;
   @state() lastError: string | null = null;
   @state() lastErrorCode: string | null = null;
   @state() eventLog: EventLogEntry[] = [];
@@ -1079,31 +1095,138 @@ export class OpenClawApp extends LitElement {
     this.applySettings({ ...this.settings, splitRatio: newRatio });
   }
 
-  async handleOpenReleaseNotes() {
+  async handleOpenReleaseNotes(options?: { auto?: boolean }) {
     this.releaseNotesOpen = true;
-    if (this.releaseNotesMarkdown || this.releaseNotesLoading) {
-      return;
-    }
-    this.releaseNotesLoading = true;
+    this.releaseNotesAutoMode = options?.auto === true;
+    this.releaseNotesMobileDetail = options?.auto === true;
     this.releaseNotesError = null;
+    if (!this.releaseNotesIndex) {
+      this.releaseNotesLoading = true;
+    }
     try {
-      const base = this.basePath ? this.basePath.replace(/\/$/, "") : "";
-      const res = await fetch(`${base}/__openclaw/release-notes/latest.md`, {
-        headers: { Accept: "text/markdown, text/plain;q=0.9" },
+      const index = this.releaseNotesIndex ?? (await loadPlatformClawReleaseIndex(this.basePath));
+      this.releaseNotesIndex = index;
+      await this.handleSelectReleaseNotesVersion(index.latest, {
+        showMobileDetail: options?.auto === true,
       });
-      if (!res.ok) {
-        throw new Error(`Release notes unavailable (${res.status})`);
-      }
-      this.releaseNotesMarkdown = await res.text();
     } catch (error) {
       this.releaseNotesError = error instanceof Error ? error.message : String(error);
-    } finally {
       this.releaseNotesLoading = false;
     }
   }
 
+  async handleSelectReleaseNotesVersion(version: string, options?: { showMobileDetail?: boolean }) {
+    const release = this.releaseNotesIndex?.releases.find((entry) => entry.version === version);
+    if (!release) {
+      return;
+    }
+    this.releaseNotesSelectedVersion = version;
+    this.releaseNotesMobileDetail = options?.showMobileDetail ?? true;
+    this.releaseNotesError = null;
+    const generation = ++this.releaseNotesLoadGeneration;
+    if (this.releaseNotesMarkdownByVersion[version]) {
+      this.releaseNotesLoading = false;
+      return;
+    }
+    this.releaseNotesLoading = true;
+    try {
+      const markdown = await loadPlatformClawReleaseMarkdown(this.basePath, version);
+      if (generation !== this.releaseNotesLoadGeneration) {
+        return;
+      }
+      this.releaseNotesMarkdownByVersion = {
+        ...this.releaseNotesMarkdownByVersion,
+        [version]: markdown,
+      };
+    } catch (error) {
+      if (generation === this.releaseNotesLoadGeneration) {
+        this.releaseNotesError = error instanceof Error ? error.message : String(error);
+      }
+    } finally {
+      if (generation === this.releaseNotesLoadGeneration) {
+        this.releaseNotesLoading = false;
+      }
+    }
+  }
+
+  async maybeOpenUnreadReleaseNotes() {
+    if (!this.employeeMode) {
+      return;
+    }
+    const employeeId = this.employeeProfile.employeeId?.trim();
+    if (!employeeId || this.releaseNotesAutoCheckEmployeeId === employeeId) {
+      return;
+    }
+    if (this.releaseNotesAutoCheckPromise) {
+      await this.releaseNotesAutoCheckPromise;
+      return this.maybeOpenUnreadReleaseNotes();
+    }
+    const check = async () => {
+      try {
+        const status = await loadEmployeeReleaseNotesStatus();
+        if (this.employeeProfile.employeeId?.trim() !== employeeId) {
+          return;
+        }
+        this.releaseNotesAutoCheckEmployeeId = employeeId;
+        this.releaseNotesReadVersion = status.readVersion;
+        if (status.shouldAutoOpen) {
+          await this.handleOpenReleaseNotes({ auto: true });
+        }
+      } catch {
+        // Release note status must never block employee login.
+      }
+    };
+    this.releaseNotesAutoCheckPromise = check();
+    try {
+      await this.releaseNotesAutoCheckPromise;
+    } finally {
+      this.releaseNotesAutoCheckPromise = null;
+    }
+  }
+
+  async handleConfirmReleaseNotes() {
+    const latestVersion = this.releaseNotesIndex?.latest;
+    const employeeId = this.employeeProfile.employeeId?.trim();
+    if (
+      !this.employeeMode ||
+      !employeeId ||
+      !latestVersion ||
+      this.releaseNotesSelectedVersion !== latestVersion ||
+      this.releaseNotesReadSubmitting
+    ) {
+      return;
+    }
+    this.releaseNotesReadSubmitting = true;
+    this.releaseNotesError = null;
+    try {
+      const status = await confirmEmployeeReleaseNotesRead(latestVersion);
+      if (this.employeeProfile.employeeId?.trim() !== employeeId) {
+        return;
+      }
+      this.releaseNotesReadVersion = status.readVersion;
+      this.handleCloseReleaseNotes();
+    } catch (error) {
+      this.releaseNotesError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.releaseNotesReadSubmitting = false;
+    }
+  }
+
+  handleReleaseNotesBackToList() {
+    this.releaseNotesMobileDetail = false;
+  }
+
+  resetReleaseNotesSession() {
+    this.releaseNotesAutoCheckEmployeeId = null;
+    this.releaseNotesAutoCheckPromise = null;
+    this.releaseNotesReadVersion = null;
+    this.releaseNotesAutoMode = false;
+    this.releaseNotesOpen = false;
+  }
+
   handleCloseReleaseNotes() {
     this.releaseNotesOpen = false;
+    this.releaseNotesAutoMode = false;
   }
 
   render() {

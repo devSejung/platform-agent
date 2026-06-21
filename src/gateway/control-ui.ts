@@ -9,7 +9,11 @@ import {
 } from "../infra/control-ui-assets.js";
 import { isWithinDir } from "../infra/path-safety.js";
 import { openVerifiedFileSync } from "../infra/safe-open-sync.js";
-import { readLatestPlatformClawReleaseNotes } from "../platformclaw-release.js";
+import {
+  readLatestPlatformClawReleaseNotes,
+  readPlatformClawReleaseIndex,
+  readPlatformClawReleaseNotes,
+} from "../platformclaw-release.js";
 import { AVATAR_MAX_BYTES } from "../shared/avatar-policy.js";
 import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 import { DEFAULT_ASSISTANT_IDENTITY, resolveAssistantIdentity } from "./assistant-identity.js";
@@ -104,7 +108,7 @@ const STATIC_ASSET_EXTENSIONS = new Set([
 ]);
 
 const EMPLOYEE_UI_PREFIX = "/employee";
-const RELEASE_NOTES_PATH = "/__openclaw/release-notes/latest.md";
+const RELEASE_NOTES_ROOT = "/__openclaw/release-notes";
 
 export type ControlUiAvatarResolution =
   | { kind: "none"; reason: string }
@@ -356,9 +360,36 @@ export function handleControlUiHttpRequest(
 
   applyControlUiSecurityHeaders(res);
 
-  const releaseNotesPath = basePath ? `${basePath}${RELEASE_NOTES_PATH}` : RELEASE_NOTES_PATH;
-  if (pathname === releaseNotesPath) {
-    const body = readLatestPlatformClawReleaseNotes();
+  const releaseNotesRoot = basePath ? `${basePath}${RELEASE_NOTES_ROOT}` : RELEASE_NOTES_ROOT;
+  const releaseIndexPath = `${releaseNotesRoot}/index.json`;
+  if (pathname === releaseIndexPath) {
+    const index = readPlatformClawReleaseIndex();
+    if (!index) {
+      respondControlUiNotFound(res);
+      return true;
+    }
+    if (req.method === "HEAD") {
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.end();
+      return true;
+    }
+    sendJson(res, 200, index);
+    return true;
+  }
+
+  const latestReleaseNotesPath = `${releaseNotesRoot}/latest.md`;
+  const versionPathPrefix = `${releaseNotesRoot}/`;
+  const requestedVersion =
+    pathname.startsWith(versionPathPrefix) && pathname.endsWith(".md")
+      ? pathname.slice(versionPathPrefix.length, -3)
+      : null;
+  if (pathname === latestReleaseNotesPath || requestedVersion) {
+    const body =
+      pathname === latestReleaseNotesPath
+        ? readLatestPlatformClawReleaseNotes()
+        : readPlatformClawReleaseNotes(requestedVersion ?? undefined);
     if (!body) {
       respondControlUiNotFound(res);
       return true;

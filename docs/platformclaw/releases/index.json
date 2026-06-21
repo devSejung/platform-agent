@@ -1,0 +1,18 @@
+{
+  "name": "PlatformClaw",
+  "latest": "2026.6.21",
+  "releases": [
+    {
+      "version": "2026.6.21",
+      "date": "2026-06-21",
+      "title": "결과물 미리보기 및 Skill Hub 개선",
+      "path": "docs/platformclaw/releases/2026.6.21.md"
+    },
+    {
+      "version": "2026.6.18",
+      "date": "2026-06-18",
+      "title": "첨부파일 및 로그인 화면 개선",
+      "path": "docs/platformclaw/releases/2026.6.18.md"
+    }
+  ]
+}

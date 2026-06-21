@@ -2,6 +2,7 @@ import type {
   EmployeeUiAccountSummary,
   EmployeeUiLoginNotice,
 } from "../../../src/gateway/employee-ui-contract.ts";
+import type { PlatformClawReleaseIndex } from "../../../src/platformclaw-release.ts";
 import type { EventLogEntry } from "./app-events.ts";
 import type { CompactionStatus, FallbackStatus, RunPhaseStatus } from "./app-tool-stream.ts";
 import type { ArtifactFocusItem } from "./chat/artifact-focus-viewer.ts";
@@ -90,7 +91,13 @@ export type AppViewState = {
   releaseNotesOpen: boolean;
   releaseNotesLoading: boolean;
   releaseNotesError: string | null;
-  releaseNotesMarkdown: string | null;
+  releaseNotesIndex: PlatformClawReleaseIndex | null;
+  releaseNotesSelectedVersion: string | null;
+  releaseNotesMarkdownByVersion: Record<string, string>;
+  releaseNotesReadVersion: string | null;
+  releaseNotesAutoMode: boolean;
+  releaseNotesMobileDetail: boolean;
+  releaseNotesReadSubmitting: boolean;
   lastError: string | null;
   lastErrorCode: string | null;
   eventLog: EventLogEntry[];
@@ -561,6 +568,12 @@ export type AppViewState = {
     handleOpenSidebar: (content: string) => void;
     handleCloseSidebar: () => void;
     handleSplitRatioChange: (ratio: number) => void;
-    handleOpenReleaseNotes: () => Promise<void>;
+    handleOpenReleaseNotes: (options?: { auto?: boolean }) => Promise<void>;
+    handleSelectReleaseNotesVersion: (
+      version: string,
+      options?: { showMobileDetail?: boolean },
+    ) => Promise<void>;
+    handleConfirmReleaseNotes: () => Promise<void>;
+    handleReleaseNotesBackToList: () => void;
     handleCloseReleaseNotes: () => void;
   };

@@ -38,7 +38,7 @@ import {
 } from "./control-ui.js";
 import { handleOpenAiEmbeddingsHttpRequest } from "./embeddings-http.js";
 import { handleEmployeeChatAttachmentsHttpRequest } from "./employee-chat-attachments.js";
-import { EMPLOYEE_BOOTSTRAP_PATH } from "./employee-ui-contract.js";
+import { handleEmployeeReleaseNotesHttpRequest } from "./employee-release-notes.js";
 import {
   handleEmployeeAdSsoRequest,
   handleEmployeeBootstrapRequest,
@@ -1036,6 +1036,16 @@ export function createGatewayHttpServer(opts: {
         name: "employee-bootstrap",
         run: () =>
           handleEmployeeBootstrapRequest(req, res, configSnapshot, resolveGatewayWebsocketUrl(req)),
+      });
+
+      requestStages.push({
+        name: "employee-release-notes",
+        run: () =>
+          handleEmployeeReleaseNotesHttpRequest({
+            req,
+            res,
+            readJsonBody,
+          }),
       });
 
       requestStages.push({

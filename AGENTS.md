@@ -124,14 +124,21 @@
 ## PlatformClaw Internal Release Notes
 
 - Product-facing PlatformClaw release notes live under `docs/platformclaw/releases/`.
-- Keep `docs/platformclaw/releases/latest.json` aligned with the current internal release note.
-- Keep `docs/platformclaw/releases/latest.md` in this structure:
+- Keep `docs/platformclaw/releases/index.json` aligned with every published release note. Its
+  `latest` field must identify an entry in `releases`, ordered newest first.
+- Store each release in `docs/platformclaw/releases/<version>.md`. Do not overwrite or remove
+  older release files when publishing a new version.
+- Keep each versioned Markdown file in this structure:
   - `# PlatformClaw vYYYY.M.D` or the approved internal version.
   - `Date: YYYY-MM-DD`.
   - `## 추가`, `## 변경`, `## 수정`, and `## 내부 메모`.
 - When asked "지금 수정된 내용으로 내부 release note만들어줘.", inspect `git diff --stat`
-  and `git diff`, summarize only user-facing or operator-relevant changes in Korean, and update the
-  release note using the structure above. Include verification results when they affect rollout.
+  and `git diff`, summarize only user-facing or operator-relevant changes in Korean, create or
+  update the requested version file, and update `index.json`. Include verification results only
+  when they affect rollout.
+- Employee read state is runtime data under
+  `~/.openclaw/platformclaw/release-notes/read-state.json`; never commit that file or place it under
+  `docs/`.
 - Do not show or mention the OpenClaw base version in product-facing PlatformClaw release notes.
 - Do not rename package names, CLI commands, config keys, protocol identifiers, or public SDK
   imports from `openclaw` to `platformclaw` just because the product-facing release note uses

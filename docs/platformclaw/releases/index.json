@@ -1,7 +1,13 @@
 {
   "name": "PlatformClaw",
-  "latest": "2026.6.21",
+  "latest": "2026.6.25",
   "releases": [
+    {
+      "version": "2026.6.25",
+      "date": "2026-06-25",
+      "title": "PlatformClaw 사용량 Dashboard V0 추가",
+      "path": "docs/platformclaw/releases/2026.6.25.md"
+    },
     {
       "version": "2026.6.21",
       "date": "2026-06-21",

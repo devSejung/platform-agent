@@ -280,6 +280,12 @@ export type AppViewState = {
   usageResult: SessionsUsageResult | null;
   usageCostSummary: CostUsageSummary | null;
   usageError: string | null;
+  dashboardLoading: boolean;
+  dashboardError: string | null;
+  dashboardRange: import("./types.ts").DashboardRange;
+  dashboardResult: import("./types.ts").DashboardSummaryResult | null;
+  dashboardSortBy: import("./types.ts").DashboardSortBy;
+  dashboardSortDir: import("./types.ts").DashboardSortDir;
   usageStartDate: string;
   usageEndDate: string;
   usageSelectedSessions: string[];

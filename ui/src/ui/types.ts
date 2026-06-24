@@ -484,6 +484,18 @@ export type SessionsPatchResult = SessionsPatchResultBase<{
 };
 
 export type {
+  DashboardAgentUsageRow,
+  DashboardPartUsageRow,
+  DashboardRange,
+  DashboardSortBy,
+  DashboardSortDir,
+  DashboardSummary,
+  DashboardSummaryParams,
+  DashboardSummaryResult,
+  DashboardTimePoint,
+} from "../../../src/shared/dashboard-types.js";
+
+export type {
   CostUsageDailyEntry,
   CostUsageSummary,
   SessionsUsageEntry,

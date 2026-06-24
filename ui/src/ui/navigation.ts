@@ -24,12 +24,16 @@ export const TAB_GROUPS = [
 ] as const;
 
 export const EMPLOYEE_TAB_GROUPS = [
-  { label: "chat", tabs: ["chat", "files", "cron", "heartbeat", "skills", "skillHub", "groups", "admin"] },
+  {
+    label: "chat",
+    tabs: ["chat", "files", "cron", "heartbeat", "skills", "skillHub", "groups", "admin"],
+  },
 ] as const;
 
 export type Tab =
   | "agents"
   | "overview"
+  | "dashboard"
   | "channels"
   | "instances"
   | "sessions"
@@ -56,6 +60,7 @@ export type Tab =
 const TAB_PATHS: Record<Tab, string> = {
   agents: "/agents",
   overview: "/overview",
+  dashboard: "/dashboard",
   channels: "/channels",
   instances: "/instances",
   sessions: "/sessions",
@@ -176,6 +181,8 @@ export function iconForTab(tab: Tab): IconName {
       return "messageSquare";
     case "overview":
       return "barChart";
+    case "dashboard":
+      return "barChart";
     case "channels":
       return "link";
     case "instances":
@@ -227,6 +234,7 @@ export function titleForTab(tab: Tab) {
   const titles: Record<Tab, string> = {
     agents: "Agents",
     overview: "Overview",
+    dashboard: "Dashboard",
     channels: "Channels",
     instances: "Instances",
     sessions: "Sessions",
@@ -256,6 +264,9 @@ export function titleForTab(tab: Tab) {
 export function subtitleForTab(tab: Tab) {
   if (tab === "heartbeat") {
     return "Recent delivery health and wake status.";
+  }
+  if (tab === "dashboard") {
+    return "Organization-wide usage overview by employee, agent, and part.";
   }
   if (tab === "files") {
     return "Browse and manage files in your workspace.";

@@ -1,4 +1,11 @@
 import fs from "node:fs";
+import {
+  resolveAccountIdByAlias,
+  listAccountMembershipSummaries,
+  resolveAccountIdByEmployeeId,
+  resolveAccountDisplayName,
+} from "../../accounts/account-store.js";
+import { isAdminAccount } from "../../accounts/group-store.js";
 import { loadConfig } from "../../config/config.js";
 import {
   resolveSessionFilePath,
@@ -22,6 +29,16 @@ import {
 } from "../../infra/session-cost-usage.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { resolvePreferredSessionKeyForSessionIdMatches } from "../../sessions/session-id-resolution.js";
+import type {
+  DashboardAgentUsageRow,
+  DashboardPartUsageRow,
+  DashboardRange,
+  DashboardSortBy,
+  DashboardSortDir,
+  DashboardSummaryParams,
+  DashboardSummaryResult,
+  DashboardTimePoint,
+} from "../../shared/dashboard-types.js";
 import {
   buildUsageAggregateTail,
   mergeUsageDailyLatency,
@@ -36,6 +53,7 @@ import {
   ErrorCodes,
   errorShape,
   formatValidationErrors,
+  validateDashboardSummaryParams,
   validateSessionsUsageParams,
 } from "../protocol/index.js";
 import {
@@ -46,6 +64,7 @@ import {
 import type { GatewayRequestHandlers, RespondFn } from "./types.js";
 
 const COST_USAGE_CACHE_TTL_MS = 30_000;
+const DASHBOARD_TOTAL_CACHE_TTL_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type DateRange = { startMs: number; endMs: number };
@@ -60,6 +79,13 @@ type CostUsageCacheEntry = {
 };
 
 const costUsageCache = new Map<string, CostUsageCacheEntry>();
+let dashboardTotalCache:
+  | {
+      result?: DashboardSummaryResult;
+      updatedAt?: number;
+      inFlight?: Promise<DashboardSummaryResult>;
+    }
+  | undefined;
 
 function resolveSessionUsageFileOrRespond(
   key: string,
@@ -250,6 +276,284 @@ const parseDateRange = (params: {
 
 type DiscoveredSessionWithAgent = DiscoveredSession & { agentId: string };
 
+type DashboardBucket = {
+  key: string;
+  label: string;
+  start?: string;
+  end?: string;
+  sessions: number;
+  apiCalls: number;
+  totalTokens: number;
+};
+
+function resolveDashboardCanSort(
+  client: Parameters<GatewayRequestHandlers[string]>[0]["client"],
+): boolean {
+  if (client?.connect?.role === "operator") {
+    return true;
+  }
+  if (client?.connect?.role !== "employee") {
+    return false;
+  }
+  const employeeId = client.internal?.employee?.employeeId?.trim();
+  return employeeId ? isAdminAccount(employeeId) : false;
+}
+
+function isoDayFromMs(ms: number): string {
+  const date = new Date(ms);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function monthKeyFromDate(dateKey: string): string {
+  return dateKey.slice(0, 7);
+}
+
+function monthLabelFromKey(monthKey: string): string {
+  const [year, month] = monthKey.split("-").map((part) => Number(part));
+  const date = new Date(year, Math.max(0, month - 1), 1);
+  return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
+
+function ensureMonthlyBucket(buckets: Map<string, DashboardBucket>, dateKey: string): string {
+  const monthKey = monthKeyFromDate(dateKey);
+  if (!buckets.has(monthKey)) {
+    buckets.set(monthKey, {
+      key: monthKey,
+      label: monthLabelFromKey(monthKey),
+      start: `${monthKey}-01T00:00:00.000Z`,
+      end: undefined,
+      sessions: 0,
+      apiCalls: 0,
+      totalTokens: 0,
+    });
+  }
+  return monthKey;
+}
+
+function addBucketMetric(
+  buckets: Map<string, DashboardBucket>,
+  key: string,
+  metric: Partial<Pick<DashboardBucket, "sessions" | "apiCalls" | "totalTokens">>,
+) {
+  const bucket = buckets.get(key);
+  if (!bucket) {
+    return;
+  }
+  bucket.sessions += metric.sessions ?? 0;
+  bucket.apiCalls += metric.apiCalls ?? 0;
+  bucket.totalTokens += metric.totalTokens ?? 0;
+}
+
+function buildDashboardBuckets(range: DashboardRange, nowMs: number): Map<string, DashboardBucket> {
+  const buckets = new Map<string, DashboardBucket>();
+  const now = new Date(nowMs);
+  if (range === "today") {
+    for (let hour = 0; hour < 24; hour += 1) {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0, 0, 0);
+      const end = new Date(start.getTime() + 60 * 60 * 1000 - 1);
+      const key = String(hour).padStart(2, "0");
+      buckets.set(key, {
+        key,
+        label: String(hour).padStart(2, "0"),
+        start: start.toISOString(),
+        end: end.toISOString(),
+        sessions: 0,
+        apiCalls: 0,
+        totalTokens: 0,
+      });
+    }
+    return buckets;
+  }
+
+  const days = range === "7d" ? 7 : 30;
+  if (range === "7d" || range === "30d") {
+    for (let offset = days - 1; offset >= 0; offset -= 1) {
+      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset);
+      const key = isoDayFromMs(date.getTime());
+      buckets.set(key, {
+        key,
+        label:
+          range === "7d"
+            ? date.toLocaleDateString("en-US", { weekday: "short" })
+            : date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        start: new Date(
+          date.getFullYear(),
+          date.getMonth(),
+          date.getDate(),
+          0,
+          0,
+          0,
+          0,
+        ).toISOString(),
+        end: new Date(
+          date.getFullYear(),
+          date.getMonth(),
+          date.getDate(),
+          23,
+          59,
+          59,
+          999,
+        ).toISOString(),
+        sessions: 0,
+        apiCalls: 0,
+        totalTokens: 0,
+      });
+    }
+  }
+  return buckets;
+}
+
+function resolveDashboardWindow(range: DashboardRange): DateRange {
+  if (range === "total") {
+    return { startMs: 0, endMs: Date.now() };
+  }
+  const days = range === "today" ? 1 : range === "7d" ? 7 : 30;
+  return parseDateRange({ days, mode: "gateway" });
+}
+
+function resolveDashboardParts(accountId?: string): string[] {
+  if (!accountId) {
+    return ["Unassigned"];
+  }
+  const parts = listAccountMembershipSummaries(accountId)
+    .filter((entry) => entry.scopeType === "part" && !entry.archived)
+    .map((entry) => entry.scopeName.trim())
+    .filter(Boolean);
+  return parts.length > 0 ? Array.from(new Set(parts)).toSorted() : ["Unassigned"];
+}
+
+function resolveDashboardAccountId(params: {
+  accountCandidate?: string;
+  agentId: string;
+}): string | undefined {
+  const normalizedAgentId = params.agentId.trim();
+  if (normalizedAgentId) {
+    const directAgentMatch = resolveAccountIdByAlias({
+      aliasType: "agent_id",
+      aliasValue: normalizedAgentId,
+    });
+    if (directAgentMatch) {
+      return directAgentMatch;
+    }
+    if (!normalizedAgentId.startsWith("test_") && normalizedAgentId.includes("_")) {
+      const dottedAgentId = normalizedAgentId.replaceAll("_", ".");
+      const dottedAgentMatch = resolveAccountIdByAlias({
+        aliasType: "agent_id",
+        aliasValue: dottedAgentId,
+      });
+      if (dottedAgentMatch) {
+        return dottedAgentMatch;
+      }
+    }
+  }
+
+  const normalizedCandidate = params.accountCandidate?.trim();
+  if (normalizedCandidate) {
+    return (
+      resolveAccountIdByEmployeeId(normalizedCandidate) ??
+      resolveAccountIdByAlias({
+        aliasType: "employee_id",
+        aliasValue: normalizedCandidate,
+      }) ??
+      normalizedCandidate
+    );
+  }
+  return undefined;
+}
+
+function resolveDashboardName(params: {
+  accountId?: string;
+  originLabel?: string;
+  originFrom?: string;
+  agentName: string;
+  sessionId?: string;
+}): string {
+  if (params.accountId) {
+    return resolveAccountDisplayName(params.accountId) ?? params.accountId;
+  }
+  if (params.originLabel?.trim()) {
+    return params.originLabel.trim();
+  }
+  if (params.originFrom?.trim()) {
+    return params.originFrom.trim();
+  }
+  return params.agentName;
+}
+
+function resolveDashboardIdentityKey(params: {
+  accountId?: string;
+  originLabel?: string;
+  originFrom?: string;
+  agentId: string;
+}): string {
+  if (params.accountId?.trim()) {
+    return `account:${params.accountId.trim()}`;
+  }
+  if (params.originLabel?.trim()) {
+    return `label:${params.originLabel.trim().toLowerCase()}`;
+  }
+  if (params.originFrom?.trim()) {
+    return `from:${params.originFrom.trim().toLowerCase()}`;
+  }
+  return `agent:${params.agentId}`;
+}
+
+function sortDashboardAgentUsage(
+  rows: DashboardAgentUsageRow[],
+  sortBy: DashboardSortBy | undefined,
+  sortDir: DashboardSortDir | undefined,
+) {
+  const direction = sortDir === "asc" ? 1 : -1;
+  const effectiveSort = sortBy ?? "totalTokens";
+  rows.sort((left, right) => {
+    let result = 0;
+    switch (effectiveSort) {
+      case "name":
+        result = left.name.localeCompare(right.name);
+        break;
+      case "part":
+        result = left.part.localeCompare(right.part);
+        break;
+      case "agent":
+        result = left.agentName.localeCompare(right.agentName);
+        break;
+      case "sessions":
+        result = left.sessions - right.sessions;
+        break;
+      case "apiCalls":
+        result = left.apiCalls - right.apiCalls;
+        break;
+      case "lastUsedAt":
+        result =
+          (left.lastUsedAt ? Date.parse(left.lastUsedAt) : 0) -
+          (right.lastUsedAt ? Date.parse(right.lastUsedAt) : 0);
+        break;
+      case "totalTokens":
+      default:
+        result = left.totalTokens - right.totalTokens;
+        break;
+    }
+    if (result !== 0) {
+      return result * direction;
+    }
+    return (
+      left.name.localeCompare(right.name) ||
+      left.part.localeCompare(right.part) ||
+      left.agentName.localeCompare(right.agentName)
+    );
+  });
+}
+
+function cloneDashboardSummary(result: DashboardSummaryResult): DashboardSummaryResult {
+  return {
+    ...result,
+    summary: { ...result.summary },
+    timeSeries: result.timeSeries.map((entry) => ({ ...entry })),
+    agentUsage: result.agentUsage.map((entry) => ({ ...entry })),
+    partUsage: result.partUsage.map((entry) => ({ ...entry })),
+  };
+}
+
 function buildStoreBySessionId(
   store: Record<string, SessionEntry>,
 ): Map<string, { key: string; entry: SessionEntry }> {
@@ -294,6 +598,254 @@ async function discoverAllSessionsForUsage(params: {
     }),
   );
   return results.flat().toSorted((a, b) => b.mtime - a.mtime);
+}
+
+async function buildDashboardSummaryBase(params: {
+  range: DashboardRange;
+}): Promise<DashboardSummaryResult> {
+  const config = loadConfig();
+  const { startMs, endMs } = resolveDashboardWindow(params.range);
+  const discoveredSessions = await discoverAllSessionsForUsage({ config, startMs, endMs });
+  const { store } = loadCombinedSessionStoreForGateway(config);
+  const storeBySessionId = buildStoreBySessionId(store);
+  const agentMeta = new Map(
+    listAgentsForGateway(config).agents.map(
+      (agent) => [agent.id, agent.name?.trim() || agent.id] as const,
+    ),
+  );
+  const summary = {
+    activeAgents: 0,
+    sessions: 0,
+    apiCalls: 0,
+    totalTokens: 0,
+  };
+  const activeAgents = new Set<string>();
+  const rangeBuckets = buildDashboardBuckets(params.range, endMs);
+  const totalMonthlyBuckets = new Map<string, DashboardBucket>();
+  const agentUsageMap = new Map<string, DashboardAgentUsageRow>();
+  const partUsageMap = new Map<string, DashboardPartUsageRow & { _activeAgents: Set<string> }>();
+
+  for (const discovered of discoveredSessions) {
+    const storeMatch = storeBySessionId.get(discovered.sessionId);
+    const storeEntry = storeMatch?.entry;
+    const usage = await loadSessionCostSummary({
+      sessionId: discovered.sessionId,
+      sessionEntry: storeEntry,
+      sessionFile: discovered.sessionFile,
+      config,
+      agentId: discovered.agentId,
+      startMs,
+      endMs,
+    });
+    if (!usage) {
+      continue;
+    }
+
+    const sessionApiCalls = (usage.modelUsage ?? []).reduce((sum, entry) => sum + entry.count, 0);
+    const lastUsedAt = usage.lastActivity
+      ? new Date(usage.lastActivity).toISOString()
+      : new Date(discovered.mtime).toISOString();
+    const accountId = resolveDashboardAccountId({
+      accountCandidate:
+        storeEntry?.origin?.accountId ??
+        storeEntry?.lastAccountId ??
+        storeEntry?.deliveryContext?.accountId ??
+        undefined,
+      agentId: discovered.agentId,
+    });
+    const agentName = agentMeta.get(discovered.agentId) ?? discovered.agentId;
+    const name = resolveDashboardName({
+      accountId,
+      originLabel: storeEntry?.origin?.label,
+      originFrom: storeEntry?.origin?.from,
+      agentName,
+    });
+    const identityKey = resolveDashboardIdentityKey({
+      accountId,
+      originLabel: storeEntry?.origin?.label,
+      originFrom: storeEntry?.origin?.from,
+      agentId: discovered.agentId,
+    });
+    const parts = resolveDashboardParts(accountId);
+
+    summary.sessions += 1;
+    summary.apiCalls += sessionApiCalls;
+    summary.totalTokens += usage.totalTokens;
+    activeAgents.add(discovered.agentId);
+
+    if (params.range === "today") {
+      const timeSeries = await loadSessionUsageTimeSeries({
+        sessionId: discovered.sessionId,
+        sessionEntry: storeEntry,
+        sessionFile: discovered.sessionFile,
+        config,
+        agentId: discovered.agentId,
+        maxPoints: Number.MAX_SAFE_INTEGER,
+      });
+      for (const point of timeSeries?.points ?? []) {
+        if (point.timestamp < startMs || point.timestamp > endMs) {
+          continue;
+        }
+        const hourKey = String(new Date(point.timestamp).getHours()).padStart(2, "0");
+        addBucketMetric(rangeBuckets, hourKey, {
+          totalTokens: point.totalTokens,
+          apiCalls: 1,
+        });
+      }
+      addBucketMetric(rangeBuckets, String(new Date(lastUsedAt).getHours()).padStart(2, "0"), {
+        sessions: 1,
+      });
+    } else {
+      for (const day of usage.dailyBreakdown ?? []) {
+        addBucketMetric(rangeBuckets, day.date, {
+          totalTokens: day.tokens,
+        });
+        const monthKey = ensureMonthlyBucket(totalMonthlyBuckets, day.date);
+        addBucketMetric(totalMonthlyBuckets, monthKey, { totalTokens: day.tokens });
+      }
+      for (const day of usage.dailyModelUsage ?? []) {
+        ensureMonthlyBucket(totalMonthlyBuckets, day.date);
+        addBucketMetric(rangeBuckets, day.date, { apiCalls: day.count });
+        addBucketMetric(totalMonthlyBuckets, monthKeyFromDate(day.date), { apiCalls: day.count });
+      }
+      for (const dayKey of usage.activityDates ?? []) {
+        ensureMonthlyBucket(totalMonthlyBuckets, dayKey);
+        addBucketMetric(rangeBuckets, dayKey, { sessions: 1 });
+        addBucketMetric(totalMonthlyBuckets, monthKeyFromDate(dayKey), { sessions: 1 });
+      }
+    }
+
+    for (const part of parts) {
+      const agentRowKey = `${identityKey}::${part}::${discovered.agentId}`;
+      const existingAgentRow = agentUsageMap.get(agentRowKey) ?? {
+        accountId,
+        name,
+        part,
+        agentId: discovered.agentId,
+        agentName,
+        sessions: 0,
+        apiCalls: 0,
+        totalTokens: 0,
+        lastUsedAt: null,
+      };
+      existingAgentRow.sessions += 1;
+      existingAgentRow.apiCalls += sessionApiCalls;
+      existingAgentRow.totalTokens += usage.totalTokens;
+      if (
+        lastUsedAt &&
+        (!existingAgentRow.lastUsedAt ||
+          Date.parse(lastUsedAt) > Date.parse(existingAgentRow.lastUsedAt))
+      ) {
+        existingAgentRow.lastUsedAt = lastUsedAt;
+      }
+      agentUsageMap.set(agentRowKey, existingAgentRow);
+
+      const existingPartRow = partUsageMap.get(part) ?? {
+        part,
+        activeAgents: 0,
+        sessions: 0,
+        apiCalls: 0,
+        totalTokens: 0,
+        share: 0,
+        _activeAgents: new Set<string>(),
+      };
+      existingPartRow._activeAgents.add(discovered.agentId);
+      existingPartRow.sessions += 1;
+      existingPartRow.apiCalls += sessionApiCalls;
+      existingPartRow.totalTokens += usage.totalTokens;
+      partUsageMap.set(part, existingPartRow);
+    }
+  }
+
+  summary.activeAgents = activeAgents.size;
+
+  const agentUsage = Array.from(agentUsageMap.values());
+  sortDashboardAgentUsage(agentUsage, undefined, "desc");
+
+  const partRows = Array.from(partUsageMap.values())
+    .map((row) => ({
+      part: row.part,
+      activeAgents: row._activeAgents.size,
+      sessions: row.sessions,
+      apiCalls: row.apiCalls,
+      totalTokens: row.totalTokens,
+      share: 0,
+    }))
+    .toSorted((a, b) => b.totalTokens - a.totalTokens || a.part.localeCompare(b.part));
+  const totalPartTokens = partRows.reduce((sum, row) => sum + row.totalTokens, 0);
+  for (const row of partRows) {
+    row.share = totalPartTokens > 0 ? row.totalTokens / totalPartTokens : 0;
+  }
+
+  return {
+    canSort: false,
+    range: params.range,
+    generatedAt: Date.now(),
+    summary,
+    timeSeries: (params.range === "total"
+      ? Array.from(totalMonthlyBuckets.values())
+      : Array.from(rangeBuckets.values())
+    )
+      .toSorted((a, b) => a.key.localeCompare(b.key))
+      .map(
+        (bucket): DashboardTimePoint => ({
+          label: bucket.label,
+          start: bucket.start,
+          end: bucket.end,
+          sessions: Math.round(bucket.sessions),
+          apiCalls: Math.round(bucket.apiCalls),
+          totalTokens: Math.round(bucket.totalTokens),
+        }),
+      ),
+    agentUsage,
+    partUsage: partRows,
+  };
+}
+
+async function loadDashboardSummaryCached(range: DashboardRange): Promise<DashboardSummaryResult> {
+  if (range !== "total") {
+    return await buildDashboardSummaryBase({ range });
+  }
+  const now = Date.now();
+  const cached = dashboardTotalCache;
+  if (cached?.result && cached.updatedAt && now - cached.updatedAt < DASHBOARD_TOTAL_CACHE_TTL_MS) {
+    return cached.result;
+  }
+  if (cached?.inFlight) {
+    if (cached.result) {
+      return cached.result;
+    }
+    return await cached.inFlight;
+  }
+  const entry = cached ?? {};
+  const inFlight = buildDashboardSummaryBase({ range: "total" })
+    .then((result) => {
+      dashboardTotalCache = { result, updatedAt: Date.now() };
+      return result;
+    })
+    .catch((error) => {
+      if (entry.result) {
+        return entry.result;
+      }
+      throw error;
+    })
+    .finally(() => {
+      if (dashboardTotalCache?.inFlight === inFlight) {
+        dashboardTotalCache = {
+          result: dashboardTotalCache.result,
+          updatedAt: dashboardTotalCache.updatedAt,
+        };
+      }
+    });
+  dashboardTotalCache = {
+    result: entry.result,
+    updatedAt: entry.updatedAt,
+    inFlight,
+  };
+  if (entry.result) {
+    return entry.result;
+  }
+  return await inFlight;
 }
 
 async function loadCostUsageSummaryCached(params: {
@@ -368,6 +920,27 @@ export const usageHandlers: GatewayRequestHandlers = {
   "usage.status": async ({ respond }) => {
     const summary = await loadProviderUsageSummary();
     respond(true, summary, undefined);
+  },
+  "dashboard.summary": async ({ respond, params, client }) => {
+    if (!validateDashboardSummaryParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid dashboard.summary params: ${formatValidationErrors(validateDashboardSummaryParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const dashboardParams = params as DashboardSummaryParams;
+    const canSort = resolveDashboardCanSort(client);
+    const result = cloneDashboardSummary(await loadDashboardSummaryCached(dashboardParams.range));
+    if (canSort) {
+      sortDashboardAgentUsage(result.agentUsage, dashboardParams.sortBy, dashboardParams.sortDir);
+    }
+    result.canSort = canSort;
+    respond(true, result, undefined);
   },
   "usage.cost": async ({ respond, params }) => {
     const config = loadConfig();

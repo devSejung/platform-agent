@@ -24,6 +24,7 @@ import {
   loadCronStatus,
 } from "./controllers/cron.ts";
 import { loadDebug } from "./controllers/debug.ts";
+import { loadDashboard } from "./controllers/dashboard.ts";
 import { loadDevices } from "./controllers/devices.ts";
 import { loadDreamDiary, loadDreamingStatus } from "./controllers/dreaming.ts";
 import { loadExecApprovals } from "./controllers/exec-approvals.ts";
@@ -265,6 +266,7 @@ export async function refreshActiveTab(host: SettingsHost) {
   if (host.employeeMode) {
     if (
       host.tab !== "chat" &&
+      host.tab !== "dashboard" &&
       host.tab !== "files" &&
       host.tab !== "cron" &&
       host.tab !== "heartbeat" &&
@@ -284,6 +286,9 @@ export async function refreshActiveTab(host: SettingsHost) {
         host as unknown as Parameters<typeof scheduleChatScroll>[0],
         !host.chatHasAutoScrolled,
       );
+    }
+    if (host.tab === "dashboard") {
+      await loadDashboard(host as unknown as OpenClawApp);
     }
     if (host.tab === "files") {
       await loadWorkspaceFiles(host as unknown as OpenClawApp);
@@ -335,6 +340,9 @@ export async function refreshActiveTab(host: SettingsHost) {
   }
   if (host.tab === "overview") {
     await loadOverview(host);
+  }
+  if (host.tab === "dashboard") {
+    await loadDashboard(host as unknown as OpenClawApp);
   }
   if (host.tab === "channels") {
     await loadChannelsTab(host);

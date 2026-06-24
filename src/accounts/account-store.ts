@@ -157,6 +157,62 @@ export function resolveAccountDisplayName(
   return trimOrNull(account?.displayName) ?? trimOrNull(account?.employeeId) ?? null;
 }
 
+export function resolveAccountIdByEmployeeId(
+  employeeId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const normalized = trimOrNull(employeeId);
+  if (!normalized) {
+    return null;
+  }
+  const { db } = getPlatformClawDatabase(env);
+  const direct = db
+    .prepare(
+      `SELECT id
+         FROM accounts
+        WHERE employee_id = ?
+        LIMIT 1`,
+    )
+    .get(normalized) as { id?: string } | undefined;
+  if (trimOrNull(direct?.id)) {
+    return trimOrNull(direct?.id);
+  }
+  const alias = db
+    .prepare(
+      `SELECT account_id
+         FROM account_aliases
+        WHERE alias_type = 'employee_id'
+          AND alias_value = ?
+        LIMIT 1`,
+    )
+    .get(normalized) as { account_id?: string } | undefined;
+  return trimOrNull(alias?.account_id);
+}
+
+export function resolveAccountIdByAlias(params: {
+  aliasType: string;
+  aliasValue: string;
+  env?: NodeJS.ProcessEnv;
+}): string | null {
+  const env = params.env ?? process.env;
+  const aliasType = trimOrNull(params.aliasType);
+  const aliasValue = trimOrNull(params.aliasValue);
+  if (!aliasType || !aliasValue) {
+    return null;
+  }
+  const { db } = getPlatformClawDatabase(env);
+  const alias = db
+    .prepare(
+      `SELECT account_id
+         FROM account_aliases
+        WHERE alias_type = ?
+          AND alias_value = ?
+        LIMIT 1`,
+    )
+    .get(aliasType, aliasValue) as { account_id?: string } | undefined;
+  return trimOrNull(alias?.account_id);
+}
+
 export function upsertAccount(params: {
   employeeId: string;
   email?: string | null;

@@ -65,6 +65,7 @@ import {
   updateCronJobsFilter,
   updateCronRunsFilter,
 } from "./controllers/cron.ts";
+import { loadDashboard } from "./controllers/dashboard.ts";
 import { loadDebug, callDebugMethod } from "./controllers/debug.ts";
 import {
   approveDevicePairing,
@@ -147,7 +148,14 @@ import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import { icons } from "./icons.ts";
 import "./components/dashboard-header.ts";
 import { toSanitizedMarkdownHtml } from "./markdown.ts";
-import { normalizeBasePath, subtitleForTab, tabGroupsForMode, titleForTab } from "./navigation.ts";
+import {
+  normalizeBasePath,
+  pathForTab,
+  subtitleForTab,
+  tabGroupsForMode,
+  titleForTab,
+  type Tab,
+} from "./navigation.ts";
 import {
   buildAgentMainSessionKey,
   parseAgentSessionKey,
@@ -196,6 +204,7 @@ function createLazy<T>(loader: () => Promise<T>): () => T | null {
 const lazyAgents = createLazy(() => import("./views/agents.ts"));
 const lazyChannels = createLazy(() => import("./views/channels.ts"));
 const lazyCron = createLazy(() => import("./views/cron.ts"));
+const lazyDashboard = createLazy(() => import("./views/dashboard.ts"));
 const lazyDebug = createLazy(() => import("./views/debug.ts"));
 const lazyInstances = createLazy(() => import("./views/instances.ts"));
 const lazyLogs = createLazy(() => import("./views/logs.ts"));
@@ -874,7 +883,10 @@ export function renderApp(state: AppViewState) {
       tab === "admin" ? Boolean(state.employeeAccountSummary?.hasAdminAccess) : true,
     ),
   }));
-  const allowedTabs = new Set(visibleTabGroups.flatMap((group) => [...group.tabs]));
+  const allowedTabs = new Set<Tab>(visibleTabGroups.flatMap((group) => [...group.tabs]));
+  // Dashboard is intentionally entered from the topbar instead of the sidebar,
+  // so it must stay routable even when it is omitted from the visible tab groups.
+  allowedTabs.add("dashboard");
   if (!allowedTabs.has(state.tab)) {
     queueMicrotask(() => state.setTab("chat"));
   }
@@ -919,6 +931,7 @@ export function renderApp(state: AppViewState) {
     })();
   };
   const basePath = normalizeBasePath(state.basePath ?? "");
+  const dashboardHref = pathForTab("dashboard", basePath);
   const resolvedAgentId =
     state.agentsSelectedId ??
     state.agentsList?.defaultId ??
@@ -1326,6 +1339,31 @@ export function renderApp(state: AppViewState) {
               <span class="topbar-search__label">${t("common.search")}</span>
               <kbd class="topbar-search__kbd">⌘K</kbd>
             </button>
+            <a
+              href=${dashboardHref}
+              class="topbar-dashboard-link ${state.tab === "dashboard"
+                ? "topbar-dashboard-link--active"
+                : ""}"
+              @click=${(event: MouseEvent) => {
+                if (
+                  event.defaultPrevented ||
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                ) {
+                  return;
+                }
+                event.preventDefault();
+                state.setTab("dashboard");
+              }}
+              title="Open dashboard"
+              aria-current=${state.tab === "dashboard" ? "page" : "false"}
+            >
+              <span class="topbar-dashboard-link__icon" aria-hidden="true">${icons.barChart}</span>
+              <span class="topbar-dashboard-link__label">Dashboard</span>
+            </a>
             <div class="topbar-status">
               ${isChat ? renderChatMobileToggle(state) : nothing}
               ${renderTopbarThemeModeToggle(state)}
@@ -1636,6 +1674,30 @@ export function renderApp(state: AppViewState) {
               onNavigate: (tab) => state.setTab(tab as import("./navigation.ts").Tab),
               onRefreshLogs: () => state.loadOverview(),
             })
+          : nothing}
+        ${state.tab === "dashboard"
+          ? lazyRender(lazyDashboard, (m) =>
+              m.renderDashboard({
+                loading: state.dashboardLoading,
+                error: state.dashboardError,
+                range: state.dashboardRange,
+                result: state.dashboardResult,
+                dashboardSortBy: state.dashboardSortBy,
+                dashboardSortDir: state.dashboardSortDir,
+                onRangeChange: (range) => {
+                  state.dashboardRange = range;
+                  void loadDashboard(state);
+                },
+                onRefresh: () => {
+                  void loadDashboard(state);
+                },
+                onSortChange: (sortBy, sortDir) => {
+                  state.dashboardSortBy = sortBy;
+                  state.dashboardSortDir = sortDir;
+                  void loadDashboard(state);
+                },
+              }),
+            )
           : nothing}
         ${state.tab === "channels"
           ? lazyRender(lazyChannels, (m) =>

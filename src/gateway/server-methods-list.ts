@@ -11,6 +11,7 @@ const BASE_METHODS = [
   "status",
   "usage.status",
   "usage.cost",
+  "dashboard.summary",
   "tts.status",
   "tts.providers",
   "tts.enable",

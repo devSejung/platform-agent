@@ -1,4 +1,5 @@
 import AjvPkg, { type ErrorObject } from "ajv";
+import type { DashboardSummaryParams } from "../../shared/dashboard-types.js";
 import type { SessionsPatchResult } from "../session-utils.types.js";
 import {
   type AgentEvent,
@@ -99,6 +100,7 @@ import {
   CronStatusParamsSchema,
   type CronUpdateParams,
   CronUpdateParamsSchema,
+  DashboardSummaryParamsSchema,
   type DevicePairApproveParams,
   DevicePairApproveParamsSchema,
   type DevicePairListParams,
@@ -446,6 +448,8 @@ export const validateSessionsCompactionRestoreParams = ajv.compile<SessionsCompa
 );
 export const validateSessionsUsageParams =
   ajv.compile<SessionsUsageParams>(SessionsUsageParamsSchema);
+export const validateDashboardSummaryParams =
+  ajv.compile<DashboardSummaryParams>(DashboardSummaryParamsSchema);
 export const validateConfigGetParams = ajv.compile<ConfigGetParams>(ConfigGetParamsSchema);
 export const validateConfigSetParams = ajv.compile<ConfigSetParams>(ConfigSetParamsSchema);
 export const validateConfigApplyParams = ajv.compile<ConfigApplyParams>(ConfigApplyParamsSchema);

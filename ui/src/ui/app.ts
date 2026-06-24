@@ -441,6 +441,12 @@ export class OpenClawApp extends LitElement {
   @state() usageResult: import("./types.js").SessionsUsageResult | null = null;
   @state() usageCostSummary: import("./types.js").CostUsageSummary | null = null;
   @state() usageError: string | null = null;
+  @state() dashboardLoading = false;
+  @state() dashboardError: string | null = null;
+  @state() dashboardRange: import("./types.js").DashboardRange = "7d";
+  @state() dashboardResult: import("./types.js").DashboardSummaryResult | null = null;
+  @state() dashboardSortBy: import("./types.js").DashboardSortBy = "totalTokens";
+  @state() dashboardSortDir: import("./types.js").DashboardSortDir = "desc";
   @state() usageStartDate = (() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

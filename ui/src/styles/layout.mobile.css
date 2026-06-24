@@ -278,6 +278,16 @@
     flex: 1;
   }
 
+  .topbar-dashboard-link {
+    min-width: 38px;
+    padding: 0 11px;
+    justify-content: center;
+  }
+
+  .topbar-dashboard-link__label {
+    display: none;
+  }
+
   .topbar-theme-mode {
     display: none;
   }

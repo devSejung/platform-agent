@@ -5,6 +5,7 @@ const EMPLOYEE_ROLE_METHODS = new Set([
   "chat.history",
   "chat.send",
   "chat.abort",
+  "dashboard.summary",
   "models.list",
   "skills.status",
   "skills.delete",

@@ -16,6 +16,9 @@ import {
 
 installGatewayTestHooks({ scope: "suite" });
 
+const TIMESTAMP_PREFIX_PATTERN =
+  "\\[[A-Z][a-z]{2} \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2} [A-Za-z0-9:+-]+\\]";
+
 let startGatewayServer: typeof import("./server.js").startGatewayServer;
 let enabledServer: Awaited<ReturnType<typeof startServer>>;
 let enabledPort: number;
@@ -366,7 +369,9 @@ describe("OpenAI-compatible HTTP API (e2e)", () => {
         expect(res.status).toBe(200);
 
         const opts = (agentCommand.mock.calls[0] as unknown[] | undefined)?.[0];
-        expect((opts as { message?: string } | undefined)?.message).toBe("hello\nworld");
+        expect((opts as { message?: string } | undefined)?.message ?? "").toMatch(
+          new RegExp(`^${TIMESTAMP_PREFIX_PATTERN} hello\\nworld$`),
+        );
         await res.text();
       }
 
@@ -391,7 +396,9 @@ describe("OpenAI-compatible HTTP API (e2e)", () => {
         expect(res.status).toBe(200);
 
         const firstCall = getFirstAgentCall();
-        expect(firstCall?.message).toBe("describe this");
+        expect(firstCall?.message ?? "").toMatch(
+          new RegExp(`^${TIMESTAMP_PREFIX_PATTERN} describe this$`),
+        );
         expect(firstCall?.images).toEqual([
           { type: "image", data: imageData, mimeType: "image/png" },
         ]);
@@ -592,7 +599,7 @@ describe("OpenAI-compatible HTTP API (e2e)", () => {
         const message = getFirstAgentMessage();
         expect(message).not.toContain(HISTORY_CONTEXT_MARKER);
         expect(message).not.toContain(CURRENT_MESSAGE_MARKER);
-        expect(message).toBe("Hello");
+        expect(message).toMatch(new RegExp(`^${TIMESTAMP_PREFIX_PATTERN} Hello$`));
         await res.text();
       }
 

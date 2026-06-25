@@ -8,8 +8,9 @@ title: "Date and Time"
 
 # Date & Time
 
-OpenClaw defaults to **host-local time for transport timestamps** and **user timezone only in the system prompt**.
-Provider timestamps are preserved so tools keep their native semantics (current time is available via `session_status`).
+OpenClaw keeps provider timestamps in their native form and adds a compact
+runtime timestamp only at gateway-to-agent boundaries that need current-time
+awareness.
 
 ## Message envelopes (local by default)
 
@@ -37,7 +38,7 @@ You can override this behavior:
 
 - `envelopeTimezone: "utc"` uses UTC.
 - `envelopeTimezone: "local"` uses the host timezone.
-- `envelopeTimezone: "user"` uses `agents.defaults.userTimezone` (falls back to host timezone).
+- `envelopeTimezone: "user"` uses `agents.defaults.userTimezone` (falls back to the PlatformClaw default timezone).
 - Use an explicit IANA timezone (e.g., `"America/Chicago"`) for a fixed zone.
 - `envelopeTimestamp: "off"` removes absolute timestamps from envelope headers.
 - `envelopeElapsed: "off"` removes elapsed time suffixes (the `+2m` style).
@@ -72,8 +73,25 @@ to keep prompt caching stable:
 Time zone: America/Chicago
 ```
 
-When the agent needs the current time, use the `session_status` tool; the status
-card includes a timestamp line.
+The dynamic current clock value is intentionally not placed in the system prompt.
+
+## Gateway agent-turn timestamp prefix
+
+Gateway-originated user turns add a compact timestamp prefix to the message text
+sent to the agent:
+
+```
+[Fri 2026-06-26 02:15 GMT+9] message text
+```
+
+This prefix uses `agents.defaults.userTimezone`; if that value is unset or
+invalid, PlatformClaw builds use the configured default timezone (`Asia/Seoul`).
+The gateway applies this consistently for websocket `chat.send`, `/v1/responses`,
+and `/v1/chat/completions`.
+
+Only the agent-facing message is stamped. User-visible transcript text remains
+the original message. `USER.md` is injected as workspace context but is not parsed
+for timezone configuration.
 
 ## System event lines (local by default)
 
@@ -97,8 +115,10 @@ System: [2026-01-12 12:19:17 PST] Model switched.
 }
 ```
 
-- `userTimezone` sets the **user-local timezone** for prompt context.
-- `timeFormat` controls **12h/24h display** in the prompt. `auto` follows OS prefs.
+- `userTimezone` sets the **user-local timezone** for prompt context and
+  gateway agent-turn timestamp prefixes.
+- `timeFormat` controls **12h/24h display** in downstream time-rendering
+  surfaces. `auto` follows OS prefs.
 
 ## Time format detection (auto)
 

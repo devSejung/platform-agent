@@ -35,7 +35,7 @@ You can override this with:
 ```
 
 - `envelopeTimezone: "utc"` uses UTC.
-- `envelopeTimezone: "user"` uses `agents.defaults.userTimezone` (falls back to host timezone).
+- `envelopeTimezone: "user"` uses `agents.defaults.userTimezone` (falls back to the PlatformClaw default timezone).
 - Use an explicit IANA timezone (e.g., `"Europe/Vienna"`) for a fixed offset.
 - `envelopeTimestamp: "off"` removes absolute timestamps from envelope headers.
 - `envelopeElapsed: "off"` removes elapsed time suffixes (the `+2m` style).
@@ -70,10 +70,11 @@ We also attach normalized fields for consistency:
 
 Raw provider fields are preserved.
 
-## User timezone for the system prompt
+## User timezone for prompts and HTTP gateway turns
 
 Set `agents.defaults.userTimezone` to tell the model the user's local time zone. If it is
-unset, OpenClaw resolves the **host timezone at runtime** (no config write).
+unset or invalid, PlatformClaw builds use the configured default timezone
+(`Asia/Seoul`).
 
 ```json5
 {
@@ -83,10 +84,18 @@ unset, OpenClaw resolves the **host timezone at runtime** (no config write).
 
 The system prompt includes:
 
-- `Current Date & Time` section with local time and timezone
-- `Time format: 12-hour` or `24-hour`
+- `Current Date & Time` section with the timezone only
 
-You can control the prompt format with `agents.defaults.timeFormat` (`auto` | `12` | `24`).
+The dynamic current clock value is not placed in the system prompt, so prompt
+caches stay stable across turns. Gateway-originated agent turns use a compact
+message prefix instead, such as:
+
+```
+[Fri 2026-06-26 02:15 GMT+9] message text
+```
+
+The same timestamp prefix path is used for websocket `chat.send`, `/v1/responses`,
+and `/v1/chat/completions`. `USER.md` is not parsed for timezone configuration.
 
 See [Date & Time](/date-time) for the full behavior and examples.
 

@@ -92,21 +92,20 @@ export async function resolveCommandsSystemPromptBundle(
     agentId: sessionAgentId,
   });
   const defaultModelLabel = `${defaultModelRef.provider}/${defaultModelRef.model}`;
-  const { runtimeInfo, userTimezone, userTime, userUtcTime, userTimeFormat } =
-    buildSystemPromptParams({
-      config: params.cfg,
-      agentId: sessionAgentId,
-      workspaceDir,
-      cwd: process.cwd(),
-      runtime: {
-        host: "unknown",
-        os: "unknown",
-        arch: "unknown",
-        node: process.version,
-        model: `${params.provider}/${params.model}`,
-        defaultModel: defaultModelLabel,
-      },
-    });
+  const { runtimeInfo, userTimezone, userTime, userTimeFormat } = buildSystemPromptParams({
+    config: params.cfg,
+    agentId: sessionAgentId,
+    workspaceDir,
+    cwd: process.cwd(),
+    runtime: {
+      host: "unknown",
+      os: "unknown",
+      arch: "unknown",
+      node: process.version,
+      model: `${params.provider}/${params.model}`,
+      defaultModel: defaultModelLabel,
+    },
+  });
   const sandboxInfo = sandboxRuntime.sandboxed
     ? {
         enabled: true,
@@ -131,7 +130,6 @@ export async function resolveCommandsSystemPromptBundle(
     modelAliasLines: [],
     userTimezone,
     userTime,
-    userUtcTime,
     userTimeFormat,
     contextFiles: injectedFiles,
     skillsPrompt,

@@ -13,6 +13,7 @@ import type { ClientToolDefinition } from "../agents/pi-embedded-runner/run/para
 import { createDefaultDeps } from "../cli/deps.js";
 import { agentCommandFromIngress } from "../commands/agent.js";
 import type { GatewayHttpResponsesConfig } from "../config/types.gateway.js";
+import type { OpenClawConfig } from "../config/types.js";
 import { emitAgentEvent, onAgentEvent } from "../infra/agent-events.js";
 import { logWarn } from "../logger.js";
 import { renderFileContextBlock } from "../media/file-context.js";
@@ -56,11 +57,13 @@ import {
 } from "./open-responses.schema.js";
 import { buildAgentPrompt } from "./openresponses-prompt.js";
 import { createAssistantOutputItem, createFunctionCallOutputItem } from "./openresponses-shape.js";
+import { injectTimestamp, timestampOptsFromConfig } from "./server-methods/agent-timestamp.js";
 
 type OpenResponsesHttpOptions = {
   auth: ResolvedGatewayAuth;
   maxBodyBytes?: number;
   config?: GatewayHttpResponsesConfig;
+  runtimeConfig?: OpenClawConfig;
   trustedProxies?: string[];
   allowRealIpFallback?: boolean;
   rateLimiter?: AuthRateLimiter;
@@ -704,6 +707,10 @@ export async function handleOpenResponsesHttpRequest(
     });
     return true;
   }
+  const agentMessage = injectTimestamp(
+    prompt.message,
+    timestampOptsFromConfig(opts.runtimeConfig ?? {}),
+  );
 
   const responseId = `resp_${randomUUID()}`;
   const rememberResponseSession = () =>
@@ -720,7 +727,7 @@ export async function handleOpenResponsesHttpRequest(
     const stopWatchingDisconnect = watchClientDisconnect(req, res, abortController);
     try {
       const result = await runResponsesAgentCommand({
-        message: prompt.message,
+        message: agentMessage,
         images,
         clientTools: resolvedClientTools,
         extraSystemPrompt,
@@ -1000,7 +1007,7 @@ export async function handleOpenResponsesHttpRequest(
   void (async () => {
     try {
       const result = await runResponsesAgentCommand({
-        message: prompt.message,
+        message: agentMessage,
         images,
         clientTools: resolvedClientTools,
         extraSystemPrompt,

@@ -29,7 +29,6 @@ export type SystemPromptRuntimeParams = {
   runtimeInfo: RuntimeInfoInput;
   userTimezone: string;
   userTime?: string;
-  userUtcTime?: string;
   userTimeFormat?: ResolvedTimeFormat;
 };
 
@@ -47,9 +46,7 @@ export function buildSystemPromptParams(params: {
   });
   const userTimezone = resolveUserTimezone(params.config?.agents?.defaults?.userTimezone);
   const userTimeFormat = resolveUserTimeFormat(params.config?.agents?.defaults?.timeFormat);
-  const now = new Date();
-  const userTime = formatUserTime(now, userTimezone, userTimeFormat);
-  const userUtcTime = `${now.toISOString().replace("T", " ").slice(0, 16)} UTC`;
+  const userTime = formatUserTime(new Date(), userTimezone, userTimeFormat);
   return {
     runtimeInfo: {
       agentId: params.agentId,
@@ -58,7 +55,6 @@ export function buildSystemPromptParams(params: {
     },
     userTimezone,
     userTime,
-    userUtcTime,
     userTimeFormat,
   };
 }

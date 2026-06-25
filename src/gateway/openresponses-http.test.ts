@@ -10,6 +10,9 @@ import { agentCommand, getFreePort, installGatewayTestHooks } from "./test-helpe
 
 installGatewayTestHooks({ scope: "suite" });
 
+const TIMESTAMP_PREFIX_PATTERN =
+  "\\[[A-Z][a-z]{2} \\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2} [A-Za-z0-9:+-]+\\]";
+
 let enabledServer: Awaited<ReturnType<typeof startServer>>;
 let enabledPort: number;
 let openResponsesTesting: {
@@ -381,7 +384,8 @@ describe("OpenResponses HTTP API (e2e)", () => {
       });
       expect(resString.status).toBe(200);
       const optsString = (agentCommand.mock.calls[0] as unknown[] | undefined)?.[0];
-      expect((optsString as { message?: string } | undefined)?.message).toBe("hello world");
+      const stringMessage = (optsString as { message?: string } | undefined)?.message ?? "";
+      expect(stringMessage).toMatch(new RegExp(`^${TIMESTAMP_PREFIX_PATTERN} hello world$`));
       await ensureResponseConsumed(resString);
 
       mockAgentOnce([{ text: "hello" }]);
@@ -391,7 +395,9 @@ describe("OpenResponses HTTP API (e2e)", () => {
       });
       expect(resArray.status).toBe(200);
       const optsArray = (agentCommand.mock.calls[0] as unknown[] | undefined)?.[0];
-      expect((optsArray as { message?: string } | undefined)?.message).toBe("hello there");
+      expect((optsArray as { message?: string } | undefined)?.message ?? "").toMatch(
+        new RegExp(`^${TIMESTAMP_PREFIX_PATTERN} hello there$`),
+      );
       await ensureResponseConsumed(resArray);
 
       mockAgentOnce([{ text: "hello" }]);
@@ -487,7 +493,7 @@ describe("OpenResponses HTTP API (e2e)", () => {
       const inputFileMessage = (optsInputFile as { message?: string } | undefined)?.message ?? "";
       const inputFilePrompt =
         (optsInputFile as { extraSystemPrompt?: string } | undefined)?.extraSystemPrompt ?? "";
-      expect(inputFileMessage).toBe("read this");
+      expect(inputFileMessage).toMatch(new RegExp(`^${TIMESTAMP_PREFIX_PATTERN} read this$`));
       expect(inputFilePrompt).toContain('<file name="hello.txt">');
       expect(inputFilePrompt).toContain('<<<EXTERNAL_UNTRUSTED_CONTENT id="');
       expect(inputFilePrompt).toContain("Source: External");

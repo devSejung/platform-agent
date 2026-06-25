@@ -965,7 +965,9 @@ Higher values preserve more visual detail.
 
 ### `agents.defaults.userTimezone`
 
-Timezone for system prompt context (not message timestamps). Falls back to host timezone.
+Timezone for system prompt context and gateway agent-turn timestamp prefixes.
+If unset or invalid, PlatformClaw builds use the configured default timezone
+(`Asia/Seoul`). `USER.md` is not parsed for timezone configuration.
 
 ```json5
 {

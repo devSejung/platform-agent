@@ -916,6 +916,7 @@ export function createGatewayHttpServer(opts: {
             handleOpenResponsesHttpRequest(req, res, {
               auth: resolvedAuth,
               config: openResponsesConfig,
+              runtimeConfig: configSnapshot,
               trustedProxies,
               allowRealIpFallback,
               rateLimiter,
@@ -929,6 +930,7 @@ export function createGatewayHttpServer(opts: {
             handleOpenAiHttpRequest(req, res, {
               auth: resolvedAuth,
               config: openAiChatCompletionsConfig,
+              runtimeConfig: configSnapshot,
               trustedProxies,
               allowRealIpFallback,
               rateLimiter,

@@ -173,17 +173,11 @@ function buildOwnerIdentityLine(
   return `Authorized senders: ${displayOwnerNumbers.join(", ")}. These senders are allowlisted; do not assume they are the owner.`;
 }
 
-function buildTimeSection(params: { userTimezone?: string; userTime?: string; userUtcTime?: string }) {
+function buildTimeSection(params: { userTimezone?: string }) {
   if (!params.userTimezone) {
     return [];
   }
-  const details =
-    params.userTime && params.userUtcTime
-      ? `Current time: ${params.userTime} (${params.userTimezone}) / ${params.userUtcTime}`
-      : params.userTime
-        ? `Current time: ${params.userTime} (${params.userTimezone})`
-        : `Time zone: ${params.userTimezone}`;
-  return ["## Current Date & Time", details, ""];
+  return ["## Current Date & Time", `Time zone: ${params.userTimezone}`, ""];
 }
 
 function buildReplyTagsSection(isMinimal: boolean) {
@@ -363,7 +357,6 @@ export function buildAgentSystemPrompt(params: {
   modelAliasLines?: string[];
   userTimezone?: string;
   userTime?: string;
-  userUtcTime?: string;
   userTimeFormat?: ResolvedTimeFormat;
   contextFiles?: EmbeddedContextFile[];
   skillsPrompt?: string;
@@ -701,6 +694,9 @@ export function buildAgentSystemPrompt(params: {
       : "",
     params.sandboxInfo?.enabled ? "" : "",
     ...buildUserIdentitySection(ownerLine, isMinimal),
+    ...buildTimeSection({
+      userTimezone,
+    }),
     "## Workspace Files (injected)",
     "These user-editable files are loaded by OpenClaw and included below in Project Context.",
     "",
@@ -782,13 +778,6 @@ export function buildAgentSystemPrompt(params: {
   // transports can reuse it across labs and turns. Dynamic group/session
   // additions and volatile project context below it are the primary cache invalidators.
   lines.push(SYSTEM_PROMPT_CACHE_BOUNDARY);
-  lines.push(
-    ...buildTimeSection({
-      userTimezone,
-      userTime: params.userTime,
-      userUtcTime: params.userUtcTime,
-    }),
-  );
 
   lines.push(
     ...buildProjectContextSection({

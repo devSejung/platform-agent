@@ -4,6 +4,7 @@ import type { ImageContent } from "../agents/command/types.js";
 import { createDefaultDeps } from "../cli/deps.js";
 import { agentCommandFromIngress } from "../commands/agent.js";
 import type { GatewayHttpChatCompletionsConfig } from "../config/types.gateway.js";
+import type { OpenClawConfig } from "../config/types.js";
 import { emitAgentEvent, onAgentEvent } from "../infra/agent-events.js";
 import { logWarn } from "../logger.js";
 import { estimateBase64DecodedBytes } from "../media/base64.js";
@@ -35,10 +36,12 @@ import {
   resolveOpenAiCompatibleHttpSenderIsOwner,
 } from "./http-utils.js";
 import { normalizeInputHostnameAllowlist } from "./input-allowlist.js";
+import { injectTimestamp, timestampOptsFromConfig } from "./server-methods/agent-timestamp.js";
 
 type OpenAiHttpOptions = {
   auth: ResolvedGatewayAuth;
   config?: GatewayHttpChatCompletionsConfig;
+  runtimeConfig?: OpenClawConfig;
   maxBodyBytes?: number;
   trustedProxies?: string[];
   allowRealIpFallback?: boolean;
@@ -499,9 +502,13 @@ export async function handleOpenAiHttpRequest(
   const runId = `chatcmpl_${randomUUID()}`;
   const deps = createDefaultDeps();
   const abortController = new AbortController();
+  const agentMessage = injectTimestamp(
+    prompt.message || IMAGE_ONLY_USER_MESSAGE,
+    timestampOptsFromConfig(opts.runtimeConfig ?? {}),
+  );
   const commandInput = buildAgentCommandInput({
     prompt: {
-      message: prompt.message,
+      message: agentMessage,
       extraSystemPrompt: prompt.extraSystemPrompt,
       images: images.length > 0 ? images : undefined,
     },

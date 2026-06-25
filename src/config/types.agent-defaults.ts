@@ -178,7 +178,7 @@ export type AgentDefaultsConfig = {
    * - always: inject on every run with truncation
    */
   bootstrapPromptTruncationWarning?: "off" | "once" | "always";
-  /** Optional IANA timezone for the user (used in system prompt; defaults to host timezone). */
+  /** Optional IANA timezone for the user (used in prompt context and agent-turn timestamp prefixes). */
   userTimezone?: string;
   /** Time format in system prompt: auto (OS preference), 12-hour, or 24-hour. */
   timeFormat?: "auto" | "12" | "24";

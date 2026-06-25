@@ -5,6 +5,9 @@ ARG OPENCLAW_NODE_VERSION="24.11.0"
 ARG OPENCLAW_USE_COMPANY_APT="0"
 ARG OPENCLAW_NODE_SHA256_AMD64=""
 ARG OPENCLAW_NODE_SHA256_ARM64=""
+ARG OPENCLAW_GH_VERSION="2.94.0"
+ARG OPENCLAW_GH_SHA256_AMD64="d4504b534417965f833a59b40a36e0138b24528658d721df15c5e8a14e51a944"
+ARG OPENCLAW_GH_SHA256_ARM64="6ea8b44936bb04219de6653fc9a676995dd44ce18c93e5922a97afe06a75c42e"
 ARG OPENCLAW_BUNDLE_ACP_CODEX="1"
 ARG OPENCLAW_BUNDLE_ACP_CLAUDE="1"
 ARG OPENCLAW_BUNDLE_CLAUDE_CODE="1"
@@ -29,6 +32,9 @@ ARG OPENCLAW_NODE_VERSION
 ARG OPENCLAW_USE_COMPANY_APT
 ARG OPENCLAW_NODE_SHA256_AMD64
 ARG OPENCLAW_NODE_SHA256_ARM64
+ARG OPENCLAW_GH_VERSION
+ARG OPENCLAW_GH_SHA256_AMD64
+ARG OPENCLAW_GH_SHA256_ARM64
 ENV DEBIAN_FRONTEND=noninteractive
 COPY docker/jammy/company-jammy.list /tmp/company-jammy.list
 RUN --mount=type=cache,id=openclaw-jammy-build-apt-cache,target=/var/cache/apt,sharing=locked \
@@ -121,6 +127,9 @@ ARG OPENCLAW_NODE_VERSION
 ARG OPENCLAW_USE_COMPANY_APT
 ARG OPENCLAW_NODE_SHA256_AMD64
 ARG OPENCLAW_NODE_SHA256_ARM64
+ARG OPENCLAW_GH_VERSION
+ARG OPENCLAW_GH_SHA256_AMD64
+ARG OPENCLAW_GH_SHA256_ARM64
 ARG OPENCLAW_BUNDLE_ACP_CODEX
 ARG OPENCLAW_BUNDLE_ACP_CLAUDE
 ARG OPENCLAW_BUNDLE_CLAUDE_CODE
@@ -156,7 +165,6 @@ RUN set -eux; \
       curl \
       ffmpeg \
       file \
-      gh \
       git \
       git-review \
       gnupg \
@@ -187,6 +195,22 @@ RUN set -eux; \
     ln -snf /usr/share/zoneinfo/Asia/Seoul /etc/localtime && \
     echo Asia/Seoul >/etc/timezone && \
     rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) gh_arch='amd64'; gh_sha="$OPENCLAW_GH_SHA256_AMD64" ;; \
+      arm64) gh_arch='arm64'; gh_sha="$OPENCLAW_GH_SHA256_ARM64" ;; \
+      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    gh_deb="gh_${OPENCLAW_GH_VERSION}_linux_${gh_arch}.deb"; \
+    gh_url="https://github.com/cli/cli/releases/download/v${OPENCLAW_GH_VERSION}/${gh_deb}"; \
+    curl -fsSL "$gh_url" -o "/tmp/${gh_deb}"; \
+    printf '%s  %s\n' "$gh_sha" "/tmp/${gh_deb}" | sha256sum -c -; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends "/tmp/${gh_deb}"; \
+    rm -f "/tmp/${gh_deb}"; \
+    rm -rf /var/lib/apt/lists/*; \
+    gh --version
 
 ENV LANG=ko_KR.UTF-8 \
     LANGUAGE=ko_KR:ko:en_US:en \

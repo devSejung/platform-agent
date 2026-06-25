@@ -25,6 +25,11 @@ Status: the macOS/iOS SwiftUI chat UI talks directly to the Gateway WebSocket.
 ## How it works (behavior)
 
 - The UI connects to the Gateway WebSocket and uses `chat.history`, `chat.send`, and `chat.inject`.
+- When a WebChat or Control UI session asks the agent to create, list, update,
+  or remove cron jobs, the follow-up local scheduler RPC now uses backend
+  shared-auth on loopback, so the cron control path does not require a separate
+  device pairing approval just because the browser reached the UI over a LAN or
+  published host address.
 - `chat.history` is bounded for stability: Gateway may truncate long text fields, omit heavy metadata, and replace oversized entries with `[chat.history omitted: message too large]`.
 - `chat.history` is also display-normalized: inline delivery directive tags
   such as `[[reply_to_*]]` and `[[audio_as_voice]]`, plain-text tool-call XML

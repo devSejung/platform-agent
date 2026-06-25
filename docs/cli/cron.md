@@ -27,6 +27,11 @@ so the result stays attached to the origin session. Use `--announce` with
 `--channel` / `--to` only when you explicitly want external chat delivery.
 `--deliver` remains as a deprecated alias for `--announce`.
 
+Note: loopback cron RPCs now use the gateway backend shared-auth path for
+`cron status|list|add|edit|remove|run|runs`. This keeps local scheduler control
+working even when the originating operator is using WebChat or the Control UI
+through a non-loopback browser address.
+
 Note: cron-owned isolated runs expect a plain-text summary and the runner owns
 the final output path. For session-owned jobs, `--no-deliver` means no automatic
 result delivery or origin-session injection; for ownerless/global jobs it keeps

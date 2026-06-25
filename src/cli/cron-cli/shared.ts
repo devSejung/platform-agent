@@ -14,6 +14,18 @@ import { colorize, isRich, theme } from "../../terminal/theme.js";
 import type { GatewayRpcOpts } from "../gateway-rpc.js";
 import { callGatewayFromCli } from "../gateway-rpc.js";
 
+export async function callCronGatewayFromCli(
+  method: string,
+  opts: GatewayRpcOpts,
+  params?: unknown,
+  extra?: { expectFinal?: boolean; progress?: boolean },
+) {
+  return await callGatewayFromCli(method, opts, params, {
+    ...extra,
+    useLocalBackendSharedAuth: true,
+  });
+}
+
 export const getCronChannelOptions = () => {
   // Keep help truthful even before the plugin registry is bootstrapped.
   const pluginIds = listChannelPlugins()
@@ -33,7 +45,7 @@ export function handleCronCliError(err: unknown) {
 
 export async function warnIfCronSchedulerDisabled(opts: GatewayRpcOpts) {
   try {
-    const res = (await callGatewayFromCli("cron.status", opts, {})) as {
+    const res = (await callCronGatewayFromCli("cron.status", opts, {})) as {
       enabled?: boolean;
       storePath?: string;
     };

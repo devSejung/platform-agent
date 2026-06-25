@@ -7,12 +7,17 @@ import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
 } from "../../shared/string-coerce.js";
-import { addGatewayClientOptions, callGatewayFromCli } from "../gateway-rpc.js";
+import { addGatewayClientOptions } from "../gateway-rpc.js";
 import {
   applyExistingCronSchedulePatch,
   resolveCronEditScheduleRequest,
 } from "./schedule-options.js";
-import { getCronChannelOptions, parseDurationMs, warnIfCronSchedulerDisabled } from "./shared.js";
+import {
+  callCronGatewayFromCli,
+  getCronChannelOptions,
+  parseDurationMs,
+  warnIfCronSchedulerDisabled,
+} from "./shared.js";
 
 const assignIf = (
   target: Record<string, unknown>,
@@ -162,7 +167,7 @@ export function registerCronEditCommand(cron: Command) {
           if (scheduleRequest.kind === "direct") {
             patch.schedule = scheduleRequest.schedule;
           } else if (scheduleRequest.kind === "patch-existing-cron") {
-            const listed = (await callGatewayFromCli("cron.list", opts, {
+            const listed = (await callCronGatewayFromCli("cron.list", opts, {
               includeDisabled: true,
             })) as { jobs?: CronJob[] } | null;
             const existing = (listed?.jobs ?? []).find((job) => job.id === id);
@@ -309,7 +314,7 @@ export function registerCronEditCommand(cron: Command) {
             patch.failureAlert = failureAlert;
           }
 
-          const res = await callGatewayFromCli("cron.update", opts, {
+          const res = await callCronGatewayFromCli("cron.update", opts, {
             id,
             patch,
           });

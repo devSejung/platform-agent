@@ -312,6 +312,36 @@ describe("callGateway url resolution", () => {
     expect(lastClientOptions?.deviceIdentity).toEqual(deviceIdentityState.value);
   });
 
+  it("omits device identity for loopback backend shared-auth cron paths", async () => {
+    setLocalLoopbackGatewayConfig();
+
+    await callGateway({
+      method: "cron.list",
+      token: "explicit-token",
+      clientName: GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT,
+      mode: GATEWAY_CLIENT_MODES.BACKEND,
+      requireLocalBackendSharedAuth: true,
+    });
+
+    expect(lastClientOptions?.url).toBe("ws://127.0.0.1:18789");
+    expect(lastClientOptions?.token).toBe("explicit-token");
+    expect(lastClientOptions?.deviceIdentity).toBeNull();
+  });
+
+  it("keeps device identity for non-loopback backend shared-auth calls", async () => {
+    await callGateway({
+      method: "cron.list",
+      url: "wss://gateway.example/ws",
+      token: "explicit-token",
+      clientName: GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT,
+      mode: GATEWAY_CLIENT_MODES.BACKEND,
+      requireLocalBackendSharedAuth: true,
+    });
+
+    expect(lastClientOptions?.url).toBe("wss://gateway.example/ws");
+    expect(lastClientOptions?.deviceIdentity).toEqual(deviceIdentityState.value);
+  });
+
   it("falls back to token/password auth when device identity cannot be persisted", async () => {
     setLocalLoopbackGatewayConfig();
     deviceIdentityState.throwOnLoad = true;

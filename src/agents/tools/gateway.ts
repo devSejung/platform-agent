@@ -146,7 +146,7 @@ export async function callGatewayTool<T = Record<string, unknown>>(
   method: string,
   opts: GatewayCallOptions,
   params?: unknown,
-  extra?: { expectFinal?: boolean; scopes?: OperatorScope[] },
+  extra?: { expectFinal?: boolean; scopes?: OperatorScope[]; useLocalBackendSharedAuth?: boolean },
 ) {
   const gateway = resolveGatewayOptions(opts);
   const scopes = Array.isArray(extra?.scopes)
@@ -162,6 +162,7 @@ export async function callGatewayTool<T = Record<string, unknown>>(
     clientName: GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT,
     clientDisplayName: "agent",
     mode: GATEWAY_CLIENT_MODES.BACKEND,
+    requireLocalBackendSharedAuth: extra?.useLocalBackendSharedAuth === true,
     scopes,
   });
 }

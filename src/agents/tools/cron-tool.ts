@@ -642,15 +642,16 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
             ? params.timeoutMs
             : 60_000,
       };
+      const cronGatewayExtra = { useLocalBackendSharedAuth: true } as const;
 
       switch (action) {
         case "status":
-          return jsonResult(await callGateway("cron.status", gatewayOpts, {}));
+          return jsonResult(await callGateway("cron.status", gatewayOpts, {}, cronGatewayExtra));
         case "list":
           return jsonResult(
             await callGateway("cron.list", gatewayOpts, {
               includeDisabled: Boolean(params.includeDisabled),
-            }),
+            }, cronGatewayExtra),
           );
         case "add": {
           // Flat-params recovery: non-frontier models (e.g. Grok) sometimes flatten
@@ -836,7 +837,7 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
             });
             coerceUnsafeCronOriginDeliveryJob(job as Record<string, unknown>);
           }
-          return jsonResult(await callGateway("cron.add", gatewayOpts, job));
+          return jsonResult(await callGateway("cron.add", gatewayOpts, job, cronGatewayExtra));
         }
         case "update": {
           const id = readStringParam(params, "jobId") ?? readStringParam(params, "id");
@@ -882,7 +883,7 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
             await callGateway("cron.update", gatewayOpts, {
               id,
               patch,
-            }),
+            }, cronGatewayExtra),
           );
         }
         case "remove": {
@@ -890,7 +891,7 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
           if (!id) {
             throw new Error("jobId required (id accepted for backward compatibility)");
           }
-          return jsonResult(await callGateway("cron.remove", gatewayOpts, { id }));
+          return jsonResult(await callGateway("cron.remove", gatewayOpts, { id }, cronGatewayExtra));
         }
         case "run": {
           const id = readStringParam(params, "jobId") ?? readStringParam(params, "id");
@@ -899,14 +900,16 @@ Use jobId as the canonical identifier; id is accepted for compatibility. Use con
           }
           const runMode =
             params.runMode === "due" || params.runMode === "force" ? params.runMode : "force";
-          return jsonResult(await callGateway("cron.run", gatewayOpts, { id, mode: runMode }));
+          return jsonResult(
+            await callGateway("cron.run", gatewayOpts, { id, mode: runMode }, cronGatewayExtra),
+          );
         }
         case "runs": {
           const id = readStringParam(params, "jobId") ?? readStringParam(params, "id");
           if (!id) {
             throw new Error("jobId required (id accepted for backward compatibility)");
           }
-          return jsonResult(await callGateway("cron.runs", gatewayOpts, { id }));
+          return jsonResult(await callGateway("cron.runs", gatewayOpts, { id }, cronGatewayExtra));
         }
         case "wake": {
           const text = readStringParam(params, "text", { required: true });

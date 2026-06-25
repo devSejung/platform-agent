@@ -70,6 +70,7 @@ type CallGatewayBaseOptions = {
   clientVersion?: string;
   platform?: string;
   mode?: GatewayClientMode;
+  requireLocalBackendSharedAuth?: boolean;
   instanceId?: string;
   minProtocol?: number;
   maxProtocol?: number;
@@ -200,6 +201,36 @@ function resolveDeviceIdentityForGatewayCall(): ReturnType<
     // gateway with token/password auth without crashing before the RPC.
     return null;
   }
+}
+
+function isLoopbackGatewayUrl(rawUrl: string): boolean {
+  try {
+    const hostname = new URL(rawUrl).hostname.toLowerCase();
+    const unbracketed =
+      hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+    return (
+      unbracketed === "localhost" ||
+      unbracketed === "127.0.0.1" ||
+      unbracketed.startsWith("127.") ||
+      unbracketed === "::1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function shouldOmitDeviceIdentityForGatewayCall(params: {
+  opts: CallGatewayBaseOptions;
+  url: string;
+}): boolean {
+  const mode = params.opts.mode ?? GATEWAY_CLIENT_MODES.CLI;
+  const clientName = params.opts.clientName ?? GATEWAY_CLIENT_NAMES.CLI;
+  return (
+    params.opts.requireLocalBackendSharedAuth === true &&
+    mode === GATEWAY_CLIENT_MODES.BACKEND &&
+    clientName === GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT &&
+    isLoopbackGatewayUrl(params.url)
+  );
 }
 
 export type { ExplicitGatewayAuth } from "./credentials.js";
@@ -750,7 +781,9 @@ async function executeGatewayRequestWithScopes<T>(params: {
       mode: opts.mode ?? GATEWAY_CLIENT_MODES.CLI,
       role: "operator",
       scopes,
-      deviceIdentity: resolveDeviceIdentityForGatewayCall(),
+      deviceIdentity: shouldOmitDeviceIdentityForGatewayCall({ opts, url })
+        ? null
+        : resolveDeviceIdentityForGatewayCall(),
       minProtocol: opts.minProtocol ?? PROTOCOL_VERSION,
       maxProtocol: opts.maxProtocol ?? PROTOCOL_VERSION,
       onHelloOk: async (hello) => {

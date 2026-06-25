@@ -7,7 +7,7 @@ export async function callGatewayFromCliRuntime(
   method: string,
   opts: GatewayRpcOpts,
   params?: unknown,
-  extra?: { expectFinal?: boolean; progress?: boolean },
+  extra?: { expectFinal?: boolean; progress?: boolean; useLocalBackendSharedAuth?: boolean },
 ) {
   const showProgress = extra?.progress ?? opts.json !== true;
   return await withProgress(
@@ -24,8 +24,15 @@ export async function callGatewayFromCliRuntime(
         params,
         expectFinal: extra?.expectFinal ?? Boolean(opts.expectFinal),
         timeoutMs: Number(opts.timeout ?? 10_000),
-        clientName: GATEWAY_CLIENT_NAMES.CLI,
-        mode: GATEWAY_CLIENT_MODES.CLI,
+        clientName:
+          extra?.useLocalBackendSharedAuth === true
+            ? GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT
+            : GATEWAY_CLIENT_NAMES.CLI,
+        mode:
+          extra?.useLocalBackendSharedAuth === true
+            ? GATEWAY_CLIENT_MODES.BACKEND
+            : GATEWAY_CLIENT_MODES.CLI,
+        requireLocalBackendSharedAuth: extra?.useLocalBackendSharedAuth === true,
       }),
   );
 }

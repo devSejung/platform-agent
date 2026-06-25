@@ -173,6 +173,11 @@ function getGatewayCallParams<T>(method: string): T {
   return (call?.[2] ?? {}) as T;
 }
 
+function getGatewayCallExtra<T>(method: string): T | undefined {
+  const call = callGatewayFromCli.mock.calls.find((entry) => entry[0] === method);
+  return call?.[3] as T | undefined;
+}
+
 async function runCronEditWithScheduleLookup(
   schedule: unknown,
   editArgs: string[],
@@ -237,6 +242,40 @@ async function runCronRunAndCaptureExit(params: {
 }
 
 describe("cron cli", () => {
+  it.each(["cron.status", "cron.list", "cron.add", "cron.update", "cron.remove", "cron.run", "cron.runs"])(
+    "%s uses local backend shared auth",
+    async (method) => {
+      if (method === "cron.status") {
+        await runCronCommand(["cron", "status"]);
+      } else if (method === "cron.list") {
+        await runCronCommand(["cron", "list"]);
+      } else if (method === "cron.add") {
+        await runCronCommand([
+          "cron",
+          "add",
+          "--name",
+          "reminder",
+          "--at",
+          "2026-01-01T00:00:00Z",
+          "--message",
+          "hello",
+        ]);
+      } else if (method === "cron.update") {
+        await runCronCommand(["cron", "enable", "job-1"]);
+      } else if (method === "cron.remove") {
+        await runCronCommand(["cron", "remove", "job-1"]);
+      } else if (method === "cron.run") {
+        await runCronRunAndCaptureExit({ ran: true });
+      } else if (method === "cron.runs") {
+        await runCronCommand(["cron", "runs", "--id", "job-1"]);
+      }
+
+      expect(getGatewayCallExtra<{ useLocalBackendSharedAuth?: boolean }>(method)).toEqual({
+        useLocalBackendSharedAuth: true,
+      });
+    },
+  );
+
   it.each([
     {
       name: "exits 0 for cron run when job executes successfully",

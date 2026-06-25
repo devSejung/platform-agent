@@ -19,15 +19,19 @@ describe("cron tool", () => {
     opts?: Parameters<typeof createCronTool>[0],
   ): ReturnType<typeof createCronTool> {
     return createCronTool(opts, {
-      callGatewayTool: async (method, _gatewayOpts, params) =>
-        await callGatewayMock({ method, params }),
+      callGatewayTool: async (method, _gatewayOpts, params, extra) =>
+        await callGatewayMock({ method, params, extra }),
     });
   }
 
-  function readGatewayCall(index = 0): { method?: string; params?: Record<string, unknown> } {
+  function readGatewayCall(index = 0): {
+    method?: string;
+    params?: Record<string, unknown>;
+    extra?: Record<string, unknown>;
+  } {
     return (
       (callGatewayMock.mock.calls[index]?.[0] as
-        | { method?: string; params?: Record<string, unknown> }
+        | { method?: string; params?: Record<string, unknown>; extra?: Record<string, unknown> }
         | undefined) ?? { method: undefined, params: undefined }
     );
   }
@@ -166,6 +170,32 @@ describe("cron tool", () => {
     const params = expectSingleGatewayCallMethod(`cron.${action}`);
     expect(params).toEqual(expectedParams);
   });
+
+  it.each(["status", "list", "add", "update", "remove", "run", "runs"] as const)(
+    "%s uses local backend shared auth for cron gateway calls",
+    async (action) => {
+      const tool = createTestCronTool({ agentSessionKey: "agent:eon:main" });
+      const baseJob = {
+        name: "reminder",
+        schedule: { at: new Date(123).toISOString() },
+        payload: { kind: "agentTurn" as const, message: "hello" },
+      };
+      const inputByAction = {
+        status: { action: "status" },
+        list: { action: "list" },
+        add: { action: "add", job: baseJob },
+        update: { action: "update", jobId: "job-1", patch: { enabled: true } },
+        remove: { action: "remove", jobId: "job-1" },
+        run: { action: "run", jobId: "job-1" },
+        runs: { action: "runs", jobId: "job-1" },
+      } as const;
+
+      await tool.execute(`call-${action}`, inputByAction[action]);
+
+      expect(readGatewayCall().extra).toEqual({ useLocalBackendSharedAuth: true });
+      callGatewayMock.mockClear();
+    },
+  );
 
   it("prefers jobId over id when both are provided", async () => {
     const tool = createTestCronTool();

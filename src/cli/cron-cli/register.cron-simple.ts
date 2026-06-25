@@ -1,7 +1,12 @@
 import type { Command } from "commander";
 import { defaultRuntime } from "../../runtime.js";
-import { addGatewayClientOptions, callGatewayFromCli } from "../gateway-rpc.js";
-import { handleCronCliError, printCronJson, warnIfCronSchedulerDisabled } from "./shared.js";
+import { addGatewayClientOptions } from "../gateway-rpc.js";
+import {
+  callCronGatewayFromCli,
+  handleCronCliError,
+  printCronJson,
+  warnIfCronSchedulerDisabled,
+} from "./shared.js";
 
 function registerCronToggleCommand(params: {
   cron: Command;
@@ -16,7 +21,7 @@ function registerCronToggleCommand(params: {
       .argument("<id>", "Job id")
       .action(async (id, opts) => {
         try {
-          const res = await callGatewayFromCli("cron.update", opts, {
+          const res = await callCronGatewayFromCli("cron.update", opts, {
             id,
             patch: { enabled: params.enabled },
           });
@@ -40,7 +45,7 @@ export function registerCronSimpleCommands(cron: Command) {
       .option("--json", "Output JSON", false)
       .action(async (id, opts) => {
         try {
-          const res = await callGatewayFromCli("cron.remove", opts, { id });
+          const res = await callCronGatewayFromCli("cron.remove", opts, { id });
           printCronJson(res);
         } catch (err) {
           handleCronCliError(err);
@@ -72,7 +77,7 @@ export function registerCronSimpleCommands(cron: Command) {
           const limitRaw = Number.parseInt(String(opts.limit ?? "50"), 10);
           const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 50;
           const id = String(opts.id);
-          const res = await callGatewayFromCli("cron.runs", opts, {
+          const res = await callCronGatewayFromCli("cron.runs", opts, {
             id,
             limit,
           });
@@ -94,7 +99,7 @@ export function registerCronSimpleCommands(cron: Command) {
           if (command.getOptionValueSource("timeout") === "default") {
             opts.timeout = "600000";
           }
-          const res = await callGatewayFromCli("cron.run", opts, {
+          const res = await callCronGatewayFromCli("cron.run", opts, {
             id,
             mode: opts.due ? "due" : "force",
           });

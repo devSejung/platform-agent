@@ -165,6 +165,24 @@ describe("gateway tool defaults", () => {
     );
   });
 
+  it("can force local backend shared auth for loopback cron paths", async () => {
+    callGatewayMock.mockResolvedValueOnce({ ok: true });
+    await callGatewayTool(
+      "cron.list",
+      { gatewayUrl: "ws://127.0.0.1:18789", gatewayToken: "t" },
+      {},
+      { useLocalBackendSharedAuth: true },
+    );
+    expect(callGatewayMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "cron.list",
+        clientName: "gateway-client",
+        mode: "backend",
+        requireLocalBackendSharedAuth: true,
+      }),
+    );
+  });
+
   it("allows explicit scope overrides for dynamic callers", async () => {
     callGatewayMock.mockResolvedValueOnce({ ok: true });
     await callGatewayTool(

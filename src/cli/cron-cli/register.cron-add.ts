@@ -8,11 +8,12 @@ import {
 } from "../../shared/string-coerce.js";
 import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
 import type { GatewayRpcOpts } from "../gateway-rpc.js";
-import { addGatewayClientOptions, callGatewayFromCli } from "../gateway-rpc.js";
+import { addGatewayClientOptions } from "../gateway-rpc.js";
 import { parsePositiveIntOrUndefined } from "../program/helpers.js";
 import { resolveCronCreateSchedule } from "./schedule-options.js";
 import {
   getCronChannelOptions,
+  callCronGatewayFromCli,
   handleCronCliError,
   printCronJson,
   printCronList,
@@ -54,7 +55,7 @@ export function registerCronStatusCommand(cron: Command) {
       .option("--json", "Output JSON", false)
       .action(async (opts) => {
         try {
-          const res = await callGatewayFromCli("cron.status", opts, {});
+          const res = await callCronGatewayFromCli("cron.status", opts, {});
           printCronJson(res);
         } catch (err) {
           handleCronCliError(err);
@@ -72,7 +73,7 @@ export function registerCronListCommand(cron: Command) {
       .option("--json", "Output JSON", false)
       .action(async (opts) => {
         try {
-          const res = await callGatewayFromCli("cron.list", opts, {
+          const res = await callCronGatewayFromCli("cron.list", opts, {
             includeDisabled: Boolean(opts.all),
           });
           if (opts.json) {
@@ -347,7 +348,7 @@ Delivery:
                 : undefined,
           };
 
-          const res = await callGatewayFromCli("cron.add", opts, params);
+          const res = await callCronGatewayFromCli("cron.add", opts, params);
           printCronJson(res);
           await warnIfCronSchedulerDisabled(opts);
         } catch (err) {

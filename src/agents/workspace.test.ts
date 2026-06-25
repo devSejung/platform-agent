@@ -285,7 +285,7 @@ describe("upsertWorkspaceUserProfile", () => {
     );
     expect(content).toContain("- Skill Hub 설치/업데이트/삭제는 현재 workspace에만 적용됩니다.");
     expect(content).toContain(
-      "- Knox 명령은 `/skillhub install <slug>`, `/skillhub update <slug>`, `/skillhub delete <slug>` 형식만 사용하세요.",
+      "- Knox 명령은 `/skillhub help`, `/skillhub list`, `/skillhub list <category>`, `/skillhub install <slug>`, `/skillhub update <slug>`, `/skillhub delete <slug>` 형식만 사용하세요.",
     );
     expect(content).toContain(
       "- Hidden 상태인 허브 스킬은 신규 설치할 수 없고, 기존 설치자는 update/delete만 가능합니다.",

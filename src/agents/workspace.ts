@@ -269,7 +269,7 @@ function buildWorkspaceUserAutoBlock(profile: WorkspaceUserProfileSeed): string 
     "- Skill Hub는 전사 공용 스킬 레지스트리입니다.",
     "- 현재 workspace의 로컬 스킬을 publish하거나 `.skill` 패키지를 업로드할 수 있습니다.",
     "- Skill Hub 설치/업데이트/삭제는 현재 workspace에만 적용됩니다.",
-    "- Knox 명령은 `/skillhub install <slug>`, `/skillhub update <slug>`, `/skillhub delete <slug>` 형식만 사용하세요.",
+    "- Knox 명령은 `/skillhub help`, `/skillhub list`, `/skillhub list <category>`, `/skillhub install <slug>`, `/skillhub update <slug>`, `/skillhub delete <slug>` 형식만 사용하세요.",
     "- Hidden 상태인 허브 스킬은 신규 설치할 수 없고, 기존 설치자는 update/delete만 가능합니다.",
   );
   lines.push(AUTO_USER_BLOCK_END);

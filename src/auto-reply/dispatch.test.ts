@@ -18,6 +18,7 @@ const hoisted = vi.hoisted(() => ({
   installSkillFromHubMock: vi.fn(),
   updateSkillFromHubMock: vi.fn(),
   deleteSkillFromWorkspaceMock: vi.fn(),
+  listSkillHubEntriesMock: vi.fn(),
 }));
 
 vi.mock("./reply/dispatch-from-config.js", () => ({
@@ -50,7 +51,14 @@ vi.mock("../agents/skill-hub.js", () => ({
   installSkillFromHub: (...args: unknown[]) => hoisted.installSkillFromHubMock(...args),
   updateSkillFromHub: (...args: unknown[]) => hoisted.updateSkillFromHubMock(...args),
   deleteSkillFromWorkspace: (...args: unknown[]) => hoisted.deleteSkillFromWorkspaceMock(...args),
-  resolveSkillHubActor: ({ employee, fallbackAgentId }: { employee?: { employeeId?: string; name?: string }; fallbackAgentId: string }) => ({
+  listSkillHubEntries: (...args: unknown[]) => hoisted.listSkillHubEntriesMock(...args),
+  resolveSkillHubActor: ({
+    employee,
+    fallbackAgentId,
+  }: {
+    employee?: { employeeId?: string; name?: string };
+    fallbackAgentId: string;
+  }) => ({
     employeeId: employee?.employeeId ?? fallbackAgentId,
     name: employee?.name,
   }),
@@ -209,6 +217,209 @@ describe("withReplyDispatcher", () => {
     });
 
     expect(order).toEqual(["sendFinalReply", "markComplete", "waitForIdle"]);
+  });
+
+  it("intercepts /skillhub help before normal reply dispatch", async () => {
+    const sendFinalReply = vi.fn(() => true);
+    const dispatcher = {
+      sendToolResult: () => true,
+      sendBlockReply: () => true,
+      sendFinalReply,
+      getQueuedCounts: () => ({ tool: 0, block: 0, final: 1 }),
+      getFailedCounts: () => ({ tool: 0, block: 0, final: 0 }),
+      markComplete: vi.fn(),
+      waitForIdle: vi.fn(async () => {}),
+    } satisfies ReplyDispatcher;
+
+    await dispatchInboundMessage({
+      ctx: buildTestCtx({
+        Body: "/skillhub help",
+        CommandBody: "/skillhub help",
+        SessionKey: "main",
+      }),
+      cfg: {} as OpenClawConfig,
+      dispatcher,
+      replyResolver: async () => ({ text: "ignored" }),
+    });
+
+    expect(hoisted.dispatchReplyFromConfigMock).not.toHaveBeenCalled();
+    expect(sendFinalReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("# Skill Hub Commands"),
+      }),
+    );
+  });
+
+  it("renders Korean help for /skillhub help ko", async () => {
+    const sendFinalReply = vi.fn(() => true);
+    const dispatcher = {
+      sendToolResult: () => true,
+      sendBlockReply: () => true,
+      sendFinalReply,
+      getQueuedCounts: () => ({ tool: 0, block: 0, final: 1 }),
+      getFailedCounts: () => ({ tool: 0, block: 0, final: 0 }),
+      markComplete: vi.fn(),
+      waitForIdle: vi.fn(async () => {}),
+    } satisfies ReplyDispatcher;
+
+    await dispatchInboundMessage({
+      ctx: buildTestCtx({
+        Body: "/skillhub help ko",
+        CommandBody: "/skillhub help ko",
+        SessionKey: "main",
+      }),
+      cfg: {} as OpenClawConfig,
+      dispatcher,
+      replyResolver: async () => ({ text: "ignored" }),
+    });
+
+    expect(sendFinalReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("# Skill Hub 명령어"),
+      }),
+    );
+    expect(sendFinalReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("/skillhub installed"),
+      }),
+    );
+  });
+
+  it("intercepts /skillhub list and formats a markdown table", async () => {
+    hoisted.listSkillHubEntriesMock.mockResolvedValueOnce([
+      {
+        slug: "ufs-spec",
+        presentation: {
+          category: "knowledge",
+          displayName: "UFS Spec",
+          displayDescription: "Reference answers for JEDEC UFS questions.",
+        },
+      },
+    ]);
+    const sendFinalReply = vi.fn(() => true);
+    const dispatcher = {
+      sendToolResult: () => true,
+      sendBlockReply: () => true,
+      sendFinalReply,
+      getQueuedCounts: () => ({ tool: 0, block: 0, final: 1 }),
+      getFailedCounts: () => ({ tool: 0, block: 0, final: 0 }),
+      markComplete: vi.fn(),
+      waitForIdle: vi.fn(async () => {}),
+    } satisfies ReplyDispatcher;
+
+    await dispatchInboundMessage({
+      ctx: buildTestCtx({
+        Body: "/skillhub list knowledge",
+        CommandBody: "/skillhub list knowledge",
+        SessionKey: "main",
+        SenderId: "emp-1",
+      }),
+      cfg: {} as OpenClawConfig,
+      dispatcher,
+      replyResolver: async () => ({ text: "ignored" }),
+    });
+
+    expect(hoisted.listSkillHubEntriesMock).toHaveBeenCalledWith({
+      workspaceDir: "/tmp/workspace",
+      actor: { employeeId: "emp-1", name: undefined },
+      scope: "discover",
+      sort: "az",
+      category: "knowledge",
+    });
+    expect(sendFinalReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("| Name | Slug | Description |"),
+      }),
+    );
+    expect(sendFinalReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("`ufs-spec`"),
+      }),
+    );
+  });
+
+  it("intercepts /skillhub installed and queries installed scope", async () => {
+    hoisted.listSkillHubEntriesMock.mockResolvedValueOnce([
+      {
+        slug: "ufs-spec",
+        presentation: {
+          category: "knowledge",
+          displayName: "UFS Spec",
+          displayDescription: "Reference answers for JEDEC UFS questions.",
+        },
+      },
+    ]);
+    const sendFinalReply = vi.fn(() => true);
+    const dispatcher = {
+      sendToolResult: () => true,
+      sendBlockReply: () => true,
+      sendFinalReply,
+      getQueuedCounts: () => ({ tool: 0, block: 0, final: 1 }),
+      getFailedCounts: () => ({ tool: 0, block: 0, final: 0 }),
+      markComplete: vi.fn(),
+      waitForIdle: vi.fn(async () => {}),
+    } satisfies ReplyDispatcher;
+
+    await dispatchInboundMessage({
+      ctx: buildTestCtx({
+        Body: "/skillhub installed",
+        CommandBody: "/skillhub installed",
+        SessionKey: "main",
+        SenderId: "emp-1",
+      }),
+      cfg: {} as OpenClawConfig,
+      dispatcher,
+      replyResolver: async () => ({ text: "ignored" }),
+    });
+
+    expect(hoisted.listSkillHubEntriesMock).toHaveBeenCalledWith({
+      workspaceDir: "/tmp/workspace",
+      actor: { employeeId: "emp-1", name: undefined },
+      scope: "installed",
+      sort: "az",
+      category: "all",
+    });
+    expect(sendFinalReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("# Installed Skill Hub Skills"),
+      }),
+    );
+  });
+
+  it("falls back to CommandBody when BodyForCommands contains wrapped room text", async () => {
+    hoisted.listSkillHubEntriesMock.mockResolvedValueOnce([]);
+    const sendFinalReply = vi.fn(() => true);
+    const dispatcher = {
+      sendToolResult: () => true,
+      sendBlockReply: () => true,
+      sendFinalReply,
+      getQueuedCounts: () => ({ tool: 0, block: 0, final: 1 }),
+      getFailedCounts: () => ({ tool: 0, block: 0, final: 0 }),
+      markComplete: vi.fn(),
+      waitForIdle: vi.fn(async () => {}),
+    } satisfies ReplyDispatcher;
+
+    await dispatchInboundMessage({
+      ctx: buildTestCtx({
+        Body: "[그룹방에서 온 메세지입니다]\n사용자정보: eon\n/skillhub list all",
+        BodyForCommands: "[그룹방에서 온 메세지입니다]\n사용자정보: eon\n/skillhub list all",
+        CommandBody: "/skillhub list all",
+        SessionKey: "main",
+        SenderId: "emp-1",
+      }),
+      cfg: {} as OpenClawConfig,
+      dispatcher,
+      replyResolver: async () => ({ text: "ignored" }),
+    });
+
+    expect(hoisted.dispatchReplyFromConfigMock).not.toHaveBeenCalled();
+    expect(hoisted.listSkillHubEntriesMock).toHaveBeenCalledWith({
+      workspaceDir: "/tmp/workspace",
+      actor: { employeeId: "emp-1", name: undefined },
+      scope: "discover",
+      sort: "az",
+      category: "all",
+    });
   });
 
   it("always marks complete and waits for idle after success", async () => {

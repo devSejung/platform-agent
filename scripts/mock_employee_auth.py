@@ -18,7 +18,7 @@ DEFAULT_PASSWORD = "456123"
 DEFAULT_EMPLOYEE_ID = "eon"
 DEFAULT_AGENT_ID = "eon"
 DEFAULT_SESSION_KEY = "agent:eon:main"
-DEFAULT_NAME = "Eon"
+DEFAULT_NAME = "어니"
 DEFAULT_DEPARTMENT = "Samsung"
 
 
@@ -41,7 +41,7 @@ def default_accounts() -> list[dict]:
             "identifier": "minji",
             "password": DEFAULT_PASSWORD,
             "employeeId": "minji",
-            "name": "Minji",
+            "name": "민지",
             "department": DEFAULT_DEPARTMENT,
             "agentId": "minji",
             "sessionKey": "agent:minji:main",
@@ -50,10 +50,19 @@ def default_accounts() -> list[dict]:
             "identifier": "test_admin",
             "password": DEFAULT_PASSWORD,
             "employeeId": "test_admin",
-            "name": "test_admin",
+            "name": "어드민아이디",
             "department": DEFAULT_DEPARTMENT,
             "agentId": "test_admin",
             "sessionKey": "agent:test_admin:main",
+        },
+            {
+            "identifier": "seungon.jung",
+            "password": DEFAULT_PASSWORD,
+            "employeeId": "seungon.jung",
+            "name": "어니어니",
+            "department": DEFAULT_DEPARTMENT,
+            "agentId": "seungon_jung",
+            "sessionKey": "agent:seungon_jung:main",
         },
     ]
 

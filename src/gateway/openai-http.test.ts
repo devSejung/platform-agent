@@ -699,6 +699,29 @@ describe("OpenAI-compatible HTTP API (e2e)", () => {
 
       {
         agentCommand.mockClear();
+        agentCommand.mockResolvedValueOnce({
+          payloads: [{ text: "usage ok" }],
+          meta: {
+            agentMeta: {
+              usage: { input: 12, output: 4, cacheRead: 3, total: 19 },
+            },
+          },
+        } as never);
+        const res = await postChatCompletions(port, {
+          model: "openclaw",
+          messages: [{ role: "user", content: "usage?" }],
+        });
+        expect(res.status).toBe(200);
+        const json = (await res.json()) as Record<string, unknown>;
+        expect(json.usage).toEqual({
+          prompt_tokens: 15,
+          completion_tokens: 4,
+          total_tokens: 19,
+        });
+      }
+
+      {
+        agentCommand.mockClear();
         agentCommand.mockResolvedValueOnce({ payloads: [{ text: "" }] } as never);
         const json = await postSyncUserMessage("hi");
         const choice0 = (json.choices as Array<Record<string, unknown>>)[0] ?? {};
@@ -845,6 +868,45 @@ describe("OpenAI-compatible HTTP API (e2e)", () => {
         const fallbackText = await fallbackRes.text();
         expect(fallbackText).toContain("[DONE]");
         expect(fallbackText).toContain("hello");
+      }
+
+      {
+        agentCommand.mockClear();
+        agentCommand.mockResolvedValueOnce({
+          payloads: [{ text: "usage hello" }],
+          meta: {
+            agentMeta: {
+              usage: { input: 20, output: 6, cacheRead: 5, total: 31 },
+            },
+          },
+        } as never);
+
+        const usageRes = await postChatCompletions(port, {
+          stream: true,
+          stream_options: { include_usage: true },
+          model: "openclaw",
+          messages: [{ role: "user", content: "usage stream" }],
+        });
+        expect(usageRes.status).toBe(200);
+        const usageText = await usageRes.text();
+        const usageChunks = parseSseDataLines(usageText)
+          .filter((d) => d !== "[DONE]")
+          .map((d) => JSON.parse(d) as Record<string, unknown>);
+        expect(usageChunks.find((chunk) => chunk.usage)).toMatchObject({
+          choices: [],
+          usage: {
+            prompt_tokens: 25,
+            completion_tokens: 6,
+            total_tokens: 31,
+          },
+        });
+        expect(
+          usageChunks.some((chunk) =>
+            ((chunk.choices as Array<Record<string, unknown>> | undefined) ?? []).some(
+              (choice) => choice.finish_reason === "stop",
+            ),
+          ),
+        ).toBe(true);
       }
 
       {

@@ -19,6 +19,8 @@ import type {
   ResponseInput,
   ResponseInputMessageContentList,
 } from "openai/resources/responses/responses.js";
+import { logImagePayloadDebug, summarizeImagePayload } from "../infra/image-payload-debug.js";
+import { canonicalizeImageBase64 } from "../media/base64.js";
 import { resolveProviderTransportTurnStateWithPlugin } from "../plugins/provider-runtime.js";
 import type { ProviderRuntimeModel } from "../plugins/types.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./copilot-dynamic-headers.js";
@@ -28,8 +30,6 @@ import {
   applyOpenAIResponsesPayloadPolicy,
   resolveOpenAIResponsesPayloadPolicy,
 } from "./openai-responses-payload-policy.js";
-import { logImagePayloadDebug, summarizeImagePayload } from "../infra/image-payload-debug.js";
-import { canonicalizeImageBase64 } from "../media/base64.js";
 import {
   normalizeOpenAIStrictToolParameters,
   resolveOpenAIStrictToolFlagForInventory,
@@ -185,7 +185,9 @@ function collectOpenAIResponsesInputImageEntries(input: unknown): OpenAIInputIma
   return entries;
 }
 
-function collectOpenAICompletionsImageEntries(messages: unknown): OpenAICompletionsImageDebugEntry[] {
+function collectOpenAICompletionsImageEntries(
+  messages: unknown,
+): OpenAICompletionsImageDebugEntry[] {
   if (!Array.isArray(messages)) {
     return [];
   }
@@ -253,9 +255,10 @@ function summarizeOpenAIResponsesInput(input: unknown): OpenAIResponsesInputSumm
       if (!contentItem || typeof contentItem !== "object") {
         return "non-object";
       }
-      const type = typeof (contentItem as { type?: unknown }).type === "string"
-        ? String((contentItem as { type?: unknown }).type)
-        : "unknown";
+      const type =
+        typeof (contentItem as { type?: unknown }).type === "string"
+          ? String((contentItem as { type?: unknown }).type)
+          : "unknown";
       if (type === "input_image") {
         imageCount += 1;
       }
@@ -1043,8 +1046,7 @@ export function createOpenAIResponsesTransportStreamFn(): StreamFn {
           stage: "agent.openai.responses.breadcrumb",
           provider: model.provider,
           model: model.id,
-          note:
-            `phase=catch error=${error instanceof Error ? error.message : JSON.stringify(error)}`,
+          note: `phase=catch error=${error instanceof Error ? error.message : JSON.stringify(error)}`,
           entries: [],
           allowEmpty: true,
         });
@@ -1470,7 +1472,7 @@ async function processOpenAICompletionsStream(
       });
       continue;
     }
-    if (choice.delta.tool_calls) {
+    if (choice.delta.tool_calls && choice.delta.tool_calls.length > 0) {
       for (const toolCall of choice.delta.tool_calls) {
         if (
           !currentBlock ||
@@ -1511,6 +1513,10 @@ async function processOpenAICompletionsStream(
     }
   }
   finishCurrentBlock();
+  const hasToolCalls = output.content.some((block) => block.type === "toolCall");
+  if (output.stopReason === "toolUse" && !hasToolCalls) {
+    output.stopReason = "stop";
+  }
 }
 
 function detectCompat(model: OpenAIModeModel) {
@@ -1729,6 +1735,10 @@ export function parseTransportChunkUsage(
   calculateCost(model as never, usage as never);
   return usage;
 }
+
+export const __testing = {
+  processOpenAICompletionsStream,
+};
 
 function mapStopReason(reason: string | null) {
   if (reason === null) {

@@ -334,6 +334,9 @@ describe("failover-error", () => {
         message: ANTHROPIC_OVERLOADED_PAYLOAD,
       }),
     ).toBe("overloaded");
+    expect(resolveFailoverReasonFromError({ message: "GLM request failed: 访问量过大" })).toBe(
+      "overloaded",
+    );
   });
 
   it("keeps raw-text 402 weekly/monthly limit errors in billing", () => {

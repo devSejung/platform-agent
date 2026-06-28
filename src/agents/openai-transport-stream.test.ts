@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildOpenAIResponsesParams,
   buildOpenAICompletionsParams,
+  __testing,
   parseTransportChunkUsage,
   resolveAzureOpenAIApiVersion,
   sanitizeTransportPayloadText,
@@ -25,6 +26,75 @@ describe("openai transport stream", () => {
     expect(isTransportAwareApiSupported("azure-openai-responses")).toBe(true);
     expect(isTransportAwareApiSupported("anthropic-messages")).toBe(true);
     expect(isTransportAwareApiSupported("google-generative-ai")).toBe(true);
+  });
+
+  it("treats vLLM empty tool_calls chunks as normal stop when no tool call exists", async () => {
+    const output = {
+      role: "assistant" as const,
+      content: [],
+      api: "openai-completions" as const,
+      provider: "vllm",
+      model: "qwen3",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: 0,
+    };
+    const chunks = [
+      {
+        id: "chatcmpl-test",
+        choices: [
+          {
+            delta: { reasoning_content: "thinking" },
+            finish_reason: null,
+            index: 0,
+          },
+        ],
+      },
+      {
+        id: "chatcmpl-test",
+        choices: [
+          {
+            delta: { tool_calls: [] },
+            finish_reason: "tool_calls",
+            index: 0,
+          },
+        ],
+      },
+    ];
+    const events: unknown[] = [];
+
+    await __testing.processOpenAICompletionsStream(
+      chunks as never,
+      output as never,
+      {
+        id: "qwen3",
+        name: "qwen3",
+        api: "openai-completions",
+        provider: "vllm",
+        baseUrl: "http://127.0.0.1:8000/v1",
+        reasoning: true,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 32768,
+        maxTokens: 4096,
+      } as never,
+      { push: (event) => events.push(event) },
+    );
+
+    expect(output.stopReason).toBe("stop");
+    expect(output.content).toEqual([
+      { type: "thinking", thinking: "thinking", thinkingSignature: "reasoning_content" },
+    ]);
+    expect(events.some((event) => (event as { type?: unknown }).type === "toolcall_start")).toBe(
+      false,
+    );
   });
 
   it("builds boundary-aware stream shapers for supported default agent transports", () => {

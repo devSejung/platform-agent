@@ -4,6 +4,7 @@ import {
   hasNonzeroUsage,
   derivePromptTokens,
   deriveSessionTotalTokens,
+  toOpenAiChatCompletionsUsage,
 } from "./usage.js";
 
 describe("normalizeUsage", () => {
@@ -194,6 +195,39 @@ describe("derivePromptTokens", () => {
   it("returns undefined for empty usage", () => {
     const promptTokens = derivePromptTokens({});
     expect(promptTokens).toBeUndefined();
+  });
+});
+
+describe("toOpenAiChatCompletionsUsage", () => {
+  it("maps normalized usage to OpenAI-compatible chat completion fields", () => {
+    expect(
+      toOpenAiChatCompletionsUsage({
+        input: 25,
+        output: 7,
+        cacheRead: 10,
+        cacheWrite: 4,
+        total: 99,
+      }),
+    ).toEqual({
+      prompt_tokens: 35,
+      completion_tokens: 7,
+      total_tokens: 99,
+    });
+  });
+
+  it("preserves component total when aggregate total is smaller", () => {
+    expect(
+      toOpenAiChatCompletionsUsage({
+        input: 10,
+        output: 5,
+        cacheRead: 2,
+        total: 3,
+      }),
+    ).toEqual({
+      prompt_tokens: 12,
+      completion_tokens: 5,
+      total_tokens: 17,
+    });
   });
 });
 

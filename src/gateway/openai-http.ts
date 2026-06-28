@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ImageContent } from "../agents/command/types.js";
+import { normalizeUsage, toOpenAiChatCompletionsUsage } from "../agents/usage.js";
 import { createDefaultDeps } from "../cli/deps.js";
 import { agentCommandFromIngress } from "../commands/agent.js";
 import type { GatewayHttpChatCompletionsConfig } from "../config/types.gateway.js";
@@ -60,6 +61,7 @@ type OpenAiChatMessage = {
 type OpenAiChatCompletionRequest = {
   model?: unknown;
   stream?: unknown;
+  stream_options?: unknown;
   messages?: unknown;
   user?: unknown;
 };
@@ -163,6 +165,40 @@ function writeAssistantContentChunk(
         finish_reason: params.finishReason,
       },
     ],
+  });
+}
+
+function writeAssistantStopChunk(res: ServerResponse, params: { runId: string; model: string }) {
+  writeSse(res, {
+    id: params.runId,
+    object: "chat.completion.chunk",
+    created: Math.floor(Date.now() / 1000),
+    model: params.model,
+    choices: [
+      {
+        index: 0,
+        delta: {},
+        finish_reason: "stop",
+      },
+    ],
+  });
+}
+
+function writeUsageChunk(
+  res: ServerResponse,
+  params: {
+    runId: string;
+    model: string;
+    usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  },
+) {
+  writeSse(res, {
+    id: params.runId,
+    object: "chat.completion.chunk",
+    created: Math.floor(Date.now() / 1000),
+    model: params.model,
+    choices: [],
+    usage: params.usage,
   });
 }
 
@@ -424,6 +460,42 @@ function resolveAgentResponseText(result: unknown): string {
   return content || "No response from OpenClaw.";
 }
 
+type AgentUsageMeta = {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  total?: number;
+};
+
+function resolveRawAgentUsage(result: unknown): AgentUsageMeta | undefined {
+  return (
+    result as {
+      meta?: {
+        agentMeta?: {
+          usage?: AgentUsageMeta;
+        };
+      };
+    } | null
+  )?.meta?.agentMeta?.usage;
+}
+
+function resolveChatCompletionUsage(result: unknown): {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+} {
+  return toOpenAiChatCompletionsUsage(normalizeUsage(resolveRawAgentUsage(result)));
+}
+
+function resolveIncludeUsageForStreaming(payload: OpenAiChatCompletionRequest): boolean {
+  const streamOptions = payload.stream_options;
+  if (!streamOptions || typeof streamOptions !== "object" || Array.isArray(streamOptions)) {
+    return false;
+  }
+  return (streamOptions as { include_usage?: unknown }).include_usage === true;
+}
+
 export async function handleOpenAiHttpRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -454,6 +526,7 @@ export async function handleOpenAiHttpRequest(
 
   const payload = coerceRequest(handled.body);
   const stream = Boolean(payload.stream);
+  const streamIncludeUsage = stream && resolveIncludeUsageForStreaming(payload);
   const model = typeof payload.model === "string" ? payload.model : "openclaw";
   const user = typeof payload.user === "string" ? payload.user : undefined;
 
@@ -533,6 +606,7 @@ export async function handleOpenAiHttpRequest(
       }
 
       const content = resolveAgentResponseText(result);
+      const usage = resolveChatCompletionUsage(result);
 
       sendJson(res, 200, {
         id: runId,
@@ -546,7 +620,7 @@ export async function handleOpenAiHttpRequest(
             finish_reason: "stop",
           },
         ],
-        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        usage,
       });
     } catch (err) {
       if (abortController.signal.aborted) {
@@ -565,9 +639,44 @@ export async function handleOpenAiHttpRequest(
   setSseHeaders(res);
 
   let wroteRole = false;
+  let wroteStopChunk = false;
   let sawAssistantDelta = false;
+  let finalUsage:
+    | {
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+      }
+    | undefined;
+  let finalizeRequested = false;
   let closed = false;
   let stopWatchingDisconnect = () => {};
+
+  const maybeFinalize = () => {
+    if (closed || !finalizeRequested) {
+      return;
+    }
+    if (streamIncludeUsage && !finalUsage) {
+      return;
+    }
+    closed = true;
+    stopWatchingDisconnect();
+    unsubscribe();
+    if (!wroteStopChunk) {
+      writeAssistantStopChunk(res, { runId, model });
+      wroteStopChunk = true;
+    }
+    if (streamIncludeUsage && finalUsage) {
+      writeUsageChunk(res, { runId, model, usage: finalUsage });
+    }
+    writeDone(res);
+    res.end();
+  };
+
+  const requestFinalize = () => {
+    finalizeRequested = true;
+    maybeFinalize();
+  };
 
   const unsubscribe = onAgentEvent((evt) => {
     if (evt.runId !== runId) {
@@ -601,11 +710,7 @@ export async function handleOpenAiHttpRequest(
     if (evt.stream === "lifecycle") {
       const phase = evt.data?.phase;
       if (phase === "end" || phase === "error") {
-        closed = true;
-        stopWatchingDisconnect();
-        unsubscribe();
-        writeDone(res);
-        res.end();
+        requestFinalize();
       }
     }
   });
@@ -623,6 +728,8 @@ export async function handleOpenAiHttpRequest(
         return;
       }
 
+      finalUsage = resolveChatCompletionUsage(result);
+
       if (!sawAssistantDelta) {
         if (!wroteRole) {
           wroteRole = true;
@@ -639,6 +746,7 @@ export async function handleOpenAiHttpRequest(
           finishReason: null,
         });
       }
+      requestFinalize();
     } catch (err) {
       if (closed || abortController.signal.aborted) {
         return;
@@ -650,18 +758,25 @@ export async function handleOpenAiHttpRequest(
         content: "Error: internal error",
         finishReason: "stop",
       });
+      wroteStopChunk = true;
+      finalUsage = {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+      };
       emitAgentEvent({
         runId,
         stream: "lifecycle",
         data: { phase: "error" },
       });
+      requestFinalize();
     } finally {
       if (!closed) {
-        closed = true;
-        stopWatchingDisconnect();
-        unsubscribe();
-        writeDone(res);
-        res.end();
+        emitAgentEvent({
+          runId,
+          stream: "lifecycle",
+          data: { phase: "end" },
+        });
       }
     }
   })();

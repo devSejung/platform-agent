@@ -75,6 +75,8 @@ const ERROR_PATTERNS = {
     // provider-overload (#32828).
     /service[_ ]unavailable.*(?:overload|capacity|high[_ ]demand)|(?:overload|capacity|high[_ ]demand).*service[_ ]unavailable/i,
     "high demand",
+    // Zhipu/GLM overload copy.
+    "访问量过大",
   ],
   serverError: [
     "an error occurred while processing",

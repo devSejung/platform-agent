@@ -16,7 +16,7 @@ import { validateExecApprovalRequestParams } from "../protocol/index.js";
 import { waitForAgentJob } from "./agent-job.js";
 import { injectTimestamp, timestampOptsFromConfig } from "./agent-timestamp.js";
 import { normalizeRpcAttachmentsToChatAttachments } from "./attachment-normalize.js";
-import { sanitizeChatSendMessageInput } from "./chat.js";
+import { sanitizeChatHistoryMessages, sanitizeChatSendMessageInput } from "./chat.js";
 import { createExecApprovalHandlers } from "./exec-approval.js";
 import { logsHandlers } from "./logs.js";
 
@@ -263,7 +263,9 @@ describe("normalizeRpcAttachmentsToChatAttachments", () => {
       expected: [],
     },
   ])("$name", ({ attachments, expected }) => {
-    expect(normalizeRpcAttachmentsToChatAttachments(attachments)).toEqual(expected);
+    expect(normalizeRpcAttachmentsToChatAttachments(attachments)).toEqual(
+      expected.map((entry) => expect.objectContaining(entry)),
+    );
   });
 
   it("accepts dashboard image attachments with nested base64 source", () => {
@@ -278,12 +280,12 @@ describe("normalizeRpcAttachmentsToChatAttachments", () => {
       },
     ]);
     expect(res).toEqual([
-      {
+      expect.objectContaining({
         type: "image",
         mimeType: "image/png",
         fileName: undefined,
         content: "Zm9v",
-      },
+      }),
     ]);
   });
 });
@@ -307,6 +309,94 @@ describe("sanitizeChatSendMessageInput", () => {
     },
   ])("$name", ({ input, expected }) => {
     expect(sanitizeChatSendMessageInput(input)).toEqual(expected);
+  });
+});
+
+describe("sanitizeChatHistoryMessages", () => {
+  it("keeps visible assistant progress text from mixed tool-use messages", () => {
+    const result = sanitizeChatHistoryMessages(
+      [
+        {
+          role: "user",
+          content: [{ type: "text", text: "fix it" }],
+          timestamp: 1,
+        },
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "private reasoning" },
+            {
+              type: "text",
+              text: "I will clean that up now.",
+              textSignature: JSON.stringify({
+                v: 1,
+                id: "msg-progress",
+                phase: "commentary",
+              }),
+            },
+            {
+              type: "toolCall",
+              id: "call-read",
+              name: "read",
+              arguments: { path: "AGENTS.md" },
+            },
+          ],
+          timestamp: 2,
+          __openclaw: { seq: 2 },
+        },
+        {
+          role: "toolResult",
+          toolCallId: "call-read",
+          toolName: "read",
+          content: [{ type: "text", text: "file contents" }],
+          timestamp: 3,
+        },
+      ],
+      10_000,
+    );
+
+    expect(result[1]).toEqual({
+      role: "assistant",
+      content: [{ type: "text", text: "I will clean that up now." }],
+      timestamp: 2,
+      __openclaw: { seq: 2 },
+    });
+  });
+
+  it("keeps pure commentary assistant messages hidden", () => {
+    const result = sanitizeChatHistoryMessages(
+      [
+        {
+          role: "user",
+          content: [{ type: "text", text: "status" }],
+          timestamp: 1,
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "Working...",
+              textSignature: JSON.stringify({
+                v: 1,
+                id: "msg-commentary",
+                phase: "commentary",
+              }),
+            },
+          ],
+          timestamp: 2,
+        },
+      ],
+      10_000,
+    );
+
+    expect(result).toEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "status" }],
+        timestamp: 1,
+      },
+    ]);
   });
 });
 

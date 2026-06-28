@@ -31,6 +31,7 @@ import { parseAgentSessionKey } from "../../sessions/session-key-utils.js";
 import { emitSessionTranscriptUpdate } from "../../sessions/transcript-events.js";
 import {
   extractAttachmentContentBlocks,
+  isTextLikeContentBlock,
   resolveAssistantMessagePhase,
 } from "../../shared/chat-message-content.js";
 import {
@@ -67,8 +68,8 @@ import {
 } from "../chat-attachments.js";
 import { stripEnvelopeFromMessage, stripEnvelopeFromMessages } from "../chat-sanitize.js";
 import { augmentChatHistoryWithCliSessionImports } from "../cli-session-history.js";
-import { enforceEmployeeSessionKey } from "../employee-access.js";
 import { isSuppressedControlReplyText } from "../control-reply-text.js";
+import { enforceEmployeeSessionKey } from "../employee-access.js";
 import { ADMIN_SCOPE } from "../method-scopes.js";
 import {
   GATEWAY_CLIENT_CAPS,
@@ -733,8 +734,15 @@ function sanitizeChatHistoryMessage(
   } else if (Array.isArray(entry.content)) {
     const updated = entry.content.map((block) => sanitizeChatHistoryContentBlock(block, maxChars));
     const sanitizedBlocks = updated.map((item) => item.block);
+    const mixedToolText = projectAssistantTextFromMixedToolContent(sanitizedBlocks, maxChars);
     const hasPhaseMetadata = hasAssistantPhaseMetadata(entry);
-    if (hasPhaseMetadata) {
+    if (mixedToolText) {
+      entry.content = mixedToolText;
+      if (entry.phase === "commentary") {
+        delete entry.phase;
+      }
+      changed = true;
+    } else if (hasPhaseMetadata) {
       const stripped = stripInlineDirectiveTagsForDisplay(extractAssistantHistoryText(entry) ?? "");
       const res = truncateChatHistoryText(stripped.text, maxChars);
       const nonTextBlocks = sanitizedBlocks.filter(
@@ -784,6 +792,69 @@ function hasAssistantNonTextContent(message: unknown): boolean {
   );
 }
 
+function isToolHistoryBlockType(type: unknown): boolean {
+  return (
+    type === "toolCall" ||
+    type === "toolUse" ||
+    type === "functionCall" ||
+    type === "toolResult" ||
+    type === "tool" ||
+    type === "tool_use" ||
+    type === "tool_result"
+  );
+}
+
+function hasAssistantMixedToolVisibleText(message: unknown): boolean {
+  if (!message || typeof message !== "object") {
+    return false;
+  }
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) {
+    return false;
+  }
+  let hasToolHistoryBlock = false;
+  let hasText = false;
+  for (const block of content) {
+    if (!block || typeof block !== "object") {
+      continue;
+    }
+    if (isToolHistoryBlockType((block as { type?: unknown }).type)) {
+      hasToolHistoryBlock = true;
+    }
+    if (isTextLikeContentBlock(block) && block.text.trim()) {
+      hasText = true;
+    }
+  }
+  return hasToolHistoryBlock && hasText;
+}
+
+function projectAssistantTextFromMixedToolContent(
+  content: unknown[],
+  maxChars: number,
+): unknown[] | null {
+  const hasToolHistoryBlock = content.some(
+    (block) =>
+      block &&
+      typeof block === "object" &&
+      isToolHistoryBlockType((block as { type?: unknown }).type),
+  );
+  if (!hasToolHistoryBlock) {
+    return null;
+  }
+  const textBlocks: unknown[] = [];
+  for (const block of content) {
+    if (!isTextLikeContentBlock(block) || !block.text.trim()) {
+      continue;
+    }
+    const stripped = stripInlineDirectiveTagsForDisplay(block.text);
+    const truncated = truncateChatHistoryText(stripped.text, maxChars);
+    if (truncated.text.trim()) {
+      textBlocks.push({ type: "text", text: truncated.text });
+    }
+  }
+  return textBlocks.length > 0 ? textBlocks : null;
+}
+
 function shouldDropAssistantHistoryMessage(message: unknown): boolean {
   if (!message || typeof message !== "object") {
     return false;
@@ -792,7 +863,7 @@ function shouldDropAssistantHistoryMessage(message: unknown): boolean {
     return false;
   }
   if (resolveAssistantMessagePhase(message) === "commentary") {
-    return true;
+    return !hasAssistantMixedToolVisibleText(message);
   }
   const text = extractAssistantTextForSilentCheck(message);
   if (text === undefined || !isSuppressedControlReplyText(text)) {

@@ -142,7 +142,12 @@ vi.mock("./subagent-announce-delivery.js", () => ({
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const delayMs = retryDelaysMs[retryIndex];
-        if (!/gateway timeout/i.test(message) || delayMs == null) {
+        const transient =
+          /gateway timeout/i.test(message) ||
+          /\ball models failed\b/i.test(message) ||
+          /\ball profiles unavailable\b/i.test(message) ||
+          /\boverloaded\b/i.test(message);
+        if (!transient || delayMs == null) {
           return { delivered: false, path: "direct", error: message };
         }
         retryIndex += 1;
@@ -324,6 +329,34 @@ describe("subagent announce timeout config", () => {
       };
 
       const announcePromise = runAnnounceFlowForTest("run-completion-timeout-retry", {
+        requesterOrigin: {
+          channel: "telegram",
+          to: "12345",
+        },
+        expectsCompletionMessage: true,
+      });
+      await expect(announcePromise).resolves.toBe(false);
+
+      const directAgentCalls = gatewayCalls.filter(
+        (call) => call.method === "agent" && call.expectFinal === true,
+      );
+      expect(directAgentCalls).toHaveLength(4);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("retries overloaded completion announces before giving up", async () => {
+    try {
+      vi.stubEnv("OPENCLAW_TEST_FAST", "1");
+      callGatewayImpl = async (request) => {
+        if (request.method === "chat.history") {
+          return { messages: [] };
+        }
+        throw new Error("all models failed: overloaded");
+      };
+
+      const announcePromise = runAnnounceFlowForTest("run-completion-overloaded-retry", {
         requesterOrigin: {
           channel: "telegram",
           to: "12345",

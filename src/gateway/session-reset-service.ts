@@ -450,7 +450,7 @@ export async function cleanupSessionBeforeMutation(params: {
   });
 }
 
-function emitGatewayBeforeResetPluginHook(params: {
+export function emitGatewayBeforeResetPluginHook(params: {
   cfg: ReturnType<typeof loadConfig>;
   key: string;
   target: ReturnType<typeof resolveGatewaySessionStoreTarget>;

@@ -448,6 +448,106 @@ describe("gateway server sessions", () => {
       type: "session",
       id: created.payload?.sessionId,
     });
+    expect(
+      sessionHookMocks.triggerInternalHook.mock.calls.some(([event]) => {
+        return isInternalHookEvent(event) && event.type === "command" && event.action === "new";
+      }),
+    ).toBe(false);
+    expect(beforeResetHookMocks.runBeforeReset).not.toHaveBeenCalled();
+    expect(sessionLifecycleHookMocks.runSessionEnd).not.toHaveBeenCalled();
+    expect(sessionLifecycleHookMocks.runSessionStart).not.toHaveBeenCalled();
+
+    ws.close();
+  });
+
+  test("sessions.create emits /new hooks only when explicitly requested", async () => {
+    const { dir } = await createSessionStoreDir();
+    const parentTranscriptPath = path.join(dir, "sess-parent.jsonl");
+    await fs.writeFile(
+      parentTranscriptPath,
+      `${JSON.stringify({
+        type: "message",
+        id: "m-parent",
+        message: { role: "user", content: "parent transcript" },
+      })}\n`,
+      "utf-8",
+    );
+    await writeSessionStore({
+      entries: {
+        main: {
+          sessionId: "sess-parent",
+          sessionFile: parentTranscriptPath,
+          updatedAt: Date.now(),
+        },
+      },
+    });
+    beforeResetHookState.hasBeforeResetHook = true;
+
+    const { ws } = await openClient();
+    const created = await rpcReq<{ key?: string; sessionId?: string }>(ws, "sessions.create", {
+      agentId: "ops",
+      parentSessionKey: "main",
+      emitCommandHooks: true,
+    });
+
+    expect(created.ok).toBe(true);
+    expect(created.payload?.key).toMatch(/^agent:ops:dashboard:/);
+    expect(sessionHookMocks.triggerInternalHook).toHaveBeenCalledTimes(1);
+    expect(sessionHookMocks.triggerInternalHook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "command",
+        action: "new",
+        sessionKey: "agent:main:main",
+        context: expect.objectContaining({
+          commandSource: "webchat",
+          previousSessionEntry: expect.objectContaining({ sessionId: "sess-parent" }),
+        }),
+      }),
+    );
+    expect(beforeResetHookMocks.runBeforeReset).toHaveBeenCalledTimes(1);
+    expect(beforeResetHookMocks.runBeforeReset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "new",
+        sessionFile: parentTranscriptPath,
+        messages: [
+          expect.objectContaining({
+            role: "user",
+            content: "parent transcript",
+          }),
+        ],
+      }),
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        sessionId: "sess-parent",
+        agentId: "main",
+      }),
+    );
+    expect(sessionLifecycleHookMocks.runSessionEnd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        sessionId: "sess-parent",
+        reason: "new",
+        nextSessionId: created.payload?.sessionId,
+        nextSessionKey: created.payload?.key,
+      }),
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        sessionId: "sess-parent",
+        agentId: "main",
+      }),
+    );
+    expect(sessionLifecycleHookMocks.runSessionStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: created.payload?.key,
+        sessionId: created.payload?.sessionId,
+        resumedFrom: "sess-parent",
+      }),
+      expect.objectContaining({
+        sessionKey: created.payload?.key,
+        sessionId: created.payload?.sessionId,
+        agentId: "ops",
+      }),
+    );
 
     ws.close();
   });

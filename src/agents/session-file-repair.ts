@@ -16,6 +16,21 @@ function isSessionHeader(entry: unknown): entry is { type: string; id: string } 
   return record.type === "session" && typeof record.id === "string" && record.id.length > 0;
 }
 
+function isStructurallyInvalidMessageEntry(entry: unknown): boolean {
+  if (!entry || typeof entry !== "object") {
+    return false;
+  }
+  const record = entry as { type?: unknown; message?: unknown };
+  if (record.type !== "message") {
+    return false;
+  }
+  if (!record.message || typeof record.message !== "object") {
+    return true;
+  }
+  const role = (record.message as { role?: unknown }).role;
+  return typeof role !== "string" || role.trim().length === 0;
+}
+
 export async function repairSessionFileIfNeeded(params: {
   sessionFile: string;
   warn?: (message: string) => void;
@@ -48,6 +63,10 @@ export async function repairSessionFileIfNeeded(params: {
     }
     try {
       const entry = JSON.parse(line);
+      if (isStructurallyInvalidMessageEntry(entry)) {
+        droppedLines += 1;
+        continue;
+      }
       entries.push(entry);
     } catch {
       droppedLines += 1;

@@ -97,4 +97,110 @@ describe("repairSessionFileIfNeeded", () => {
     expect(result.reason).toContain("failed to read session file");
     expect(warn).toHaveBeenCalledTimes(1);
   });
+
+  it("drops type:message entries with null, missing, or blank role", async () => {
+    const { file } = await createTempSessionPath();
+    const { header, message } = buildSessionHeaderAndMessage();
+    const corruptEntries = [
+      {
+        type: "message",
+        id: "corrupt-1",
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        message: { role: null, content: "ignored" },
+      },
+      {
+        type: "message",
+        id: "corrupt-2",
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        message: { content: "no role" },
+      },
+      {
+        type: "message",
+        id: "corrupt-3",
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        message: { role: "   ", content: "blank role" },
+      },
+    ];
+    const content = [header, message, ...corruptEntries]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n");
+    await fs.writeFile(file, `${content}\n`, "utf-8");
+
+    const result = await repairSessionFileIfNeeded({ sessionFile: file });
+
+    expect(result.repaired).toBe(true);
+    expect(result.droppedLines).toBe(3);
+    expect(result.backupPath).toBeTruthy();
+
+    const repaired = await fs.readFile(file, "utf-8");
+    const lines = repaired.trimEnd().split("\n");
+    expect(lines).toHaveLength(2);
+    expect(JSON.parse(lines[0] ?? "")).toEqual(header);
+    expect(JSON.parse(lines[1] ?? "")).toEqual(message);
+    expect(repaired).not.toContain('"role":null');
+  });
+
+  it("drops type:message entries whose message field is missing or non-object", async () => {
+    const { file } = await createTempSessionPath();
+    const { header, message } = buildSessionHeaderAndMessage();
+    const content = [
+      header,
+      message,
+      {
+        type: "message",
+        id: "corrupt-4",
+        parentId: null,
+        timestamp: new Date().toISOString(),
+      },
+      {
+        type: "message",
+        id: "corrupt-5",
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        message: "not an object",
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n");
+    await fs.writeFile(file, `${content}\n`, "utf-8");
+
+    const result = await repairSessionFileIfNeeded({ sessionFile: file });
+
+    expect(result.repaired).toBe(true);
+    expect(result.droppedLines).toBe(2);
+    const repaired = await fs.readFile(file, "utf-8");
+    expect(repaired.trimEnd().split("\n")).toHaveLength(2);
+  });
+
+  it("preserves non-message envelope types without role inspection", async () => {
+    const { file } = await createTempSessionPath();
+    const { header, message } = buildSessionHeaderAndMessage();
+    const summary = {
+      type: "summary",
+      id: "summary-1",
+      timestamp: new Date().toISOString(),
+      summary: "opaque summary blob",
+    };
+    const custom = {
+      type: "custom",
+      id: "custom-1",
+      customType: "model-snapshot",
+      timestamp: new Date().toISOString(),
+      data: { provider: "openai", modelApi: "openai-responses", modelId: "gpt-5" },
+    };
+    const content = [header, message, summary, custom]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n");
+    await fs.writeFile(file, `${content}\n`, "utf-8");
+
+    const result = await repairSessionFileIfNeeded({ sessionFile: file });
+
+    expect(result.repaired).toBe(false);
+    expect(result.droppedLines).toBe(0);
+    const after = await fs.readFile(file, "utf-8");
+    expect(after).toBe(`${content}\n`);
+  });
 });

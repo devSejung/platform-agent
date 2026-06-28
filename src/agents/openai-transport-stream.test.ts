@@ -1261,6 +1261,108 @@ describe("openai transport stream", () => {
     expect(params.stream_options).toMatchObject({ include_usage: true });
   });
 
+  it("maps Qwen thinkingFormat to enable_thinking without reasoning_effort", () => {
+    const params = buildOpenAICompletionsParams(
+      {
+        id: "qwen3.6-plus",
+        name: "Qwen 3.6 Plus",
+        api: "openai-completions",
+        provider: "vllm",
+        baseUrl: "http://127.0.0.1:8000/v1",
+        reasoning: true,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 200000,
+        maxTokens: 8192,
+        compat: {
+          supportsReasoningEffort: true,
+          thinkingFormat: "qwen",
+        },
+      } satisfies Model<"openai-completions">,
+      {
+        systemPrompt: "system",
+        messages: [],
+        tools: [],
+      } as never,
+      {
+        reasoningEffort: "medium",
+      } as never,
+    ) as { enable_thinking?: unknown; reasoning_effort?: unknown };
+
+    expect(params.enable_thinking).toBe(true);
+    expect(params).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("maps qwen-chat-template thinkingFormat to chat_template_kwargs", () => {
+    const params = buildOpenAICompletionsParams(
+      {
+        id: "qwen3.6-plus",
+        name: "Qwen 3.6 Plus",
+        api: "openai-completions",
+        provider: "vllm",
+        baseUrl: "http://127.0.0.1:8000/v1",
+        reasoning: true,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 200000,
+        maxTokens: 8192,
+        compat: {
+          supportsReasoningEffort: true,
+          thinkingFormat: "qwen-chat-template",
+        },
+      } satisfies Model<"openai-completions">,
+      {
+        systemPrompt: "system",
+        messages: [],
+        tools: [],
+      } as never,
+      undefined,
+    ) as {
+      chat_template_kwargs?: { enable_thinking?: unknown };
+      reasoning_effort?: unknown;
+    };
+
+    expect(params.chat_template_kwargs).toEqual({ enable_thinking: true });
+    expect(params).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("strips non-role/content message keys for strict OpenAI-compatible completions models", () => {
+    const params = buildOpenAICompletionsParams(
+      {
+        id: "strict-chat",
+        name: "Strict Chat",
+        api: "openai-completions",
+        provider: "vllm",
+        baseUrl: "http://127.0.0.1:8000/v1",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 32768,
+        maxTokens: 4096,
+        compat: {
+          strictMessageKeys: true,
+        } as Record<string, unknown>,
+      } satisfies Model<"openai-completions">,
+      {
+        systemPrompt: "system",
+        messages: [
+          {
+            role: "user",
+            content: "hello",
+            timestamp: 123,
+          },
+        ],
+        tools: [],
+      } as never,
+      undefined,
+    ) as { messages?: Array<Record<string, unknown>> };
+
+    expect(params.messages).toEqual([
+      { role: "system", content: "system" },
+      { role: "user", content: "hello" },
+    ]);
+  });
+
   it("enables streaming usage compat for generic providers on native DashScope endpoints", () => {
     const params = buildOpenAICompletionsParams(
       {

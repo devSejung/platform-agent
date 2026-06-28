@@ -38,6 +38,7 @@ export type ModelCompatConfig = SupportedOpenAICompatFields & {
   thinkingFormat?: SupportedThinkingFormat;
   supportsTools?: boolean;
   requiresStringContent?: boolean;
+  strictMessageKeys?: boolean;
   toolSchemaProfile?: string;
   unsupportedToolSchemaKeywords?: string[];
   nativeWebSearchTool?: boolean;

@@ -132,6 +132,7 @@ import {
   createOpenAIReasoningCompatibilityWrapper,
   createOpenAIResponsesContextManagementWrapper,
   createOpenAIServiceTierWrapper,
+  createOpenAICompletionsStrictMessageKeysWrapper,
   createOpenAIStringContentWrapper,
   createOpenAITextVerbosityWrapper,
   resolveOpenAIFastMode,
@@ -172,6 +173,7 @@ function createTestOpenAIProviderWrapper(
     agentDir: params.context.agentDir,
   });
   streamFn = createOpenAIStringContentWrapper(streamFn);
+  streamFn = createOpenAICompletionsStrictMessageKeysWrapper(streamFn);
   return createOpenAIResponsesContextManagementWrapper(
     createOpenAIReasoningCompatibilityWrapper(streamFn),
     params.context.extraParams,
@@ -610,6 +612,40 @@ describe("applyExtraParamsToAgent", () => {
         content: "Line one\nLine two",
       },
     ]);
+  });
+
+  it("strips non-role/content OpenAI completions message keys for strict compat models", () => {
+    const payload = runResponsesPayloadMutationCase({
+      applyProvider: "vllm",
+      applyModelId: "strict-chat",
+      model: {
+        api: "openai-completions",
+        provider: "vllm",
+        id: "strict-chat",
+        name: "Strict Chat",
+        baseUrl: "http://127.0.0.1:8000/v1",
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 32768,
+        maxTokens: 4096,
+        compat: {
+          strictMessageKeys: true,
+        } as Record<string, unknown>,
+      } as unknown as Model<"openai-completions">,
+      payload: {
+        messages: [
+          {
+            role: "user",
+            content: "hello",
+            name: "bad-name",
+            tool_calls: [],
+          },
+        ],
+      },
+    });
+
+    expect(payload.messages).toEqual([{ role: "user", content: "hello" }]);
   });
 
   it("injects parallel_tool_calls for openai-responses payloads when configured", () => {

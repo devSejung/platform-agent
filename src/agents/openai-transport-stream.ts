@@ -25,7 +25,10 @@ import { resolveProviderTransportTurnStateWithPlugin } from "../plugins/provider
 import type { ProviderRuntimeModel } from "../plugins/types.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./copilot-dynamic-headers.js";
 import { detectOpenAICompletionsCompat } from "./openai-completions-compat.js";
-import { flattenCompletionMessagesToStringContent } from "./openai-completions-string-content.js";
+import {
+  flattenCompletionMessagesToStringContent,
+  stripCompletionMessagesToRoleContent,
+} from "./openai-completions-string-content.js";
 import {
   applyOpenAIResponsesPayloadPolicy,
   resolveOpenAIResponsesPayloadPolicy,
@@ -1567,6 +1570,7 @@ function getCompat(model: OpenAIModeModel): {
   vercelGatewayRouting: Record<string, unknown>;
   supportsStrictMode: boolean;
   requiresStringContent: boolean;
+  strictMessageKeys: boolean;
 } {
   const detected = detectCompat(model);
   const compat = model.compat ?? {};
@@ -1602,6 +1606,7 @@ function getCompat(model: OpenAIModeModel): {
     supportsStrictMode:
       (compat.supportsStrictMode as boolean | undefined) ?? detected.supportsStrictMode,
     requiresStringContent: (compat.requiresStringContent as boolean | undefined) ?? false,
+    strictMessageKeys: compat.strictMessageKeys === true,
   };
 }
 
@@ -1632,6 +1637,44 @@ function mapReasoningEffort(effort: string, reasoningEffortMap: Record<string, s
 
 function resolveOpenAICompletionsReasoningEffort(options: OpenAICompletionsOptions | undefined) {
   return options?.reasoningEffort ?? options?.reasoning ?? "high";
+}
+
+function isQwenOpenAICompletionsThinkingFormat(format: string): boolean {
+  return format === "qwen" || format === "qwen-chat-template";
+}
+
+function isOpenAICompletionsThinkingEnabled(effort: string): boolean {
+  const normalized = effort.trim().toLowerCase();
+  return normalized !== "off" && normalized !== "none";
+}
+
+function setQwenChatTemplateThinking(params: Record<string, unknown>, enabled: boolean): void {
+  const existing = params.chat_template_kwargs;
+  params.chat_template_kwargs =
+    existing && typeof existing === "object" && !Array.isArray(existing)
+      ? { ...(existing as Record<string, unknown>), enable_thinking: enabled }
+      : { enable_thinking: enabled };
+}
+
+function applyQwenOpenAICompletionsThinkingParams(params: {
+  compatThinkingFormat: string;
+  modelReasoning: boolean;
+  payload: Record<string, unknown>;
+  requestedEffort: string;
+}): boolean {
+  if (
+    !params.modelReasoning ||
+    !isQwenOpenAICompletionsThinkingFormat(params.compatThinkingFormat)
+  ) {
+    return false;
+  }
+  const enabled = isOpenAICompletionsThinkingEnabled(params.requestedEffort);
+  if (params.compatThinkingFormat === "qwen-chat-template") {
+    setQwenChatTemplateThinking(params.payload, enabled);
+  } else {
+    params.payload.enable_thinking = enabled;
+  }
+  return true;
 }
 
 function convertTools(
@@ -1670,7 +1713,10 @@ export function buildOpenAICompletionsParams(
       }
     : context;
   const convertedMessages = convertMessages(model as never, completionsContext, compat as never);
-  const messages = sanitizeOpenAICompletionsMessages(convertedMessages) as typeof convertedMessages;
+  let messages = sanitizeOpenAICompletionsMessages(convertedMessages) as typeof convertedMessages;
+  if (compat.strictMessageKeys) {
+    messages = stripCompletionMessagesToRoleContent(messages) as typeof messages;
+  }
   const params: Record<string, unknown> = {
     model: model.id,
     messages: compat.requiresStringContent
@@ -1703,11 +1749,22 @@ export function buildOpenAICompletionsParams(
     params.tool_choice = options.toolChoice;
   }
   const completionsReasoningEffort = resolveOpenAICompletionsReasoningEffort(options);
+  const handledQwenThinkingFormat = applyQwenOpenAICompletionsThinkingParams({
+    compatThinkingFormat: compat.thinkingFormat,
+    modelReasoning: model.reasoning,
+    payload: params,
+    requestedEffort: completionsReasoningEffort,
+  });
   if (compat.thinkingFormat === "openrouter" && model.reasoning && completionsReasoningEffort) {
     params.reasoning = {
       effort: mapReasoningEffort(completionsReasoningEffort, compat.reasoningEffortMap),
     };
-  } else if (completionsReasoningEffort && model.reasoning && compat.supportsReasoningEffort) {
+  } else if (
+    completionsReasoningEffort &&
+    model.reasoning &&
+    compat.supportsReasoningEffort &&
+    !handledQwenThinkingFormat
+  ) {
     params.reasoning_effort = mapReasoningEffort(
       completionsReasoningEffort,
       compat.reasoningEffortMap,

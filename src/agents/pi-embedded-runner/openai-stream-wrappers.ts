@@ -7,7 +7,10 @@ import {
   patchCodexNativeWebSearchPayload,
   resolveCodexNativeSearchActivation,
 } from "../codex-native-web-search.js";
-import { flattenCompletionMessagesToStringContent } from "../openai-completions-string-content.js";
+import {
+  flattenCompletionMessagesToStringContent,
+  stripCompletionMessagesToRoleContent,
+} from "../openai-completions-string-content.js";
 import {
   applyOpenAIResponsesPayloadPolicy,
   resolveOpenAIResponsesPayloadPolicy,
@@ -76,6 +79,17 @@ function shouldFlattenOpenAICompletionMessages(model: {
       ? (model.compat as { requiresStringContent?: unknown })
       : undefined;
   return model.api === "openai-completions" && compat?.requiresStringContent === true;
+}
+
+function shouldStripOpenAICompletionMessageKeys(model: {
+  api?: unknown;
+  compat?: unknown;
+}): boolean {
+  const compat =
+    model.compat && typeof model.compat === "object"
+      ? (model.compat as { strictMessageKeys?: unknown })
+      : undefined;
+  return model.api === "openai-completions" && compat?.strictMessageKeys === true;
 }
 
 function normalizeOpenAIServiceTier(value: unknown): OpenAIServiceTier | undefined {
@@ -242,6 +256,23 @@ export function createOpenAIStringContentWrapper(baseStreamFn: StreamFn | undefi
         return;
       }
       payloadObj.messages = flattenCompletionMessagesToStringContent(payloadObj.messages);
+    });
+  };
+}
+
+export function createOpenAICompletionsStrictMessageKeysWrapper(
+  baseStreamFn: StreamFn | undefined,
+): StreamFn {
+  const underlying = baseStreamFn ?? streamSimple;
+  return (model, context, options) => {
+    if (!shouldStripOpenAICompletionMessageKeys(model)) {
+      return underlying(model, context, options);
+    }
+    return streamWithPayloadPatch(underlying, model, context, options, (payloadObj) => {
+      if (!Array.isArray(payloadObj.messages)) {
+        return;
+      }
+      payloadObj.messages = stripCompletionMessagesToRoleContent(payloadObj.messages);
     });
   };
 }

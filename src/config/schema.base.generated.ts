@@ -2810,6 +2810,9 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                           requiresStringContent: {
                             type: "boolean",
                           },
+                          strictMessageKeys: {
+                            type: "boolean",
+                          },
                           maxTokensField: {
                             anyOf: [
                               {
@@ -20452,18 +20455,33 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
               },
               docsUrl: {
                 type: "string",
+                title: "Workspace Docs URL",
+                description:
+                  "Optional docs/help URL rendered in the web UI sidebar. Leave empty to hide the Docs shortcut entirely.",
               },
               announcementTitle: {
                 type: "string",
+                title: "Employee Announcement Title",
+                description:
+                  "Optional employee-facing announcement title shown on the login screen and inside the employee workspace.",
               },
               announcementBody: {
                 type: "string",
+                title: "Employee Announcement Body",
+                description:
+                  "Optional employee-facing announcement body text. Keep it short and operational, such as maintenance windows or service notices.",
               },
               announcementLinkLabel: {
                 type: "string",
+                title: "Employee Announcement Link Label",
+                description:
+                  "Optional CTA label for the employee announcement link, such as 'Learn more' or 'Open notice'.",
               },
               announcementLinkUrl: {
                 type: "string",
+                title: "Employee Announcement Link URL",
+                description:
+                  "Optional CTA URL for the employee announcement. Use a full HTTPS URL to your intranet notice or policy page.",
               },
               allowedOrigins: {
                 type: "array",
@@ -20660,6 +20678,10 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 ],
                 title: "Gateway Password",
                 description: "Required for Tailscale funnel.",
+              },
+              allowSharedOperatorScopesWithoutDeviceIdentity: {
+                type: "boolean",
+                title: "Gateway Shared Operator Scope Relaxation",
               },
               allowTailscale: {
                 type: "boolean",
@@ -22903,7 +22925,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
     },
     "gateway.auth.allowSharedOperatorScopesWithoutDeviceIdentity": {
       label: "Gateway Shared Operator Scope Relaxation",
-      help: "Allows shared token/password operator clients to keep requested scopes without a paired device identity. Use only when you intentionally trust backend clients behind the shared gateway secret to perform write/admin actions.",
       tags: ["access", "network"],
     },
     "gateway.auth.allowTailscale": {

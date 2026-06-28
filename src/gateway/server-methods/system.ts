@@ -9,8 +9,12 @@ import { setHeartbeatsEnabled } from "../../infra/heartbeat-runner.js";
 import { resolveHeartbeatSummaryForAgent } from "../../infra/heartbeat-summary.js";
 import { enqueueSystemEvent, isSystemEventContextChanged } from "../../infra/system-events.js";
 import { listSystemPresence, updateSystemPresence } from "../../infra/system-presence.js";
+import {
+  normalizeLowercaseStringOrEmpty,
+  normalizeOptionalString,
+  readStringValue,
+} from "../../shared/string-coerce.js";
 import { getEmployeeAgentId, isEmployeeClient } from "../employee-access.js";
-import { normalizeLowercaseStringOrEmpty, readStringValue } from "../../shared/string-coerce.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import { broadcastPresenceSnapshot } from "../server/presence-events.js";
 import type { GatewayRequestHandlers } from "./types.js";
@@ -67,7 +71,7 @@ export const systemHandlers: GatewayRequestHandlers = {
     respond(true, presence, undefined);
   },
   "system-event": ({ params, respond, context }) => {
-    const text = typeof params.text === "string" ? params.text.trim() : "";
+    const text = normalizeOptionalString(params.text) ?? "";
     if (!text) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "text required"));
       return;
@@ -134,18 +138,18 @@ export const systemHandlers: GatewayRequestHandlers = {
         const contextChanged = isSystemEventContextChanged(sessionKey, presenceUpdate.key);
         const parts: string[] = [];
         if (contextChanged || hostChanged || ipChanged) {
-          const hostLabel = next.host?.trim() || "Unknown";
-          const ipLabel = next.ip?.trim();
+          const hostLabel = normalizeOptionalString(next.host) ?? "Unknown";
+          const ipLabel = normalizeOptionalString(next.ip);
           parts.push(`Node: ${hostLabel}${ipLabel ? ` (${ipLabel})` : ""}`);
         }
         if (versionChanged) {
-          parts.push(`app ${next.version?.trim() || "unknown"}`);
+          parts.push(`app ${normalizeOptionalString(next.version) ?? "unknown"}`);
         }
         if (modeChanged) {
-          parts.push(`mode ${next.mode?.trim() || "unknown"}`);
+          parts.push(`mode ${normalizeOptionalString(next.mode) ?? "unknown"}`);
         }
         if (reasonChanged) {
-          parts.push(`reason ${reasonValue?.trim() || "event"}`);
+          parts.push(`reason ${normalizeOptionalString(reasonValue) ?? "event"}`);
         }
         const deltaText = parts.join(" · ");
         if (deltaText) {

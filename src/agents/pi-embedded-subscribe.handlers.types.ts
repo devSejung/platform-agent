@@ -177,6 +177,7 @@ export type ToolHandlerContext = {
   shouldEmitToolOutput: () => boolean;
   emitToolSummary: (toolName?: string, meta?: string) => void;
   emitToolOutput: (toolName?: string, meta?: string, output?: string, result?: unknown) => void;
+  emitBlockReply: (payload: BlockReplyPayload) => void;
   trimMessagingToolSent: () => void;
 };
 

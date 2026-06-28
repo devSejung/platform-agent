@@ -4,6 +4,7 @@ import {
   normalizeToolName,
   resolveToolProfilePolicy,
 } from "../../../../src/agents/tool-policy-shared.js";
+import { normalizeLowercaseStringOrEmpty, normalizeOptionalString } from "../string-coerce.ts";
 import type {
   AgentIdentityResult,
   AgentsFilesListResult,
@@ -192,7 +193,9 @@ export function normalizeAgentLabel(agent: {
   name?: string;
   identity?: { name?: string };
 }) {
-  return agent.name?.trim() || agent.identity?.name?.trim() || agent.id;
+  return (
+    normalizeOptionalString(agent.name) ?? normalizeOptionalString(agent.identity?.name) ?? agent.id
+  );
 }
 
 const AVATAR_URL_RE = /^(https?:\/\/|data:image\/|\/)/i;
@@ -202,9 +205,9 @@ export function resolveAgentAvatarUrl(
   agentIdentity?: AgentIdentityResult | null,
 ): string | null {
   const candidates = [
-    agentIdentity?.avatar?.trim(),
-    agent.identity?.avatarUrl?.trim(),
-    agent.identity?.avatar?.trim(),
+    normalizeOptionalString(agentIdentity?.avatar),
+    normalizeOptionalString(agent.identity?.avatarUrl),
+    normalizeOptionalString(agent.identity?.avatar),
   ];
   for (const candidate of candidates) {
     if (!candidate) {
@@ -218,7 +221,7 @@ export function resolveAgentAvatarUrl(
 }
 
 export function agentLogoUrl(basePath: string): string {
-  const base = basePath?.trim() ? basePath.replace(/\/$/, "") : "";
+  const base = normalizeOptionalString(basePath)?.replace(/\/$/, "") ?? "";
   if (!base || base === "/employee") {
     return "/favicon.svg";
   }
@@ -261,19 +264,19 @@ export function resolveAgentEmoji(
   agent: { identity?: { emoji?: string; avatar?: string } },
   agentIdentity?: AgentIdentityResult | null,
 ) {
-  const identityEmoji = agentIdentity?.emoji?.trim();
+  const identityEmoji = normalizeOptionalString(agentIdentity?.emoji);
   if (identityEmoji && isLikelyEmoji(identityEmoji)) {
     return identityEmoji;
   }
-  const agentEmoji = agent.identity?.emoji?.trim();
+  const agentEmoji = normalizeOptionalString(agent.identity?.emoji);
   if (agentEmoji && isLikelyEmoji(agentEmoji)) {
     return agentEmoji;
   }
-  const identityAvatar = agentIdentity?.avatar?.trim();
+  const identityAvatar = normalizeOptionalString(agentIdentity?.avatar);
   if (identityAvatar && isLikelyEmoji(identityAvatar)) {
     return identityAvatar;
   }
-  const avatar = agent.identity?.avatar?.trim();
+  const avatar = normalizeOptionalString(agent.identity?.avatar);
   if (avatar && isLikelyEmoji(avatar)) {
     return avatar;
   }
@@ -351,9 +354,9 @@ export function buildAgentContext(
       ? resolveModelLabel(config.defaults?.model)
       : resolveModelLabel(agent.model);
   const identityName =
-    agentIdentity?.name?.trim() ||
-    agent.identity?.name?.trim() ||
-    agent.name?.trim() ||
+    normalizeOptionalString(agentIdentity?.name) ||
+    normalizeOptionalString(agent.identity?.name) ||
+    normalizeOptionalString(agent.name) ||
     config.entry?.name ||
     agent.id;
   const identityAvatar = resolveAgentAvatarUrl(agent, agentIdentity) ? "custom" : "—";
@@ -374,11 +377,11 @@ export function resolveModelLabel(model?: unknown): string {
     return "-";
   }
   if (typeof model === "string") {
-    return model.trim() || "-";
+    return normalizeOptionalString(model) || "-";
   }
   if (typeof model === "object" && model) {
     const record = model as { primary?: string; fallbacks?: string[] };
-    const primary = record.primary?.trim();
+    const primary = normalizeOptionalString(record.primary);
     if (primary) {
       const fallbackCount = Array.isArray(record.fallbacks) ? record.fallbacks.length : 0;
       return fallbackCount > 0 ? `${primary} (+${fallbackCount} fallback)` : primary;
@@ -397,7 +400,7 @@ export function resolveModelPrimary(model?: unknown): string | null {
     return null;
   }
   if (typeof model === "string") {
-    const trimmed = model.trim();
+    const trimmed = normalizeOptionalString(model);
     return trimmed || null;
   }
   if (typeof model === "object" && model) {
@@ -412,7 +415,7 @@ export function resolveModelPrimary(model?: unknown): string | null {
             : typeof record.value === "string"
               ? record.value
               : null;
-    const primary = candidate?.trim();
+    const primary = normalizeOptionalString(candidate);
     return primary || null;
   }
   return null;
@@ -597,7 +600,7 @@ export function buildModelOptions(
   const seen = new Set<string>();
   const options: ConfiguredModelOption[] = [];
   const addOption = (value: string, label: string) => {
-    const key = value.toLowerCase();
+    const key = normalizeLowercaseStringOrEmpty(value);
     if (seen.has(key)) {
       return;
     }
@@ -618,7 +621,7 @@ export function buildModelOptions(
     }
   }
 
-  if (current && !seen.has(current.toLowerCase())) {
+  if (current && !seen.has(normalizeLowercaseStringOrEmpty(current))) {
     options.unshift({ value: current, label: `Current (${current})` });
   }
 

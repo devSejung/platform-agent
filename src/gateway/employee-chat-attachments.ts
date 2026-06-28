@@ -57,14 +57,14 @@ function buildRequestForMultipart(req: IncomingMessage): Request {
   return new Request("http://localhost/upload", {
     method: req.method ?? "POST",
     headers: req.headers as Record<string, string>,
-    body: req as BodyInit,
+    body: req as unknown as BodyInit,
     duplex: "half",
-  });
+  } as RequestInit & { duplex: "half" });
 }
 
 function readUploadContentLength(req: IncomingMessage): number | null {
   const raw = req.headers["content-length"];
-  const value = typeof raw === "string" ? raw.trim() : Array.isArray(raw) ? raw[0]?.trim() : "";
+  const value = typeof raw === "string" ? raw.trim() : "";
   if (!value) {
     return null;
   }

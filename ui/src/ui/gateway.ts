@@ -12,6 +12,7 @@ import {
 } from "../../../src/gateway/protocol/connect-error-details.js";
 import { clearDeviceAuthToken, loadDeviceAuthToken, storeDeviceAuthToken } from "./device-auth.ts";
 import { loadOrCreateDeviceIdentity, signDevicePayload } from "./device-identity.ts";
+import { normalizeLowercaseStringOrEmpty, normalizeOptionalString } from "./string-coerce.ts";
 import { generateUUID } from "./uuid.ts";
 
 export type GatewayEventFrame = {
@@ -82,7 +83,7 @@ export function isNonRecoverableAuthError(error: GatewayErrorInfo | undefined): 
 function isTrustedRetryEndpoint(url: string): boolean {
   try {
     const gatewayUrl = new URL(url, window.location.href);
-    const host = gatewayUrl.hostname.trim().toLowerCase();
+    const host = normalizeLowercaseStringOrEmpty(gatewayUrl.hostname);
     const isLoopbackHost =
       host === "localhost" || host === "::1" || host === "[::1]" || host === "127.0.0.1";
     const isLoopbackIPv4 = host.startsWith("127.");
@@ -401,9 +402,9 @@ export class GatewayBrowserClient {
       ? [...this.opts.scopes]
       : [...CONTROL_UI_OPERATOR_SCOPES];
     const client = this.buildConnectClient();
-    const explicitBootstrapToken = this.opts.bootstrapToken?.trim() || undefined;
-    const explicitGatewayToken = this.opts.token?.trim() || undefined;
-    const explicitPassword = this.opts.password?.trim() || undefined;
+    const explicitBootstrapToken = normalizeOptionalString(this.opts.bootstrapToken);
+    const explicitGatewayToken = normalizeOptionalString(this.opts.token);
+    const explicitPassword = normalizeOptionalString(this.opts.password);
     if (role === "employee") {
       const selectedAuth: SelectedConnectAuth = {
         canFallbackToShared: false,
@@ -595,8 +596,8 @@ export class GatewayBrowserClient {
   }
 
   private selectConnectAuth(params: { role: string; deviceId: string }): SelectedConnectAuth {
-    const explicitGatewayToken = this.opts.token?.trim() || undefined;
-    const authPassword = this.opts.password?.trim() || undefined;
+    const explicitGatewayToken = normalizeOptionalString(this.opts.token);
+    const authPassword = normalizeOptionalString(this.opts.password);
     const storedEntry = loadDeviceAuthToken({
       deviceId: params.deviceId,
       role: params.role,

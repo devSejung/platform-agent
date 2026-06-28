@@ -5,6 +5,7 @@ import {
   isSensitiveUrlConfigPath,
   SENSITIVE_URL_HINT_TAG,
 } from "../shared/net/redact-sensitive-url.js";
+import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 import { FIELD_HELP } from "./schema.help.js";
 import { FIELD_LABELS } from "./schema.labels.js";
 import { applyDerivedTags } from "./schema.tags.js";
@@ -133,7 +134,7 @@ const SENSITIVE_KEY_WHITELIST_SUFFIXES = [
   "passwordFile",
 ] as const;
 const NORMALIZED_SENSITIVE_KEY_WHITELIST_SUFFIXES = SENSITIVE_KEY_WHITELIST_SUFFIXES.map((suffix) =>
-  suffix.toLowerCase(),
+  normalizeLowercaseStringOrEmpty(suffix),
 );
 
 const SENSITIVE_PATTERNS = [
@@ -147,7 +148,7 @@ const SENSITIVE_PATTERNS = [
 ];
 
 function isWhitelistedSensitivePath(path: string): boolean {
-  const lowerPath = path.toLowerCase();
+  const lowerPath = normalizeLowercaseStringOrEmpty(path);
   return NORMALIZED_SENSITIVE_KEY_WHITELIST_SUFFIXES.some((suffix) => lowerPath.endsWith(suffix));
 }
 

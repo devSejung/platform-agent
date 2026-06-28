@@ -377,6 +377,7 @@ export type AppViewState = {
     skillHubError: string | null;
     skillHubScope: SkillHubScope;
     skillHubSort: import("./controllers/skill-hub.ts").SkillHubSort;
+    skillHubCategory: import("./controllers/skill-hub.ts").SkillHubCategoryFilter;
     skillHubQuery: string;
     skillHubDetail: SkillHubDetail | null;
     skillHubDetailSlug: string | null;
@@ -399,6 +400,9 @@ export type AppViewState = {
     skillHubEditorIconFile: File | null;
     skillHubEditorIconReset: boolean;
     skillHubEditorDescription: string;
+    skillHubEditorDisplayName: string;
+    skillHubEditorCategory: import("./controllers/skill-hub.ts").SkillCategory | "";
+    skillHubEditorRevision: number;
     skillHubEditorPrompts: string[];
     skillHubEditorError: string | null;
     skillHubEditorLoading: boolean;

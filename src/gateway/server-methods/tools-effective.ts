@@ -1,4 +1,5 @@
 import { isEmployeeClient } from "../employee-access.js";
+import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import { ADMIN_SCOPE } from "../method-scopes.js";
 import {
   ErrorCodes,
@@ -24,7 +25,7 @@ function resolveRequestedAgentIdOrRespondError(params: {
   respond: RespondFn;
 }) {
   const knownAgents = listAgentIds(params.cfg);
-  const requestedAgentId = typeof params.rawAgentId === "string" ? params.rawAgentId.trim() : "";
+  const requestedAgentId = normalizeOptionalString(params.rawAgentId) ?? "";
   if (!requestedAgentId) {
     return undefined;
   }

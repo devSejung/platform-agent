@@ -52,6 +52,7 @@ type PersistedUiSettings = Omit<UiSettings, "token" | "sessionKey" | "lastActive
 import { isSupportedLocale } from "../i18n/index.ts";
 import { getSafeLocalStorage, getSafeSessionStorage } from "../local-storage.ts";
 import { inferBasePathFromPathname, normalizeBasePath } from "./navigation.ts";
+import { normalizeOptionalString } from "./string-coerce.ts";
 import { parseThemeSelection, type ThemeMode, type ThemeName } from "./theme.ts";
 
 export const BORDER_RADIUS_STOPS = [0, 25, 50, 75, 100] as const;
@@ -104,8 +105,7 @@ function deriveDefaultGatewayUrl(): { pageUrl: string; effectiveUrl: string } {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const configured =
     typeof window !== "undefined" &&
-    typeof window.__OPENCLAW_CONTROL_UI_BASE_PATH__ === "string" &&
-    window.__OPENCLAW_CONTROL_UI_BASE_PATH__.trim();
+    normalizeOptionalString(window.__OPENCLAW_CONTROL_UI_BASE_PATH__);
   const basePath = configured
     ? normalizeBasePath(configured)
     : inferBasePathFromPathname(location.pathname);
@@ -122,7 +122,7 @@ function getSessionStorage(): Storage | null {
 }
 
 function normalizeGatewayTokenScope(gatewayUrl: string): string {
-  const trimmed = gatewayUrl.trim();
+  const trimmed = normalizeOptionalString(gatewayUrl) ?? "";
   if (!trimmed) {
     return "default";
   }
@@ -151,27 +151,20 @@ function resolveScopedSessionSelection(
 ): ScopedSessionSelection {
   const scope = normalizeGatewayTokenScope(gatewayUrl);
   const scoped = parsed.sessionsByGateway?.[scope];
-  if (
-    scoped &&
-    typeof scoped.sessionKey === "string" &&
-    scoped.sessionKey.trim() &&
-    typeof scoped.lastActiveSessionKey === "string" &&
-    scoped.lastActiveSessionKey.trim()
-  ) {
+  const scopedSessionKey = normalizeOptionalString(scoped?.sessionKey);
+  const scopedLastActiveSessionKey = normalizeOptionalString(scoped?.lastActiveSessionKey);
+  if (scopedSessionKey && scopedLastActiveSessionKey) {
     return {
-      sessionKey: scoped.sessionKey.trim(),
-      lastActiveSessionKey: scoped.lastActiveSessionKey.trim(),
+      sessionKey: scopedSessionKey,
+      lastActiveSessionKey: scopedLastActiveSessionKey,
     };
   }
 
-  const legacySessionKey =
-    typeof parsed.sessionKey === "string" && parsed.sessionKey.trim()
-      ? parsed.sessionKey.trim()
-      : defaults.sessionKey;
+  const legacySessionKey = normalizeOptionalString(parsed.sessionKey) ?? defaults.sessionKey;
   const legacyLastActiveSessionKey =
-    typeof parsed.lastActiveSessionKey === "string" && parsed.lastActiveSessionKey.trim()
-      ? parsed.lastActiveSessionKey.trim()
-      : legacySessionKey || defaults.lastActiveSessionKey;
+    normalizeOptionalString(parsed.lastActiveSessionKey) ??
+    legacySessionKey ??
+    defaults.lastActiveSessionKey;
 
   return {
     sessionKey: legacySessionKey,
@@ -189,8 +182,8 @@ function loadSessionToken(gatewayUrl: string): string {
     if (mode === "control") {
       storage.removeItem(LEGACY_TOKEN_SESSION_KEY);
     }
-    const token = storage.getItem(tokenSessionKeyForGateway(gatewayUrl, mode)) ?? "";
-    return token.trim();
+    const token = storage.getItem(tokenSessionKeyForGateway(gatewayUrl, mode));
+    return normalizeOptionalString(token) ?? "";
   } catch {
     return "";
   }
@@ -207,7 +200,7 @@ function persistSessionToken(gatewayUrl: string, token: string) {
       storage.removeItem(LEGACY_TOKEN_SESSION_KEY);
     }
     const key = tokenSessionKeyForGateway(gatewayUrl, mode);
-    const normalized = token.trim();
+    const normalized = normalizeOptionalString(token) ?? "";
     if (normalized) {
       storage.setItem(key, normalized);
       return;
@@ -252,10 +245,7 @@ export function loadSettings(): UiSettings {
       return defaults;
     }
     const parsed = JSON.parse(raw) as PersistedUiSettings;
-    const parsedGatewayUrl =
-      typeof parsed.gatewayUrl === "string" && parsed.gatewayUrl.trim()
-        ? parsed.gatewayUrl.trim()
-        : defaults.gatewayUrl;
+    const parsedGatewayUrl = normalizeOptionalString(parsed.gatewayUrl) ?? defaults.gatewayUrl;
     const gatewayUrl = parsedGatewayUrl === pageDerivedUrl ? defaultUrl : parsedGatewayUrl;
     const scopedSessionSelection = resolveScopedSessionSelection(gatewayUrl, parsed, defaults);
     const { theme, mode: themeMode } = parseThemeSelection(

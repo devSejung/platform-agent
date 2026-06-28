@@ -305,7 +305,7 @@ describe("appendAssistantMessageToSessionTranscript", () => {
             mimeType: "image/png",
             sizeBytes: 1234,
           },
-        ],
+        ] as never,
         timestamp: Date.now(),
       },
     });

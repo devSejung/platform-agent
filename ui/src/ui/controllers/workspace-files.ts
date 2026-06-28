@@ -285,7 +285,7 @@ async function uploadSingleWorkspaceFile(params: {
       reject(
         new Error(
           typeof (parsed as { error?: string } | null)?.error === "string"
-            ? (parsed as { error: string }).error
+            ? (parsed as unknown as { error: string }).error
             : `${xhr.status} ${xhr.statusText}`,
         ),
       );

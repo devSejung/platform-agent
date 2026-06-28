@@ -6,4 +6,9 @@ export type BlockReplyPayload = {
   replyToId?: string;
   replyToTag?: boolean;
   replyToCurrent?: boolean;
+  assistantArtifactDelivery?: boolean;
+  assistantArtifact?: {
+    caption?: string;
+    deliveryId?: string;
+  };
 };

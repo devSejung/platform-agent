@@ -3,7 +3,7 @@ import { startSkillHubIconGcScheduler } from "./skill-hub-icon-gc-scheduler.js";
 
 describe("Skill Hub icon GC scheduler", () => {
   it("is disabled by default", () => {
-    const setTimer = vi.fn<typeof setTimeout>();
+    const setTimer = vi.fn() as unknown as typeof setTimeout;
     const stop = startSkillHubIconGcScheduler({ env: {}, setTimer });
     expect(setTimer).not.toHaveBeenCalled();
     stop();

@@ -238,7 +238,7 @@ describe("session history HTTP endpoints", () => {
             mimeType: "text/plain",
             sizeBytes: 42,
           },
-        ],
+        ] as never,
         timestamp: Date.now(),
       },
     });

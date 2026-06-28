@@ -108,6 +108,7 @@ import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import { resolveAgentIdFromSessionKey } from "./session-key.ts";
 import { loadSettings, type UiSettings } from "./storage.ts";
+import { normalizeLowercaseStringOrEmpty, normalizeOptionalString } from "./string-coerce.ts";
 import { VALID_THEME_NAMES, type ResolvedTheme, type ThemeMode, type ThemeName } from "./theme.ts";
 import type {
   AgentsListResult,
@@ -161,7 +162,7 @@ function resolveOnboardingMode(): boolean {
   if (!raw) {
     return false;
   }
-  const normalized = raw.trim().toLowerCase();
+  const normalized = normalizeLowercaseStringOrEmpty(raw);
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
@@ -1052,7 +1053,7 @@ export class OpenClawApp extends LitElement {
     if (!nextGatewayUrl) {
       return;
     }
-    const nextToken = this.pendingGatewayToken?.trim() || "";
+    const nextToken = normalizeOptionalString(this.pendingGatewayToken) ?? "";
     this.pendingGatewayUrl = null;
     this.pendingGatewayToken = null;
     applySettingsInternal(this as unknown as Parameters<typeof applySettingsInternal>[0], {
@@ -1155,7 +1156,7 @@ export class OpenClawApp extends LitElement {
     }
   }
 
-  async maybeOpenUnreadReleaseNotes() {
+  async maybeOpenUnreadReleaseNotes(): Promise<void> {
     if (!this.employeeMode) {
       return;
     }

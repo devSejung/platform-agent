@@ -4,6 +4,7 @@ import { extractText } from "../chat/message-extract.ts";
 import { describeChatFailure } from "../chat/send-failure.ts";
 import { formatConnectError } from "../connect-error.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
+import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
 import type { ChatAttachment, ChatSendDraft, ChatSendFailure } from "../ui-types.ts";
 import { generateUUID } from "../uuid.ts";
 import {
@@ -36,7 +37,7 @@ function isAssistantSilentReply(message: unknown): boolean {
     return false;
   }
   const entry = message as Record<string, unknown>;
-  const role = typeof entry.role === "string" ? entry.role.toLowerCase() : "";
+  const role = normalizeLowercaseStringOrEmpty(entry.role);
   if (role !== "assistant") {
     return false;
   }
@@ -228,7 +229,7 @@ function normalizeAssistantMessage(
   const candidate = message as Record<string, unknown>;
   const roleValue = candidate.role;
   if (typeof roleValue === "string") {
-    const role = options.roleCaseSensitive ? roleValue : roleValue.toLowerCase();
+    const role = options.roleCaseSensitive ? roleValue : normalizeLowercaseStringOrEmpty(roleValue);
     if (role !== "assistant") {
       return null;
     }

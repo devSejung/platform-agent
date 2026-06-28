@@ -59,6 +59,7 @@ function createTestContext(): {
     shouldEmitToolOutput: () => false,
     emitToolSummary: vi.fn(),
     emitToolOutput: vi.fn(),
+    emitBlockReply: vi.fn(),
     trimMessagingToolSent: vi.fn(),
   };
 

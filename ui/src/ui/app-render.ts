@@ -161,8 +161,13 @@ import {
   parseAgentSessionKey,
   resolveAgentIdFromSessionKey,
 } from "./session-key.ts";
-import { employeeLogoUrl } from "./views/agents-utils.ts";
 import {
+  normalizeLowercaseStringOrEmpty,
+  normalizeOptionalString,
+  normalizeStringifiedOptionalString,
+} from "./string-coerce.ts";
+import {
+  employeeLogoUrl,
   resolveAgentConfig,
   resolveConfiguredCronModelSuggestions,
   resolveEffectiveModelFallbacks,
@@ -264,7 +269,7 @@ function isHttpUrl(value: string): boolean {
 }
 
 function normalizeSuggestionValue(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  return normalizeOptionalString(value) ?? "";
 }
 
 function uniquePreserveOrder(values: string[]): string[] {
@@ -275,7 +280,7 @@ function uniquePreserveOrder(values: string[]): string[] {
     if (!normalized) {
       continue;
     }
-    const key = normalized.toLowerCase();
+    const key = normalizeLowercaseStringOrEmpty(normalized);
     if (seen.has(key)) {
       continue;
     }
@@ -950,9 +955,7 @@ export function renderApp(state: AppViewState) {
     new Set(
       [
         ...(state.agentsList?.agents?.map((entry) => entry.id.trim()) ?? []),
-        ...state.cronJobs
-          .map((job) => (typeof job.agentId === "string" ? job.agentId.trim() : ""))
-          .filter(Boolean),
+        ...state.cronJobs.map((job) => normalizeOptionalString(job.agentId) ?? "").filter(Boolean),
       ].filter(Boolean),
     ),
   );
@@ -966,7 +969,7 @@ export function renderApp(state: AppViewState) {
             if (job.payload.kind !== "agentTurn" || typeof job.payload.model !== "string") {
               return "";
             }
-            return job.payload.model.trim();
+            return normalizeOptionalString(job.payload.model) ?? "";
           })
           .filter(Boolean),
       ].filter(Boolean),
@@ -2127,7 +2130,7 @@ export function renderApp(state: AppViewState) {
                   const entry = Array.isArray(list)
                     ? (list[index] as { skills?: unknown })
                     : undefined;
-                  const normalizedSkill = skillName.trim();
+                  const normalizedSkill = normalizeOptionalString(skillName) ?? "";
                   if (!normalizedSkill) {
                     return;
                   }
@@ -2135,7 +2138,9 @@ export function renderApp(state: AppViewState) {
                     state.agentSkillsReport?.skills?.map((skill) => skill.name).filter(Boolean) ??
                     [];
                   const existing = Array.isArray(entry?.skills)
-                    ? entry.skills.map((name) => String(name).trim()).filter(Boolean)
+                    ? entry.skills
+                        .map((name) => normalizeStringifiedOptionalString(name) ?? "")
+                        .filter(Boolean)
                     : undefined;
                   const base = existing ?? allSkills;
                   const next = new Set(base);

@@ -48,6 +48,7 @@ import {
 } from "./navigation.ts";
 import { resolveAgentIdFromSessionKey } from "./session-key.ts";
 import { saveSettings, type UiSettings } from "./storage.ts";
+import { normalizeOptionalString } from "./string-coerce.ts";
 import { startThemeTransition, type ThemeTransitionContext } from "./theme-transition.ts";
 import { resolveTheme, type ResolvedTheme, type ThemeMode, type ThemeName } from "./theme.ts";
 import type { AgentsListResult, AttentionItem } from "./types.ts";
@@ -99,8 +100,11 @@ type SettingsHost = {
 export function applySettings(host: SettingsHost, next: UiSettings) {
   const normalized = {
     ...next,
-    sessionKey: next.sessionKey?.trim() || "main",
-    lastActiveSessionKey: next.lastActiveSessionKey?.trim() || next.sessionKey.trim() || "main",
+    sessionKey: normalizeOptionalString(next.sessionKey) ?? "main",
+    lastActiveSessionKey:
+      normalizeOptionalString(next.lastActiveSessionKey) ??
+      normalizeOptionalString(next.sessionKey) ??
+      "main",
   };
   host.settings = normalized;
   host.sessionKey = normalized.sessionKey;
@@ -137,7 +141,7 @@ export function applySettingsFromUrl(host: SettingsHost) {
   const hashParams = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
 
   const gatewayUrlRaw = params.get("gatewayUrl") ?? hashParams.get("gatewayUrl");
-  const nextGatewayUrl = gatewayUrlRaw?.trim() ?? "";
+  const nextGatewayUrl = normalizeOptionalString(gatewayUrlRaw) ?? "";
   const gatewayUrlChanged = Boolean(nextGatewayUrl && nextGatewayUrl !== host.settings.gatewayUrl);
   // Prefer fragment tokens over query tokens. Fragments avoid server-side request
   // logs and referrer leakage; query-param tokens remain a one-time legacy fallback
@@ -147,9 +151,9 @@ export function applySettingsFromUrl(host: SettingsHost) {
   const tokenRaw = hashToken ?? queryToken;
   const passwordRaw = params.get("password") ?? hashParams.get("password");
   const sessionRaw = params.get("session") ?? hashParams.get("session");
-  const shouldResetSessionForToken = Boolean(
-    tokenRaw?.trim() && !sessionRaw?.trim() && !gatewayUrlChanged,
-  );
+  const token = normalizeOptionalString(tokenRaw);
+  const session = normalizeOptionalString(sessionRaw);
+  const shouldResetSessionForToken = Boolean(token && !session && !gatewayUrlChanged);
   let shouldCleanUrl = false;
 
   if (params.has("token")) {
@@ -164,7 +168,6 @@ export function applySettingsFromUrl(host: SettingsHost) {
         "[openclaw] Auth token passed as query parameter (?token=). Use URL fragment instead: #token=<token>. Query parameters may appear in server logs.",
       );
     }
-    const token = tokenRaw.trim();
     if (token && gatewayUrlChanged) {
       host.pendingGatewayToken = token;
     } else if (token && token !== host.settings.token) {
@@ -191,7 +194,6 @@ export function applySettingsFromUrl(host: SettingsHost) {
   }
 
   if (sessionRaw != null) {
-    const session = sessionRaw.trim();
     if (session) {
       host.sessionKey = session;
       applySettings(host, {
@@ -205,7 +207,7 @@ export function applySettingsFromUrl(host: SettingsHost) {
   if (gatewayUrlRaw != null) {
     if (gatewayUrlChanged) {
       host.pendingGatewayUrl = nextGatewayUrl;
-      if (!tokenRaw?.trim()) {
+      if (!token) {
         host.pendingGatewayToken = null;
       }
     } else {
@@ -439,8 +441,9 @@ export function inferBasePath() {
     return "";
   }
   const configured = window.__OPENCLAW_CONTROL_UI_BASE_PATH__;
-  if (typeof configured === "string" && configured.trim()) {
-    return normalizeBasePath(configured);
+  const normalizedConfigured = normalizeOptionalString(configured);
+  if (normalizedConfigured) {
+    return normalizeBasePath(normalizedConfigured);
   }
   return inferBasePathFromPathname(window.location.pathname);
 }
@@ -544,7 +547,7 @@ export function onPopState(host: SettingsHost) {
   }
 
   const url = new URL(window.location.href);
-  const session = url.searchParams.get("session")?.trim();
+  const session = normalizeOptionalString(url.searchParams.get("session"));
   if (session) {
     host.sessionKey = session;
     applySettings(host, {

@@ -370,6 +370,8 @@ export function buildAgentSystemPrompt(params: {
   acpEnabled?: boolean;
   runtimeInfo?: {
     agentId?: string;
+    sessionKey?: string;
+    sessionId?: string;
     host?: string;
     os?: string;
     arch?: string;
@@ -822,6 +824,8 @@ export function buildAgentSystemPrompt(params: {
 export function buildRuntimeLine(
   runtimeInfo?: {
     agentId?: string;
+    sessionKey?: string;
+    sessionId?: string;
     host?: string;
     os?: string;
     arch?: string;
@@ -838,6 +842,8 @@ export function buildRuntimeLine(
   const normalizedRuntimeCapabilities = normalizePromptCapabilityIds(runtimeCapabilities);
   return `Runtime: ${[
     runtimeInfo?.agentId ? `agent=${runtimeInfo.agentId}` : "",
+    runtimeInfo?.sessionKey ? `session=${sanitizeForPromptLiteral(runtimeInfo.sessionKey)}` : "",
+    runtimeInfo?.sessionId ? `sessionId=${sanitizeForPromptLiteral(runtimeInfo.sessionId)}` : "",
     runtimeInfo?.host ? `host=${runtimeInfo.host}` : "",
     runtimeInfo?.repoRoot ? `repo=${runtimeInfo.repoRoot}` : "",
     runtimeInfo?.os

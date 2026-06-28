@@ -133,6 +133,8 @@ type ChatAbortRequester = {
 export const DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS = 12_000;
 const CHAT_HISTORY_MAX_SINGLE_MESSAGE_BYTES = 128 * 1024;
 const CHAT_HISTORY_OVERSIZED_PLACEHOLDER = "[chat.history omitted: message too large]";
+const CHAT_HISTORY_UNAVAILABLE_SENTINEL =
+  "[chat.history unavailable: transcript too large to display; the full history is preserved on disk]";
 let chatHistoryPlaceholderEmitCount = 0;
 const CHANNEL_AGNOSTIC_SESSION_SCOPES = new Set([
   "main",
@@ -1048,6 +1050,14 @@ export function sanitizeChatHistoryMessages(messages: unknown[], maxChars: numbe
   return changed ? next : messages;
 }
 
+function buildChatHistoryUnavailableSentinel(): Record<string, unknown> {
+  return {
+    role: "assistant",
+    timestamp: Date.now(),
+    content: [{ type: "text", text: CHAT_HISTORY_UNAVAILABLE_SENTINEL }],
+  };
+}
+
 function buildOversizedHistoryPlaceholder(message?: unknown): Record<string, unknown> {
   const role =
     message &&
@@ -1088,7 +1098,7 @@ function replaceOversizedChatHistoryMessages(params: {
   return { messages: replacedCount > 0 ? next : messages, replacedCount };
 }
 
-function enforceChatHistoryFinalBudget(params: { messages: unknown[]; maxBytes: number }): {
+export function enforceChatHistoryFinalBudget(params: { messages: unknown[]; maxBytes: number }): {
   messages: unknown[];
   placeholderCount: number;
 } {
@@ -1107,7 +1117,7 @@ function enforceChatHistoryFinalBudget(params: { messages: unknown[]; maxBytes: 
   if (jsonUtf8Bytes([placeholder]) <= maxBytes) {
     return { messages: [placeholder], placeholderCount: 1 };
   }
-  return { messages: [], placeholderCount: 0 };
+  return { messages: [buildChatHistoryUnavailableSentinel()], placeholderCount: 1 };
 }
 
 function resolveTranscriptPath(params: {

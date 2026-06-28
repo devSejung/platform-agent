@@ -608,6 +608,14 @@ export async function handleOpenResponsesHttpRequest(
                     surroundContentWithNewlines: false,
                   }),
                 );
+              } else {
+                fileContexts.push(
+                  renderFileContextBlock({
+                    filename: file.filename,
+                    content: "[No extractable text]",
+                    surroundContentWithNewlines: false,
+                  }),
+                );
               }
               if (file.images && file.images.length > 0) {
                 images = images.concat(file.images);

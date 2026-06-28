@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { HISTORY_CONTEXT_MARKER } from "../auto-reply/reply/history.js";
 import { CURRENT_MESSAGE_MARKER } from "../auto-reply/reply/mentions.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
+import { IMAGE_ONLY_USER_MESSAGE } from "./agent-prompt.js";
 import { buildAssistantDeltaResult } from "./test-helpers.agent-results.js";
 import { agentCommand, getFreePort, installGatewayTestHooks } from "./test-helpers.js";
 
@@ -1117,6 +1118,94 @@ describe("OpenResponses HTTP API (e2e)", () => {
         agentId: "main",
       }),
     ).toBeUndefined();
+  });
+
+  it("accepts image-only input without text, matching chat completions", async () => {
+    const port = enabledPort;
+    const pngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    agentCommand.mockClear();
+    agentCommand.mockResolvedValueOnce({ payloads: [{ text: "ok" }] } as never);
+
+    const res = await postResponses(port, {
+      model: "openclaw",
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_image",
+              source: { type: "base64", media_type: "image/png", data: pngBase64 },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(res.status).toBe(200);
+    expect(agentCommand).toHaveBeenCalledTimes(1);
+    const opts = (agentCommand.mock.calls[0] as unknown[] | undefined)?.[0];
+    expect((opts as { message?: string } | undefined)?.message ?? "").toContain(
+      IMAGE_ONLY_USER_MESSAGE,
+    );
+    expect((opts as { images?: unknown[] } | undefined)?.images).toHaveLength(1);
+    await ensureResponseConsumed(res);
+  });
+
+  it("accepts file-only input without text and preserves file context", async () => {
+    const port = enabledPort;
+
+    agentCommand.mockClear();
+    agentCommand.mockResolvedValueOnce({ payloads: [{ text: "ok" }] } as never);
+
+    const res = await postResponses(port, {
+      model: "openclaw",
+      instructions: "Summarize the attached document.",
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_file",
+              source: {
+                type: "base64",
+                media_type: "text/plain",
+                data: Buffer.from("the quick brown fox").toString("base64"),
+                filename: "doc.txt",
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(res.status).toBe(200);
+    expect(agentCommand).toHaveBeenCalledTimes(1);
+    const opts = (agentCommand.mock.calls[0] as unknown[] | undefined)?.[0];
+    expect((opts as { message?: string } | undefined)?.message ?? "").toContain(
+      "User sent file(s) with no text.",
+    );
+    const extraSystemPrompt =
+      (opts as { extraSystemPrompt?: string } | undefined)?.extraSystemPrompt ?? "";
+    expect(extraSystemPrompt).toContain('<file name="doc.txt">');
+    expect(extraSystemPrompt).toContain("the quick brown fox");
+    await ensureResponseConsumed(res);
+  });
+
+  it("still rejects responses input with neither text nor media", async () => {
+    const port = enabledPort;
+    agentCommand.mockClear();
+
+    const res = await postResponses(port, {
+      model: "openclaw",
+      input: [{ type: "message", role: "user", content: [] }],
+    });
+
+    await expectInvalidRequest(res, /Missing user message/i);
+    expect(agentCommand).not.toHaveBeenCalled();
   });
 
   it("blocks unsafe URL-based file/image inputs", async () => {

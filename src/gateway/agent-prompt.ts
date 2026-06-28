@@ -6,6 +6,8 @@ export type ConversationEntry = {
   entry: HistoryEntry;
 };
 
+export const IMAGE_ONLY_USER_MESSAGE = "User sent image(s) with no text.";
+
 /**
  * Coerce body to string. Handles cases where body is a content array
  * (e.g. [{type:"text", text:"hello"}]) that would serialize as

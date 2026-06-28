@@ -202,7 +202,10 @@ import {
   wrapStreamFnTrimToolCallNames,
 } from "./attempt.tool-call-normalization.js";
 import { buildEmbeddedAttemptToolRunContext } from "./attempt.tool-run-context.js";
-import { waitForCompactionRetryWithAggregateTimeout } from "./compaction-retry-aggregate-timeout.js";
+import {
+  hasActiveCompactionRetryWork,
+  waitForCompactionRetryWithAggregateTimeout,
+} from "./compaction-retry-aggregate-timeout.js";
 import {
   resolveRunTimeoutDuringCompaction,
   resolveRunTimeoutWithCompactionGraceMs,
@@ -2057,7 +2060,11 @@ export async function runEmbeddedAttempt(
                 waitForCompactionRetry,
                 abortable,
                 aggregateTimeoutMs: COMPACTION_RETRY_AGGREGATE_TIMEOUT_MS,
-                isCompactionStillInFlight: isCompactionInFlight,
+                isCompactionRetryStillActive: () =>
+                  hasActiveCompactionRetryWork({
+                    isCompactionInFlight: isCompactionInFlight(),
+                    isSessionStreaming: activeSession.isStreaming,
+                  }),
               });
           if (compactionRetryWait.timedOut) {
             timedOutDuringCompaction = true;

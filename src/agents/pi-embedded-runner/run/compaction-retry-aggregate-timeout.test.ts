@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { waitForCompactionRetryWithAggregateTimeout } from "./compaction-retry-aggregate-timeout.js";
+import {
+  hasActiveCompactionRetryWork,
+  waitForCompactionRetryWithAggregateTimeout,
+} from "./compaction-retry-aggregate-timeout.js";
 
 type AggregateTimeoutParams = Parameters<typeof waitForCompactionRetryWithAggregateTimeout>[0];
 type TimeoutCallback = NonNullable<AggregateTimeoutParams["onTimeout"]>;
@@ -34,7 +37,7 @@ function buildAggregateTimeoutParams(
     waitForCompactionRetry: overrides.waitForCompactionRetry,
     abortable: overrides.abortable ?? (async (promise) => await promise),
     aggregateTimeoutMs: overrides.aggregateTimeoutMs ?? 60_000,
-    isCompactionStillInFlight: overrides.isCompactionStillInFlight,
+    isCompactionRetryStillActive: overrides.isCompactionRetryStillActive,
     onTimeout,
   };
 }
@@ -69,7 +72,7 @@ describe("waitForCompactionRetryWithAggregateTimeout", () => {
       );
       const params = buildAggregateTimeoutParams({
         waitForCompactionRetry,
-        isCompactionStillInFlight: () => compactionInFlight,
+        isCompactionRetryStillActive: () => compactionInFlight,
       });
 
       const resultPromise = waitForCompactionRetryWithAggregateTimeout(params);
@@ -91,7 +94,7 @@ describe("waitForCompactionRetryWithAggregateTimeout", () => {
       }, 90_000);
       const params = buildAggregateTimeoutParams({
         waitForCompactionRetry,
-        isCompactionStillInFlight: () => compactionInFlight,
+        isCompactionRetryStillActive: () => compactionInFlight,
       });
 
       const resultPromise = waitForCompactionRetryWithAggregateTimeout(params);
@@ -101,6 +104,37 @@ describe("waitForCompactionRetryWithAggregateTimeout", () => {
 
       expect(result.timedOut).toBe(true);
       expectClearedTimeoutState(params.onTimeout, true);
+    });
+  });
+
+  it("keeps waiting while the post-compaction retry stream remains active", async () => {
+    await withFakeTimers(async () => {
+      let sessionStreaming = true;
+      const waitForCompactionRetry = vi.fn(
+        async () =>
+          await new Promise<void>((resolve) => {
+            setTimeout(() => {
+              sessionStreaming = false;
+              resolve();
+            }, 170_000);
+          }),
+      );
+      const params = buildAggregateTimeoutParams({
+        waitForCompactionRetry,
+        isCompactionRetryStillActive: () =>
+          hasActiveCompactionRetryWork({
+            isCompactionInFlight: false,
+            isSessionStreaming: sessionStreaming,
+          }),
+      });
+
+      const resultPromise = waitForCompactionRetryWithAggregateTimeout(params);
+
+      await vi.advanceTimersByTimeAsync(170_000);
+      const result = await resultPromise;
+
+      expect(result.timedOut).toBe(false);
+      expectClearedTimeoutState(params.onTimeout, false);
     });
   });
 

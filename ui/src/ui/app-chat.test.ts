@@ -12,6 +12,8 @@ vi.mock("./app-settings.ts", () => ({
 }));
 
 let handleSendChat: typeof import("./app-chat.ts").handleSendChat;
+let handleAbortChat: typeof import("./app-chat.ts").handleAbortChat;
+let hasAbortableSessionRun: typeof import("./app-chat.ts").hasAbortableSessionRun;
 let refreshChatAvatar: typeof import("./app-chat.ts").refreshChatAvatar;
 let clearPendingQueueItemsForRun: typeof import("./app-chat.ts").clearPendingQueueItemsForRun;
 let retryFailedChatMessage: typeof import("./app-chat.ts").retryFailedChatMessage;
@@ -23,6 +25,8 @@ async function loadChatHelpers(params?: { reload?: boolean }): Promise<void> {
   }
   ({
     handleSendChat,
+    handleAbortChat,
+    hasAbortableSessionRun,
     refreshChatAvatar,
     clearPendingQueueItemsForRun,
     retryFailedChatMessage,
@@ -155,6 +159,74 @@ describe("refreshChatAvatar", () => {
       "avatar/ops?meta=1",
       expect.objectContaining({ method: "GET" }),
     );
+  });
+});
+
+describe("hasAbortableSessionRun", () => {
+  beforeAll(async () => {
+    await loadChatHelpers();
+  });
+
+  it("treats an active session row as abortable after the local run id is gone", () => {
+    const host = makeHost({
+      chatRunId: null,
+      sessionKey: "agent:main:main",
+      sessionsResult: {
+        ts: Date.now(),
+        path: "/tmp/sessions.json",
+        count: 1,
+        defaults: {
+          model: null,
+          modelProvider: null,
+          contextTokens: null,
+        },
+        sessions: [
+          {
+            key: "agent:main:main",
+            kind: "direct",
+            updatedAt: Date.now(),
+            hasActiveRun: true,
+          },
+        ],
+      },
+    });
+
+    expect(hasAbortableSessionRun(host)).toBe(true);
+  });
+
+  it("queues a session-scoped abort while disconnected when the session has an active run", async () => {
+    const host = makeHost({
+      connected: false,
+      chatMessage: "stop",
+      chatRunId: null,
+      sessionKey: "agent:main:main",
+      sessionsResult: {
+        ts: Date.now(),
+        path: "/tmp/sessions.json",
+        count: 1,
+        defaults: {
+          model: null,
+          modelProvider: null,
+          contextTokens: null,
+        },
+        sessions: [
+          {
+            key: "agent:main:main",
+            kind: "direct",
+            updatedAt: Date.now(),
+            hasActiveRun: true,
+          },
+        ],
+      },
+    });
+
+    await handleAbortChat(host);
+
+    expect(host.chatMessage).toBe("");
+    expect(host.pendingAbort).toEqual({
+      runId: null,
+      sessionKey: "agent:main:main",
+    });
   });
 });
 

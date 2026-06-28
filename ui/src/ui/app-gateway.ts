@@ -1,3 +1,4 @@
+import type { EmployeeUiAccountSummary } from "../../../src/gateway/employee-ui-contract.ts";
 import {
   GATEWAY_EVENT_UPDATE_AVAILABLE,
   type GatewayUpdateAvailableEventPayload,
@@ -17,7 +18,6 @@ import {
 } from "./app-settings.ts";
 import { handleAgentEvent, resetToolStream, type AgentEventPayload } from "./app-tool-stream.ts";
 import type { OpenClawApp } from "./app.ts";
-import type { EmployeeUiAccountSummary } from "../../../src/gateway/employee-ui-contract.ts";
 import { shouldReloadHistoryForFinalEvent } from "./chat-event-reload.ts";
 import { formatConnectError } from "./connect-error.ts";
 import { loadAgents } from "./controllers/agents.ts";
@@ -100,6 +100,7 @@ type GatewayHost = {
   serverVersion: string | null;
   sessionKey: string;
   chatRunId: string | null;
+  pendingAbort?: { runId?: string | null; sessionKey: string } | null;
   refreshSessionsAfterChat: Set<string>;
   execApprovalQueue: ExecApprovalRequest[];
   execApprovalError: string | null;
@@ -258,6 +259,20 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
       (host as unknown as { chatStream: string | null }).chatStream = null;
       (host as unknown as { chatStreamStartedAt: number | null }).chatStreamStartedAt = null;
       resetToolStream(host as unknown as Parameters<typeof resetToolStream>[0]);
+      if (host.pendingAbort) {
+        const abort = host.pendingAbort;
+        host.pendingAbort = null;
+        void host.client
+          ?.request(
+            "chat.abort",
+            abort.runId
+              ? { sessionKey: abort.sessionKey, runId: abort.runId }
+              : { sessionKey: abort.sessionKey },
+          )
+          .catch((err) => {
+            console.warn("pending chat abort failed after reconnect", err);
+          });
+      }
       if (shutdownHost.resumeChatQueueAfterReconnect) {
         // The interrupted run will never emit its terminal event now that the
         // old client is gone, so resume any deferred commands after hello.
@@ -305,7 +320,8 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
       }
       if (
         host.employeeMode &&
-        resolveGatewayErrorDetailCode(error) === ConnectErrorDetailCodes.AUTH_BOOTSTRAP_TOKEN_INVALID
+        resolveGatewayErrorDetailCode(error) ===
+          ConnectErrorDetailCodes.AUTH_BOOTSTRAP_TOKEN_INVALID
       ) {
         void recoverEmployeeBootstrap(host);
       }

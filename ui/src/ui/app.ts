@@ -261,6 +261,7 @@ export class OpenClawApp extends LitElement {
   @state() chatStream: string | null = null;
   @state() chatStreamStartedAt: number | null = null;
   @state() chatRunId: string | null = null;
+  pendingAbort: { runId?: string | null; sessionKey: string } | null = null;
   @state() compactionStatus: CompactionStatus | null = null;
   @state() runPhaseStatus: RunPhaseStatus | null = null;
   @state() fallbackStatus: FallbackStatus | null = null;

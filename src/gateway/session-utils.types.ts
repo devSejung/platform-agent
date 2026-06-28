@@ -56,6 +56,7 @@ export type GatewaySessionRow = {
   totalTokensFresh?: boolean;
   estimatedCostUsd?: number;
   status?: SessionRunStatus;
+  hasActiveRun?: boolean;
   startedAt?: number;
   endedAt?: number;
   runtimeMs?: number;

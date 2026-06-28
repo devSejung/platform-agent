@@ -3,7 +3,7 @@ import { ref } from "lit/directives/ref.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { i18n, t, type Locale } from "../i18n/index.ts";
 import { getSafeLocalStorage } from "../local-storage.ts";
-import { refreshChatAvatar } from "./app-chat.ts";
+import { hasAbortableSessionRun, refreshChatAvatar } from "./app-chat.ts";
 import { renderUsageTab } from "./app-render-usage-tab.ts";
 import {
   renderChatControls,
@@ -164,11 +164,6 @@ import {
   parseAgentSessionKey,
   resolveAgentIdFromSessionKey,
 } from "./session-key.ts";
-import {
-  normalizeLowercaseStringOrEmpty,
-  normalizeOptionalString,
-  normalizeStringifiedOptionalString,
-} from "./string-coerce.ts";
 import {
   employeeLogoUrl,
   resolveAgentConfig,
@@ -1073,7 +1068,7 @@ export function renderApp(state: AppViewState) {
           getAttachments: () => state.chatAttachments,
           onAttachmentsChange: (next) => (state.chatAttachments = next),
           onSend: () => state.handleSendChat(),
-          canAbort: Boolean(state.chatRunId),
+          canAbort: hasAbortableSessionRun(state),
           onAbort: () => void state.handleAbortChat(),
           onQueueRemove: (id) => state.removeQueuedMessage(id),
           onRetrySend: (runId) => void state.retryFailedChatMessage(runId),

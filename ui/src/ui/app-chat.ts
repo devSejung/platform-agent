@@ -40,6 +40,7 @@ export type ChatHost = {
   sessionsResult?: SessionsListResult | null;
   updateComplete?: Promise<unknown>;
   refreshSessionsAfterChat: Set<string>;
+  pendingAbort?: { runId?: string | null; sessionKey: string } | null;
   /** Callback for slash-command side effects that need app-level access. */
   onSlashAction?: (action: string) => void;
 };
@@ -48,6 +49,21 @@ export const CHAT_SESSIONS_ACTIVE_MINUTES = 120;
 
 export function isChatBusy(host: ChatHost) {
   return host.chatSending || Boolean(host.chatRunId);
+}
+
+export function hasAbortableSessionRun(host: {
+  chatRunId?: string | null;
+  sessionKey: string;
+  sessionsResult?: SessionsListResult | null;
+}): boolean {
+  if (host.chatRunId) {
+    return true;
+  }
+  return Boolean(
+    host.sessionsResult?.sessions.some(
+      (session) => session.key === host.sessionKey && session.hasActiveRun === true,
+    ),
+  );
 }
 
 export function isChatStopCommand(text: string) {
@@ -81,6 +97,12 @@ function isChatResetCommand(text: string) {
 }
 
 export async function handleAbortChat(host: ChatHost) {
+  const activeRunId = host.chatRunId;
+  if (!host.connected && hasAbortableSessionRun(host)) {
+    host.chatMessage = "";
+    host.pendingAbort = { runId: activeRunId, sessionKey: host.sessionKey };
+    return;
+  }
   if (!host.connected) {
     return;
   }
@@ -187,7 +209,7 @@ export async function retryFailedChatMessage(host: ChatHost, failedRunId: string
   }
 
   host.chatSendFailures = {
-    ...(host.chatSendFailures ?? {}),
+    ...host.chatSendFailures,
     [failedRunId]: { ...failure, retrying: true },
   };
   const nextRunId = resolveChatRetryRunId(failure);

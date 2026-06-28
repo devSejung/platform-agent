@@ -1,7 +1,13 @@
 {
   "name": "PlatformClaw",
-  "latest": "2026.6.25",
+  "latest": "2026.6.26",
   "releases": [
+    {
+      "version": "2026.6.26",
+      "date": "2026-06-26",
+      "title": "Skill Hub 명령어와 예약 작업 안정성 개선",
+      "path": "docs/platformclaw/releases/2026.6.26.md"
+    },
     {
       "version": "2026.6.25",
       "date": "2026-06-25",

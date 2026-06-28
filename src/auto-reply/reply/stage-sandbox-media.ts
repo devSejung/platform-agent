@@ -83,8 +83,9 @@ export async function stageSandboxMedia(params: {
           maxBytes: STAGED_MEDIA_MAX_BYTES,
         });
       } else {
+        const copySource = await fs.realpath(source).catch(() => source);
         await stageLocalFileIntoRoot({
-          sourcePath: source,
+          sourcePath: copySource,
           rootDir: effectiveWorkspaceDir,
           relativeDestPath: relativeDest,
           maxBytes: STAGED_MEDIA_MAX_BYTES,
@@ -198,20 +199,22 @@ async function isAllowedSourcePath(params: {
     return true;
   }
   const mediaDir = getMediaDir();
+  const canonicalMediaDir = await fs.realpath(mediaDir).catch(() => mediaDir);
   if (
     !isInboundPathAllowed({
       filePath: params.source,
-      roots: [mediaDir],
+      roots: [mediaDir, canonicalMediaDir],
     })
   ) {
     logVerbose(`Blocking attempt to stage media from outside media directory: ${params.source}`);
     return false;
   }
   try {
+    const canonicalSource = await fs.realpath(params.source).catch(() => params.source);
     await assertSandboxPath({
-      filePath: params.source,
-      cwd: mediaDir,
-      root: mediaDir,
+      filePath: canonicalSource,
+      cwd: canonicalMediaDir,
+      root: canonicalMediaDir,
     });
     return true;
   } catch {

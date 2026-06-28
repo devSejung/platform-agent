@@ -232,6 +232,63 @@ describe("stageSandboxMedia", () => {
     });
   });
 
+  it("stages media addressed through the canonical media directory", async () => {
+    await withSandboxMediaTempHome("openclaw-triggers-", async (home) => {
+      await loadStageSandboxMediaInTempHome();
+      const { cfg, workspaceDir, sandboxDir } = await setupSandboxWorkspace(home);
+
+      const configuredMediaDir = join(home, ".openclaw", "media");
+      const canonicalMediaDir = join(home, "canonical-media");
+      await fs.mkdir(join(canonicalMediaDir, "inbound"), { recursive: true });
+      await fs.mkdir(dirname(configuredMediaDir), { recursive: true });
+      await fs.symlink(canonicalMediaDir, configuredMediaDir);
+
+      const mediaPath = join(canonicalMediaDir, "inbound", "canonical.jpg");
+      await fs.writeFile(mediaPath, "CANONICAL");
+      const { ctx, sessionCtx } = createSandboxMediaContexts(mediaPath);
+
+      await stageSandboxMedia({
+        ctx,
+        sessionCtx,
+        cfg,
+        sessionKey: "agent:main:main",
+        workspaceDir,
+      });
+
+      const stagedPath = "media/inbound/canonical.jpg";
+      expect(ctx.MediaPath).toBe(stagedPath);
+      expect(sessionCtx.MediaPath).toBe(stagedPath);
+      await expect(fs.readFile(join(sandboxDir, stagedPath), "utf8")).resolves.toBe("CANONICAL");
+    });
+  });
+
+  it("blocks inbound media symlinks that resolve outside the media directory", async () => {
+    await withSandboxMediaTempHome("openclaw-triggers-", async (home) => {
+      await loadStageSandboxMediaInTempHome();
+      const { cfg, workspaceDir, sandboxDir } = await setupSandboxWorkspace(home);
+
+      const outsideFile = join(home, "outside-secret.jpg");
+      await fs.writeFile(outsideFile, "SECRET");
+      const inboundDir = join(home, ".openclaw", "media", "inbound");
+      await fs.mkdir(inboundDir, { recursive: true });
+      const mediaPath = join(inboundDir, "linked.jpg");
+      await fs.symlink(outsideFile, mediaPath);
+      const { ctx, sessionCtx } = createSandboxMediaContexts(mediaPath);
+
+      await stageSandboxMedia({
+        ctx,
+        sessionCtx,
+        cfg,
+        sessionKey: "agent:main:main",
+        workspaceDir,
+      });
+
+      await expect(fs.stat(join(sandboxDir, "media", "inbound", "linked.jpg"))).rejects.toThrow();
+      expect(ctx.MediaPath).toBe(mediaPath);
+      expect(sessionCtx.MediaPath).toBe(mediaPath);
+    });
+  });
+
   it("skips oversized media staging and keeps original media paths", async () => {
     await withSandboxMediaTempHome("openclaw-triggers-", async (home) => {
       await loadStageSandboxMediaInTempHome();

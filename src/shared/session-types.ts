@@ -23,6 +23,9 @@ export type SessionsListResultBase<TDefaults, TRow> = {
   ts: number;
   path: string;
   count: number;
+  totalCount?: number;
+  limitApplied?: number;
+  hasMore?: boolean;
   defaults: TDefaults;
   sessions: TRow[];
 };

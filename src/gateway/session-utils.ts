@@ -994,12 +994,14 @@ function compareSessionEntryPairsByUpdatedAt(a: SessionEntryPair, b: SessionEntr
 }
 
 const SESSIONS_LIST_TOP_N_LIMIT = 200;
+const SESSIONS_LIST_DEFAULT_LIMIT = 100;
 
 function resolveSessionsListLimit(
   opts: import("./protocol/index.js").SessionsListParams,
+  defaultLimit?: number,
 ): number | undefined {
   if (typeof opts.limit !== "number" || !Number.isFinite(opts.limit)) {
-    return undefined;
+    return defaultLimit;
   }
   return Math.max(1, Math.floor(opts.limit));
 }
@@ -1555,7 +1557,7 @@ export function listSessionsFromStore(params: {
     return rowContext;
   };
 
-  const limit = resolveSessionsListLimit(opts);
+  const limit = resolveSessionsListLimit(opts, SESSIONS_LIST_DEFAULT_LIMIT);
   let entries = Object.entries(store)
     .filter(([key]) => {
       if (isCronRunSessionKey(key)) {
@@ -1608,6 +1610,7 @@ export function listSessionsFromStore(params: {
   }
 
   const canPrelimit = !search;
+  const filteredEntryCount = entries.length;
   if (canPrelimit) {
     entries = sortAndLimitSessionEntries(entries, limit);
   } else {
@@ -1628,6 +1631,7 @@ export function listSessionsFromStore(params: {
     }),
   );
 
+  let totalCount = filteredEntryCount;
   if (search) {
     sessions = sessions.filter((s) => {
       const fields = [s.displayName, s.label, s.subject, s.sessionId, s.key];
@@ -1635,6 +1639,7 @@ export function listSessionsFromStore(params: {
         (f) => typeof f === "string" && normalizeLowercaseStringOrEmpty(f).includes(search),
       );
     });
+    totalCount = sessions.length;
   }
 
   if (!canPrelimit && limit !== undefined) {
@@ -1645,6 +1650,9 @@ export function listSessionsFromStore(params: {
     ts: now,
     path: storePath,
     count: sessions.length,
+    totalCount,
+    limitApplied: limit,
+    hasMore: sessions.length < totalCount,
     defaults: getSessionDefaults(cfg),
     sessions,
   };

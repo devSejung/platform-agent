@@ -1429,6 +1429,10 @@ describe("gateway server sessions", () => {
 
     const list1 = await rpcReq<{
       path: string;
+      count?: number;
+      totalCount?: number;
+      limitApplied?: number;
+      hasMore?: boolean;
       defaults?: { model?: string | null; modelProvider?: string | null };
       sessions: Array<{
         key: string;
@@ -1443,6 +1447,10 @@ describe("gateway server sessions", () => {
 
     expect(list1.ok).toBe(true);
     expect(list1.payload?.path).toBe(storePath);
+    expect(list1.payload?.count).toBe(3);
+    expect(list1.payload?.totalCount).toBe(3);
+    expect(list1.payload?.limitApplied).toBe(100);
+    expect(list1.payload?.hasMore).toBe(false);
     expect(list1.payload?.sessions.some((s) => s.key === "global")).toBe(false);
     expect(list1.payload?.defaults?.modelProvider).toBe("anthropic");
     const main = list1.payload?.sessions.find((s) => s.key === "agent:main:main");
@@ -1469,6 +1477,10 @@ describe("gateway server sessions", () => {
     expect(active.payload?.sessions.map((s) => s.key)).toEqual(["agent:main:main"]);
 
     const limited = await rpcReq<{
+      count?: number;
+      totalCount?: number;
+      limitApplied?: number;
+      hasMore?: boolean;
       sessions: Array<{ key: string }>;
     }>(ws, "sessions.list", {
       includeGlobal: true,
@@ -1476,6 +1488,10 @@ describe("gateway server sessions", () => {
       limit: 1,
     });
     expect(limited.ok).toBe(true);
+    expect(limited.payload?.count).toBe(1);
+    expect(limited.payload?.totalCount).toBe(4);
+    expect(limited.payload?.limitApplied).toBe(1);
+    expect(limited.payload?.hasMore).toBe(true);
     expect(limited.payload?.sessions).toHaveLength(1);
     expect(limited.payload?.sessions[0]?.key).toBe("global");
 
@@ -1697,6 +1713,50 @@ describe("gateway server sessions", () => {
     expect((badThinking.error as { message?: unknown } | undefined)?.message ?? "").toMatch(
       /invalid thinkinglevel/i,
     );
+
+    ws.close();
+  });
+
+  test("sessions.list applies a bounded default limit when omitted", async () => {
+    await createSessionStoreDir();
+    const now = Date.now();
+    const entries: Record<string, { updatedAt: number }> = {};
+    for (let i = 0; i < 105; i += 1) {
+      entries[`agent:main:dashboard:${String(i).padStart(3, "0")}`] = {
+        updatedAt: now - i,
+      };
+    }
+    await writeSessionStore({ entries });
+
+    const { ws } = await openClient();
+    const defaultList = await rpcReq<{
+      count?: number;
+      totalCount?: number;
+      limitApplied?: number;
+      hasMore?: boolean;
+      sessions: Array<{ key: string }>;
+    }>(ws, "sessions.list", {});
+
+    expect(defaultList.ok).toBe(true);
+    expect(defaultList.payload?.count).toBe(100);
+    expect(defaultList.payload?.totalCount).toBe(105);
+    expect(defaultList.payload?.limitApplied).toBe(100);
+    expect(defaultList.payload?.hasMore).toBe(true);
+    expect(defaultList.payload?.sessions).toHaveLength(100);
+
+    const explicitList = await rpcReq<{
+      count?: number;
+      totalCount?: number;
+      limitApplied?: number;
+      hasMore?: boolean;
+      sessions: Array<{ key: string }>;
+    }>(ws, "sessions.list", { limit: 105 });
+    expect(explicitList.ok).toBe(true);
+    expect(explicitList.payload?.count).toBe(105);
+    expect(explicitList.payload?.totalCount).toBe(105);
+    expect(explicitList.payload?.limitApplied).toBe(105);
+    expect(explicitList.payload?.hasMore).toBe(false);
+    expect(explicitList.payload?.sessions).toHaveLength(105);
 
     ws.close();
   });

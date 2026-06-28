@@ -16,6 +16,11 @@ export type GatewaySessionsDefaults = {
 
 export type SessionRunStatus = "running" | "done" | "failed" | "killed" | "timeout";
 
+export type SessionCompactionCheckpointPreview = Pick<
+  SessionCompactionCheckpoint,
+  "checkpointId" | "createdAt" | "reason"
+>;
+
 export type GatewaySessionRow = {
   key: string;
   spawnedBy?: string;
@@ -66,7 +71,7 @@ export type GatewaySessionRow = {
   lastAccountId?: string;
   lastThreadId?: SessionEntry["lastThreadId"];
   compactionCheckpointCount?: number;
-  latestCompactionCheckpoint?: SessionCompactionCheckpoint;
+  latestCompactionCheckpoint?: SessionCompactionCheckpointPreview;
 };
 
 export type GatewayAgentRow = SharedGatewayAgentRow;

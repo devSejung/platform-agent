@@ -17,6 +17,7 @@ import {
   resolvePersistedSelectedModelRef,
 } from "../agents/model-selection.js";
 import {
+  buildSubagentRunReadIndex,
   getSessionDisplaySubagentRunByChildSessionKey,
   getSubagentSessionRuntimeMs,
   getSubagentSessionStartedAt,
@@ -231,6 +232,33 @@ function resolveLatestCompactionCheckpoint(
   );
 }
 
+function buildCompactionCheckpointPreview(
+  checkpoint: NonNullable<SessionEntry["compactionCheckpoints"]>[number] | undefined,
+): GatewaySessionRow["latestCompactionCheckpoint"] {
+  if (!checkpoint) {
+    return undefined;
+  }
+  const checkpointId = normalizeOptionalString(checkpoint.checkpointId);
+  const createdAt = checkpoint.createdAt;
+  const reason = checkpoint.reason;
+  if (!checkpointId || typeof createdAt !== "number" || !Number.isFinite(createdAt)) {
+    return undefined;
+  }
+  if (
+    reason !== "manual" &&
+    reason !== "auto-threshold" &&
+    reason !== "overflow-retry" &&
+    reason !== "timeout-retry"
+  ) {
+    return undefined;
+  }
+  return {
+    checkpointId,
+    createdAt,
+    reason,
+  };
+}
+
 function resolveEstimatedSessionCostUsd(params: {
   cfg: OpenClawConfig;
   provider?: string;
@@ -282,14 +310,21 @@ function resolveEstimatedSessionCostUsd(params: {
 function resolveChildSessionKeys(
   controllerSessionKey: string,
   store: Record<string, SessionEntry>,
+  subagentRuns?: SessionListRowContext["subagentRuns"],
 ): string[] | undefined {
   const childSessionKeys = new Set<string>();
-  for (const entry of listSubagentRunsForController(controllerSessionKey)) {
+  const controllerKey = controllerSessionKey.trim();
+  const runs = subagentRuns
+    ? (subagentRuns.runsByControllerSessionKey.get(controllerKey) ?? [])
+    : listSubagentRunsForController(controllerSessionKey);
+  for (const entry of runs) {
     const childSessionKey = normalizeOptionalString(entry.childSessionKey);
     if (!childSessionKey) {
       continue;
     }
-    const latest = getSessionDisplaySubagentRunByChildSessionKey(childSessionKey);
+    const latest = subagentRuns
+      ? subagentRuns.getDisplaySubagentRun(childSessionKey)
+      : getSessionDisplaySubagentRunByChildSessionKey(childSessionKey);
     const latestControllerSessionKey =
       normalizeOptionalString(latest?.controllerSessionKey) ||
       normalizeOptionalString(latest?.requesterSessionKey);
@@ -307,7 +342,9 @@ function resolveChildSessionKeys(
     if (spawnedBy !== controllerSessionKey && parentSessionKey !== controllerSessionKey) {
       continue;
     }
-    const latest = getSessionDisplaySubagentRunByChildSessionKey(key);
+    const latest = subagentRuns
+      ? subagentRuns.getDisplaySubagentRun(key)
+      : getSessionDisplaySubagentRunByChildSessionKey(key);
     if (latest) {
       const latestControllerSessionKey =
         normalizeOptionalString(latest.controllerSessionKey) ||
@@ -321,6 +358,10 @@ function resolveChildSessionKeys(
   const childSessions = Array.from(childSessionKeys);
   return childSessions.length > 0 ? childSessions : undefined;
 }
+
+type SessionListRowContext = {
+  subagentRuns: ReturnType<typeof buildSubagentRunReadIndex>;
+};
 
 function resolveTranscriptUsageFallback(params: {
   cfg: OpenClawConfig;
@@ -1268,6 +1309,7 @@ export function buildGatewaySessionRow(params: {
   now?: number;
   includeDerivedTitles?: boolean;
   includeLastMessage?: boolean;
+  rowContext?: SessionListRowContext;
 }): GatewaySessionRow {
   const { cfg, storePath, store, key, entry } = params;
   const now = params.now ?? Date.now();
@@ -1281,6 +1323,7 @@ export function buildGatewaySessionRow(params: {
   const origin = entry?.origin;
   const originLabel = origin?.label;
   const parsedAgent = parseAgentSessionKey(key);
+  const rowContext = params.rowContext;
   const isHeartbeatDecoratedMainSession =
     normalizeLowercaseStringOrEmpty(originLabel) === "heartbeat" &&
     normalizeLowercaseStringOrEmpty(origin?.from) === "heartbeat" &&
@@ -1302,7 +1345,9 @@ export function buildGatewaySessionRow(params: {
     (isHeartbeatDecoratedMainSession ? undefined : originLabel);
   const deliveryFields = normalizeSessionDeliveryFields(entry);
   const sessionAgentId = normalizeAgentId(parsedAgent?.agentId ?? resolveDefaultAgentId(cfg));
-  const subagentRun = getSessionDisplaySubagentRunByChildSessionKey(key);
+  const subagentRun = rowContext
+    ? rowContext.subagentRuns.getDisplaySubagentRun(key)
+    : getSessionDisplaySubagentRunByChildSessionKey(key);
   const subagentOwner =
     normalizeOptionalString(subagentRun?.controllerSessionKey) ||
     normalizeOptionalString(subagentRun?.requesterSessionKey);
@@ -1366,8 +1411,10 @@ export function buildGatewaySessionRow(params: {
     typeof totalTokens === "number" && Number.isFinite(totalTokens) && totalTokens > 0
       ? true
       : transcriptUsage?.totalTokensFresh === true;
-  const childSessions = resolveChildSessionKeys(key, store);
-  const latestCompactionCheckpoint = resolveLatestCompactionCheckpoint(entry);
+  const childSessions = resolveChildSessionKeys(key, store, rowContext?.subagentRuns);
+  const latestCompactionCheckpoint = buildCompactionCheckpointPreview(
+    resolveLatestCompactionCheckpoint(entry),
+  );
   const estimatedCostUsd =
     resolveEstimatedSessionCostUsd({
       cfg,
@@ -1500,6 +1547,13 @@ export function listSessionsFromStore(params: {
     typeof opts.activeMinutes === "number" && Number.isFinite(opts.activeMinutes)
       ? Math.max(1, Math.floor(opts.activeMinutes))
       : undefined;
+  let rowContext: SessionListRowContext | undefined;
+  const getRowContext = () => {
+    rowContext ??= {
+      subagentRuns: buildSubagentRunReadIndex(),
+    };
+    return rowContext;
+  };
 
   const limit = resolveSessionsListLimit(opts);
   let entries = Object.entries(store)
@@ -1532,7 +1586,7 @@ export function listSessionsFromStore(params: {
       if (key === "unknown" || key === "global") {
         return false;
       }
-      const latest = getSessionDisplaySubagentRunByChildSessionKey(key);
+      const latest = getRowContext().subagentRuns.getDisplaySubagentRun(key);
       if (latest) {
         const latestControllerSessionKey =
           normalizeOptionalString(latest.controllerSessionKey) ||
@@ -1570,6 +1624,7 @@ export function listSessionsFromStore(params: {
       now,
       includeDerivedTitles,
       includeLastMessage,
+      rowContext: getRowContext(),
     }),
   );
 

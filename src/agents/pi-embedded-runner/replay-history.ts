@@ -28,6 +28,7 @@ import {
   sanitizeToolUseResultPairing,
   stripToolResultDetails,
 } from "../session-transcript-repair.js";
+import { STREAM_ERROR_FALLBACK_TEXT } from "../stream-message-shared.js";
 import type { TranscriptPolicy } from "../transcript-policy.js";
 import { resolveTranscriptPolicy } from "../transcript-policy.js";
 import {
@@ -297,6 +298,66 @@ function ensureAssistantUsageSnapshots(messages: AgentMessage[]): AgentMessage[]
   return touched ? out : messages;
 }
 
+function isZeroUsageEmptyStopAssistantTurn(message: AgentMessage): boolean {
+  if (!message || message.role !== "assistant") {
+    return false;
+  }
+  if ((message as { stopReason?: unknown }).stopReason !== "stop") {
+    return false;
+  }
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content) || content.length !== 0) {
+    return false;
+  }
+  const usage = normalizeUsage((message as { usage?: UsageLike }).usage);
+  const values = [usage?.input, usage?.output, usage?.cacheRead, usage?.cacheWrite, usage?.total];
+  return values.every((value) => value === undefined || value === 0);
+}
+
+function isStreamErrorSentinelContent(content: readonly unknown[]): boolean {
+  if (content.length !== 1) {
+    return false;
+  }
+  const block = content[0];
+  if (!block || typeof block !== "object") {
+    return false;
+  }
+  const record = block as { type?: unknown; text?: unknown };
+  return record.type === "text" && record.text === STREAM_ERROR_FALLBACK_TEXT;
+}
+
+function isDroppableTrailingAssistantReplayTurn(message: AgentMessage | undefined): boolean {
+  if (!message || message.role !== "assistant") {
+    return false;
+  }
+  const content = (message as { content?: unknown }).content;
+  if (!Array.isArray(content)) {
+    return false;
+  }
+  const stopReason = (message as { stopReason?: unknown }).stopReason;
+  if (content.length === 0) {
+    return stopReason === "error" || isZeroUsageEmptyStopAssistantTurn(message);
+  }
+  if (!isStreamErrorSentinelContent(content)) {
+    return false;
+  }
+  if (stopReason === "error") {
+    return true;
+  }
+  return isZeroUsageEmptyStopAssistantTurn({
+    ...(message as unknown as Record<string, unknown>),
+    content: [],
+  } as unknown as AgentMessage);
+}
+
+function dropDroppableTrailingAssistantReplayTurns(messages: AgentMessage[]): AgentMessage[] {
+  let end = messages.length;
+  while (end > 0 && isDroppableTrailingAssistantReplayTurn(messages[end - 1])) {
+    end -= 1;
+  }
+  return end === messages.length ? messages : messages.slice(0, end);
+}
+
 function createProviderReplaySessionState(
   sessionManager: SessionManager,
 ): ProviderReplaySessionState {
@@ -429,6 +490,7 @@ export async function sanitizeSessionHistory(params: {
   const sanitizedCompactionUsage = ensureAssistantUsageSnapshots(
     stripStaleAssistantUsageBeforeLatestCompaction(sanitizedToolResults),
   );
+  const sanitizedReplayTail = dropDroppableTrailingAssistantReplayTurns(sanitizedCompactionUsage);
 
   const isOpenAIResponsesApi =
     params.modelApi === "openai-responses" ||
@@ -445,10 +507,8 @@ export async function sanitizeSessionHistory(params: {
       })
     : false;
   const sanitizedOpenAI = isOpenAIResponsesApi
-    ? downgradeOpenAIFunctionCallReasoningPairs(
-        downgradeOpenAIReasoningBlocks(sanitizedCompactionUsage),
-      )
-    : sanitizedCompactionUsage;
+    ? downgradeOpenAIFunctionCallReasoningPairs(downgradeOpenAIReasoningBlocks(sanitizedReplayTail))
+    : sanitizedReplayTail;
   const provider = params.provider?.trim();
   const providerSanitized =
     provider && provider.length > 0

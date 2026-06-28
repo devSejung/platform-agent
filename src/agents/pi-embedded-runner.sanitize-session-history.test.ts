@@ -15,6 +15,7 @@ import {
   sanitizeWithOpenAIResponses,
   TEST_SESSION_ID,
 } from "./pi-embedded-runner.sanitize-session-history.test-harness.js";
+import { STREAM_ERROR_FALLBACK_TEXT } from "./stream-message-shared.js";
 import { castAgentMessage, castAgentMessages } from "./test-helpers/agent-message-fixtures.js";
 import type { TranscriptPolicy } from "./transcript-policy.js";
 import { makeZeroUsageSnapshot } from "./usage.js";
@@ -673,6 +674,62 @@ describe("sanitizeSessionHistory", () => {
 
     expect(result).toHaveLength(2);
     expect(result[1]?.role).toBe("assistant");
+  });
+
+  it("drops a trailing assistant error turn with empty replay content", async () => {
+    setNonGoogleModelApi();
+
+    const messages: AgentMessage[] = [
+      makeUserMessage("hello"),
+      makeAssistantMessage([], { stopReason: "error" }),
+    ];
+
+    const result = await sanitizeOpenAIHistory(messages);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(messages[0]);
+  });
+
+  it("drops a trailing zero-usage empty stop assistant turn", async () => {
+    setNonGoogleModelApi();
+
+    const messages: AgentMessage[] = [makeUserMessage("hello"), makeAssistantMessage([])];
+
+    const result = await sanitizeOpenAIHistory(messages);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(messages[0]);
+  });
+
+  it("drops a trailing persisted stream-error sentinel assistant turn", async () => {
+    setNonGoogleModelApi();
+
+    const messages: AgentMessage[] = [
+      makeUserMessage("hello"),
+      makeAssistantMessage([{ type: "text", text: STREAM_ERROR_FALLBACK_TEXT }], {
+        stopReason: "error",
+      }),
+    ];
+
+    const result = await sanitizeOpenAIHistory(messages);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(messages[0]);
+  });
+
+  it("preserves a real trailing assistant reply that matches the stream-error sentinel text", async () => {
+    setNonGoogleModelApi();
+
+    const realReply = makeAssistantMessage([{ type: "text", text: STREAM_ERROR_FALLBACK_TEXT }], {
+      stopReason: "stop",
+      usage: makeUsage(1, 1, 2),
+    });
+    const messages: AgentMessage[] = [makeUserMessage("hello"), realReply];
+
+    const result = await sanitizeOpenAIHistory(messages);
+
+    expect(result).toHaveLength(2);
+    expect(result[1]).toBe(realReply);
   });
 
   it("synthesizes missing tool results for openai-responses after repair", async () => {

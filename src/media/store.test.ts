@@ -423,6 +423,26 @@ describe("media store", () => {
       run: async (store: typeof import("./store.js")) => await store.cleanOldMedia(1_000),
     },
     {
+      name: "stays at the media root during explicit non-recursive cleanup",
+      setup: async (store: typeof import("./store.js")) => {
+        const rootFile = await store.saveMediaBuffer(Buffer.from("old root"), "text/plain", "");
+        const inbound = await store.saveMediaBuffer(
+          Buffer.from("retained inbound"),
+          "text/plain",
+          "inbound",
+        );
+        const past = Date.now() - 10_000;
+        await fs.utimes(rootFile.path, past / 1000, past / 1000);
+        await fs.utimes(inbound.path, past / 1000, past / 1000);
+        return {
+          removedFiles: [rootFile.path],
+          preservedFiles: [inbound.path],
+        };
+      },
+      run: async (store: typeof import("./store.js")) =>
+        await store.cleanOldMedia(1_000, { recursive: false }),
+    },
+    {
       name: "prunes empty directory chains after recursive cleanup",
       setup: async (store: typeof import("./store.js")) => {
         const nested = await store.saveMediaBuffer(

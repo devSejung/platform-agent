@@ -116,6 +116,7 @@ export async function cleanOldMedia(ttlMs = DEFAULT_TTL_MS, options: CleanOldMed
   const mediaDir = await ensureMediaDir();
   const now = Date.now();
   const recursive = options.recursive ?? false;
+  const rootOnly = options.recursive === false;
   const pruneEmptyDirs = recursive && (options.pruneEmptyDirs ?? false);
 
   const removeExpiredFilesInDir = async (dir: string): Promise<boolean> => {
@@ -160,6 +161,9 @@ export async function cleanOldMedia(ttlMs = DEFAULT_TTL_MS, options: CleanOldMed
       continue;
     }
     if (stat.isDirectory()) {
+      if (rootOnly) {
+        continue;
+      }
       const dirIsEmpty = await removeExpiredFilesInDir(full);
       if (dirIsEmpty) {
         await fs.rmdir(full).catch(() => {});

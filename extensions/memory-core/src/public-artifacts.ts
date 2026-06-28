@@ -3,22 +3,17 @@ import path from "node:path";
 import { resolveMemoryHostEventLogPath } from "openclaw/plugin-sdk/memory-core-host-events";
 import { resolveMemoryDreamingWorkspaces } from "openclaw/plugin-sdk/memory-core-host-status";
 import type { MemoryPluginPublicArtifact } from "openclaw/plugin-sdk/memory-host-core";
+import { openFileWithinRoot } from "openclaw/plugin-sdk/security-runtime";
 import type { OpenClawConfig } from "../api.js";
-
-async function pathExists(inputPath: string): Promise<boolean> {
-  try {
-    await fs.access(inputPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function listMarkdownFilesRecursive(rootDir: string): Promise<string[]> {
   const entries = await fs.readdir(rootDir, { withFileTypes: true }).catch(() => []);
   const files: string[] = [];
   for (const entry of entries) {
     const fullPath = path.join(rootDir, entry.name);
+    if (entry.isSymbolicLink()) {
+      continue;
+    }
     if (entry.isDirectory()) {
       files.push(...(await listMarkdownFilesRecursive(fullPath)));
       continue;
@@ -35,8 +30,11 @@ async function collectWorkspaceArtifacts(params: {
   agentIds: string[];
 }): Promise<MemoryPluginPublicArtifact[]> {
   const artifacts: MemoryPluginPublicArtifact[] = [];
+  const workspaceRoot = await fs
+    .realpath(params.workspaceDir)
+    .catch(() => path.resolve(params.workspaceDir));
   const workspaceEntries = new Set(
-    (await fs.readdir(params.workspaceDir, { withFileTypes: true }).catch(() => []))
+    (await fs.readdir(workspaceRoot, { withFileTypes: true }).catch(() => []))
       .filter((entry) => entry.isFile())
       .map((entry) => entry.name),
   );
@@ -44,10 +42,10 @@ async function collectWorkspaceArtifacts(params: {
     if (!workspaceEntries.has(relativePath)) {
       continue;
     }
-    const absolutePath = path.join(params.workspaceDir, relativePath);
+    const absolutePath = path.join(workspaceRoot, relativePath);
     artifacts.push({
       kind: "memory-root",
-      workspaceDir: params.workspaceDir,
+      workspaceDir: workspaceRoot,
       relativePath,
       absolutePath,
       agentIds: [...params.agentIds],
@@ -55,29 +53,42 @@ async function collectWorkspaceArtifacts(params: {
     });
   }
 
-  const memoryDir = path.join(params.workspaceDir, "memory");
-  for (const absolutePath of await listMarkdownFilesRecursive(memoryDir)) {
-    const relativePath = path.relative(params.workspaceDir, absolutePath).replace(/\\/g, "/");
-    artifacts.push({
-      kind: relativePath.startsWith("memory/dreaming/") ? "dream-report" : "daily-note",
-      workspaceDir: params.workspaceDir,
-      relativePath,
-      absolutePath,
-      agentIds: [...params.agentIds],
-      contentType: "markdown",
-    });
+  const memoryDir = path.join(workspaceRoot, "memory");
+  const memoryDirStat = await fs.lstat(memoryDir).catch(() => undefined);
+  if (memoryDirStat?.isDirectory()) {
+    for (const absolutePath of await listMarkdownFilesRecursive(memoryDir)) {
+      const relativePath = path.relative(workspaceRoot, absolutePath).replace(/\\/g, "/");
+      artifacts.push({
+        kind: relativePath.startsWith("memory/dreaming/") ? "dream-report" : "daily-note",
+        workspaceDir: workspaceRoot,
+        relativePath,
+        absolutePath,
+        agentIds: [...params.agentIds],
+        contentType: "markdown",
+      });
+    }
   }
 
-  const eventLogPath = resolveMemoryHostEventLogPath(params.workspaceDir);
-  if (await pathExists(eventLogPath)) {
-    artifacts.push({
-      kind: "event-log",
-      workspaceDir: params.workspaceDir,
-      relativePath: path.relative(params.workspaceDir, eventLogPath).replace(/\\/g, "/"),
-      absolutePath: eventLogPath,
-      agentIds: [...params.agentIds],
-      contentType: "json",
-    });
+  const eventLogRelativePath = path
+    .relative(workspaceRoot, resolveMemoryHostEventLogPath(workspaceRoot))
+    .replace(/\\/g, "/");
+  const eventLog = await openFileWithinRoot({
+    rootDir: workspaceRoot,
+    relativePath: eventLogRelativePath,
+  }).catch(() => undefined);
+  if (eventLog) {
+    try {
+      artifacts.push({
+        kind: "event-log",
+        workspaceDir: workspaceRoot,
+        relativePath: eventLogRelativePath,
+        absolutePath: eventLog.realPath,
+        agentIds: [...params.agentIds],
+        contentType: "json",
+      });
+    } finally {
+      await eventLog.handle.close().catch(() => undefined);
+    }
   }
 
   const deduped = new Map<string, MemoryPluginPublicArtifact>();

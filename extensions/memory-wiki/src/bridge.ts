@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  getMemoryCapabilityRegistration,
   listActiveMemoryPublicArtifacts,
   type MemoryPluginPublicArtifact,
 } from "openclaw/plugin-sdk/memory-host-core";
+import { openFileWithinRoot } from "openclaw/plugin-sdk/security-runtime";
 import type { OpenClawConfig } from "../api.js";
 import type { ResolvedMemoryWikiConfig } from "./config.js";
 import { appendMemoryWikiLog } from "./log.js";
@@ -24,6 +25,7 @@ type BridgeArtifact = {
   workspaceDir: string;
   relativePath: string;
   absolutePath: string;
+  agentIds: string[];
 };
 
 export type BridgeMemoryWikiResult = {
@@ -56,20 +58,27 @@ function shouldImportArtifact(
 
 async function collectBridgeArtifacts(
   bridgeConfig: ResolvedMemoryWikiConfig["bridge"],
+  vaultRoot: string,
   artifacts: MemoryPluginPublicArtifact[],
 ): Promise<BridgeArtifact[]> {
   const collected: BridgeArtifact[] = [];
+  const vaultRootKey = await resolveArtifactKey(vaultRoot);
   for (const artifact of artifacts) {
     if (!shouldImportArtifact(artifact, bridgeConfig)) {
       continue;
     }
-    const syncKey = await resolveArtifactKey(artifact.absolutePath);
+    const absolutePath = path.resolve(artifact.workspaceDir, artifact.relativePath);
+    const syncKey = await resolveArtifactKey(absolutePath);
+    if (isPathInsideOrEqual(vaultRootKey, syncKey)) {
+      continue;
+    }
     collected.push({
       syncKey,
       artifactType: artifact.kind === "event-log" ? "memory-events" : "markdown",
       workspaceDir: artifact.workspaceDir,
       relativePath: artifact.relativePath,
-      absolutePath: artifact.absolutePath,
+      absolutePath,
+      agentIds: Array.isArray(artifact.agentIds) ? artifact.agentIds : [],
     });
   }
   const deduped = new Map<string, BridgeArtifact>();
@@ -77,6 +86,14 @@ async function collectBridgeArtifacts(
     deduped.set(artifact.syncKey, artifact);
   }
   return [...deduped.values()];
+}
+
+function isPathInsideOrEqual(parentPath: string, candidatePath: string): boolean {
+  const relative = path.relative(parentPath, candidatePath);
+  return (
+    relative === "" ||
+    (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  );
 }
 
 function resolveBridgeTitle(artifact: BridgeArtifact, agentIds: string[]): string {
@@ -124,6 +141,7 @@ async function writeBridgeSourcePage(params: {
   config: ResolvedMemoryWikiConfig;
   artifact: BridgeArtifact;
   agentIds: string[];
+  sourceContent: string;
   sourceUpdatedAtMs: number;
   sourceSize: number;
   state: Awaited<ReturnType<typeof readMemoryWikiSourceSyncState>>;
@@ -147,6 +165,7 @@ async function writeBridgeSourcePage(params: {
     vaultRoot: params.config.vault.path,
     syncKey: params.artifact.syncKey,
     sourcePath: params.artifact.absolutePath,
+    sourceContent: params.sourceContent,
     sourceUpdatedAtMs: params.sourceUpdatedAtMs,
     sourceSize: params.sourceSize,
     renderFingerprint,
@@ -222,34 +241,45 @@ export async function syncMemoryWikiBridgeSources(params: {
   const results: Array<{ pagePath: string; changed: boolean; created: boolean }> = [];
   let artifactCount = 0;
   const activeKeys = new Set<string>();
-  const artifacts = await collectBridgeArtifacts(params.config.bridge, publicArtifacts);
-  const agentIdsByWorkspace = new Map<string, string[]>();
-  for (const artifact of publicArtifacts) {
-    agentIdsByWorkspace.set(artifact.workspaceDir, artifact.agentIds);
-  }
+  const artifacts = await collectBridgeArtifacts(
+    params.config.bridge,
+    params.config.vault.path,
+    publicArtifacts,
+  );
   artifactCount = artifacts.length;
   for (const artifact of artifacts) {
-    const stats = await fs.stat(artifact.absolutePath);
-    activeKeys.add(artifact.syncKey);
-    results.push(
-      await writeBridgeSourcePage({
-        config: params.config,
-        artifact,
-        agentIds: agentIdsByWorkspace.get(artifact.workspaceDir) ?? [],
-        sourceUpdatedAtMs: stats.mtimeMs,
-        sourceSize: stats.size,
-        state,
-      }),
-    );
+    const source = await openFileWithinRoot({
+      rootDir: artifact.workspaceDir,
+      relativePath: artifact.relativePath,
+    });
+    try {
+      const resolvedArtifact = { ...artifact, absolutePath: source.realPath };
+      activeKeys.add(artifact.syncKey);
+      results.push(
+        await writeBridgeSourcePage({
+          config: params.config,
+          artifact: resolvedArtifact,
+          agentIds: artifact.agentIds,
+          sourceContent: (await source.handle.readFile()).toString("utf8"),
+          sourceUpdatedAtMs: source.stat.mtimeMs,
+          sourceSize: source.stat.size,
+          state,
+        }),
+      );
+    } finally {
+      await source.handle.close().catch(() => undefined);
+    }
   }
   const workspaceCount = new Set(publicArtifacts.map((artifact) => artifact.workspaceDir)).size;
 
-  const removedCount = await pruneImportedSourceEntries({
-    vaultRoot: params.config.vault.path,
-    group: "bridge",
-    activeKeys,
-    state,
-  });
+  const removedCount = getMemoryCapabilityRegistration()
+    ? await pruneImportedSourceEntries({
+        vaultRoot: params.config.vault.path,
+        group: "bridge",
+        activeKeys,
+        state,
+      })
+    : 0;
   await writeMemoryWikiSourceSyncState(params.config.vault.path, state);
   const importedCount = results.filter((result) => result.changed && result.created).length;
   const updatedCount = results.filter((result) => result.changed && !result.created).length;

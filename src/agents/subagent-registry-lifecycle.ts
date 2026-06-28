@@ -59,6 +59,7 @@ export function createSubagentRegistryLifecycleController(params: {
     reason: "completed" | "deleted";
     workspaceDir?: string;
   }): Promise<void>;
+  startSweeper(): void;
   resumeSubagentRun(runId: string): void;
   captureSubagentCompletionReply: typeof captureSubagentCompletionReply;
   runSubagentAnnounceFlow: typeof runSubagentAnnounceFlow;
@@ -354,6 +355,7 @@ export function createSubagentRegistryLifecycleController(params: {
     });
     cleanupParams.entry.cleanupCompletedAt = cleanupParams.completedAt;
     params.persist();
+    params.startSweeper();
     retryDeferredCompletedAnnounces(cleanupParams.runId);
   };
 

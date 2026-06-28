@@ -26,6 +26,7 @@ import {
   reconcileOrphanedRestoredRuns,
   reconcileOrphanedRun,
   resolveAnnounceRetryDelayMs,
+  resolveArchiveAfterMs,
   resolveSubagentRunOrphanReason,
   resolveSubagentSessionStatus,
   safeRemoveAttachmentsDir,
@@ -306,6 +307,7 @@ const subagentLifecycleController = createSubagentRegistryLifecycleController({
   shouldEmitEndedHookForRun,
   emitSubagentEndedHookForRun,
   notifyContextEngineSubagentEnded,
+  startSweeper,
   resumeSubagentRun,
   captureSubagentCompletionReply: (sessionKey) =>
     subagentRegistryDeps.captureSubagentCompletionReply(sessionKey),
@@ -477,9 +479,30 @@ function stopSweeper() {
 
 async function sweepSubagentRuns() {
   const now = Date.now();
+  const sessionRetentionMs = resolveArchiveAfterMs(subagentRegistryDeps.loadConfig());
   let mutated = false;
   for (const [runId, entry] of subagentRuns.entries()) {
-    if (!entry.archiveAtMs || entry.archiveAtMs > now) {
+    if (!entry.archiveAtMs) {
+      if (
+        typeof sessionRetentionMs === "number" &&
+        typeof entry.cleanupCompletedAt === "number" &&
+        now - entry.cleanupCompletedAt > sessionRetentionMs
+      ) {
+        clearPendingLifecycleError(runId);
+        void notifyContextEngineSubagentEnded({
+          childSessionKey: entry.childSessionKey,
+          reason: "swept",
+          workspaceDir: entry.workspaceDir,
+        });
+        subagentRuns.delete(runId);
+        mutated = true;
+        if (!entry.retainAttachmentsOnKeep) {
+          await safeRemoveAttachmentsDir(entry);
+        }
+      }
+      continue;
+    }
+    if (entry.archiveAtMs > now) {
       continue;
     }
     clearPendingLifecycleError(runId);

@@ -565,4 +565,68 @@ describe("subagent registry seam flow", () => {
     });
     expect(mocks.ensureContextEnginesInitialized).toHaveBeenCalledTimes(1);
   });
+
+  it("sweeps completed session-mode registry rows without deleting kept child sessions", async () => {
+    mocks.loadConfig.mockReturnValue({
+      agents: { defaults: { subagents: { archiveAfterMinutes: 1 } } },
+      session: { mainKey: "main", scope: "per-sender" as const },
+    });
+
+    mod.registerSubagentRun({
+      runId: "run-session-retention",
+      childSessionKey: "agent:main:subagent:retained-session",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "retain child session",
+      cleanup: "keep",
+      spawnMode: "session",
+    });
+
+    expect(mod.markSubagentRunTerminated({ runId: "run-session-retention" })).toBe(1);
+    await vi.advanceTimersByTimeAsync(120_001);
+
+    await vi.waitFor(() => {
+      expect(
+        mod
+          .listSubagentRunsForRequester("agent:main:main")
+          .find((entry) => entry.runId === "run-session-retention"),
+      ).toBeUndefined();
+    });
+    expect(mocks.callGateway).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "sessions.delete",
+      }),
+    );
+    expect(mocks.onSubagentEnded).toHaveBeenCalledWith({
+      childSessionKey: "agent:main:subagent:retained-session",
+      reason: "swept",
+      workspaceDir: undefined,
+    });
+  });
+
+  it("keeps completed session-mode registry rows when archiveAfterMinutes is disabled", async () => {
+    mod.registerSubagentRun({
+      runId: "run-session-retention-disabled",
+      childSessionKey: "agent:main:subagent:retention-disabled",
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "retain registry row",
+      cleanup: "keep",
+      spawnMode: "session",
+    });
+
+    expect(mod.markSubagentRunTerminated({ runId: "run-session-retention-disabled" })).toBe(1);
+    await vi.advanceTimersByTimeAsync(600_000);
+
+    expect(
+      mod
+        .listSubagentRunsForRequester("agent:main:main")
+        .find((entry) => entry.runId === "run-session-retention-disabled"),
+    ).toEqual(expect.objectContaining({ runId: "run-session-retention-disabled" }));
+    expect(mocks.callGateway).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "sessions.delete",
+      }),
+    );
+  });
 });

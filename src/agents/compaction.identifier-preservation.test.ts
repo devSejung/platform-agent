@@ -85,6 +85,22 @@ describe("compaction identifier-preservation instructions", () => {
     expect(firstSummaryInstructions()).toContain("Focus on release-impacting bugs.");
   });
 
+  it("clamps reserveTokens to keep generated summary max_tokens within model output limits", async () => {
+    await runSummary(2, {
+      model: {
+        provider: "anthropic",
+        model: "claude-sonnet-4-6",
+        contextWindow: 1_000_000,
+        maxTokens: 128_000,
+      } as unknown as NonNullable<ExtensionContext["model"]>,
+      reserveTokens: 300_000,
+      contextWindow: 1_000_000,
+    });
+
+    expect(mockGenerateSummary).toHaveBeenCalled();
+    expect(mockGenerateSummary.mock.calls[0]?.[2]).toBe(160_000);
+  });
+
   it("applies identifier-preservation guidance on staged split + merge summarization", async () => {
     await runSummary(4, {
       maxChunkTokens: 1000,

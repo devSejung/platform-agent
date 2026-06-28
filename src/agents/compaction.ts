@@ -313,13 +313,15 @@ async function summarizeChunks(params: {
     params.customInstructions,
     params.summarizationInstructions,
   );
+  const modelMaxTokens = params.model.maxTokens ?? 128_000;
+  const clampedReserveTokens = Math.min(params.reserveTokens, Math.floor(modelMaxTokens / 0.8));
   for (const chunk of chunks) {
     summary = await retryAsync(
       () =>
         generateSummary(
           chunk,
           params.model,
-          params.reserveTokens,
+          clampedReserveTokens,
           params.apiKey,
           params.headers,
           params.signal,

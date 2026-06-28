@@ -881,6 +881,77 @@ describe("readLatestSessionUsageFromTranscript", () => {
   });
 });
 
+describe("oversized transcript line guards", () => {
+  let tmpDir: string;
+  let storePath: string;
+
+  registerTempSessionStore("openclaw-session-fs-oversized-", (nextTmpDir, nextStorePath) => {
+    tmpDir = nextTmpDir;
+    storePath = nextStorePath;
+  });
+
+  test("readSessionPreviewItemsFromTranscript replaces oversized JSONL lines with placeholders", () => {
+    const sessionId = "test-oversized-preview";
+    const transcriptPath = path.join(tmpDir, `${sessionId}.jsonl`);
+    const oversizedContent = "x".repeat(300 * 1024);
+    const lines = [
+      JSON.stringify({ type: "session", version: 1, id: sessionId }),
+      JSON.stringify({ message: { role: "user", content: "start" } }),
+      JSON.stringify({ message: { role: "assistant", content: oversizedContent } }),
+    ];
+    fs.writeFileSync(transcriptPath, `${lines.join("\n")}\n`, "utf-8");
+
+    const out = readSessionPreviewItemsFromTranscript(
+      sessionId,
+      storePath,
+      undefined,
+      undefined,
+      10,
+      2000,
+    );
+
+    const serialized = JSON.stringify(out);
+    expect(serialized).not.toContain(oversizedContent);
+    expect(serialized).toContain("[chat.history omitted: message too large]");
+  });
+
+  test("readLatestSessionUsageFromTranscript skips oversized usage lines", () => {
+    const sessionId = "test-oversized-usage";
+    const transcriptPath = path.join(tmpDir, `${sessionId}.jsonl`);
+    const oversizedContent = "y".repeat(300 * 1024);
+    const lines = [
+      JSON.stringify({ type: "session", version: 1, id: sessionId }),
+      JSON.stringify({
+        message: {
+          role: "assistant",
+          content: oversizedContent,
+          usage: { input: 9999, output: 9999 },
+          provider: "oversized-provider",
+          model: "oversized-model",
+        },
+      }),
+      JSON.stringify({
+        message: {
+          role: "assistant",
+          content: "normal",
+          usage: { input: 100, output: 50 },
+          provider: "test-provider",
+          model: "test-model",
+        },
+      }),
+    ];
+    fs.writeFileSync(transcriptPath, `${lines.join("\n")}\n`, "utf-8");
+
+    const usage = readLatestSessionUsageFromTranscript(sessionId, storePath);
+
+    expect(usage).not.toBeNull();
+    expect(usage?.modelProvider).toBe("test-provider");
+    expect(usage?.model).toBe("test-model");
+    expect(usage?.inputTokens).toBe(100);
+    expect(usage?.outputTokens).toBe(50);
+  });
+});
+
 describe("resolveSessionTranscriptCandidates", () => {
   afterEach(() => {
     vi.unstubAllEnvs();

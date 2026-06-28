@@ -2,7 +2,10 @@ import fs from "node:fs";
 import { deriveSessionTotalTokens, hasNonzeroUsage, normalizeUsage } from "../agents/usage.js";
 import { jsonUtf8Bytes } from "../infra/json-utf8-bytes.js";
 import { hasInterSessionUserProvenance } from "../sessions/input-provenance.js";
-import { extractAssistantVisibleText, isTextLikeContentBlock } from "../shared/chat-message-content.js";
+import {
+  extractAssistantVisibleText,
+  isTextLikeContentBlock,
+} from "../shared/chat-message-content.js";
 import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
 import { extractToolCallNames, hasToolCall } from "../utils/transcript-tools.js";
@@ -357,6 +360,12 @@ export function readFirstUserMessageFromTranscript(
 
 const LAST_MSG_MAX_BYTES = 16384;
 const LAST_MSG_MAX_LINES = 20;
+const MAX_TRANSCRIPT_PARSE_LINE_BYTES = 256 * 1024;
+const TRANSCRIPT_OVERSIZED_MESSAGE_PLACEHOLDER = "[chat.history omitted: message too large]";
+
+function isOversizedTranscriptLine(line: string): boolean {
+  return Buffer.byteLength(line, "utf8") > MAX_TRANSCRIPT_PARSE_LINE_BYTES;
+}
 
 function readLastMessagePreviewFromOpenTranscript(params: {
   fd: number;
@@ -457,6 +466,9 @@ function extractLatestUsageFromTranscriptChunk(
   let sawCost = false;
 
   for (const line of lines) {
+    if (isOversizedTranscriptLine(line)) {
+      continue;
+    }
     try {
       const parsed = JSON.parse(line) as Record<string, unknown>;
       const message =
@@ -600,6 +612,13 @@ type TranscriptPreviewMessage = {
   toolName?: string;
   tool_name?: string;
 };
+
+function buildOversizedTranscriptPreviewMessage(): TranscriptPreviewMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text: TRANSCRIPT_OVERSIZED_MESSAGE_PLACEHOLDER }],
+  };
+}
 
 function normalizeRole(role: string | undefined, isTool: boolean): SessionPreviewItem["role"] {
   if (isTool) {
@@ -752,6 +771,13 @@ function readRecentMessagesFromTranscript(
     const collected: TranscriptPreviewMessage[] = [];
     for (let i = tailLines.length - 1; i >= 0; i--) {
       const line = tailLines[i];
+      if (isOversizedTranscriptLine(line)) {
+        collected.push(buildOversizedTranscriptPreviewMessage());
+        if (collected.length >= maxMessages) {
+          break;
+        }
+        continue;
+      }
       try {
         const parsed = JSON.parse(line);
         const msg = parsed?.message as TranscriptPreviewMessage | undefined;

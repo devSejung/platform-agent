@@ -1,4 +1,5 @@
-import { resolveSessionFilePath } from "./paths.js";
+import path from "node:path";
+import { resolveRotatedGeneratedSessionFilePath, resolveSessionFilePath } from "./paths.js";
 import { updateSessionStore } from "./store.js";
 import type { SessionEntry } from "./types.js";
 
@@ -21,10 +22,20 @@ export async function resolveAndPersistSessionFile(params: {
     !baseEntry.sessionFile && fallbackSessionFile
       ? { ...baseEntry, sessionFile: fallbackSessionFile }
       : baseEntry;
-  const sessionFile = resolveSessionFilePath(sessionId, entryForResolve, {
+  const sessionPathOptions = {
     agentId: params.agentId,
     sessionsDir: params.sessionsDir,
+  };
+  const sessionsDirForRotation = params.sessionsDir ?? path.dirname(storePath);
+  const rotatedSessionFile = resolveRotatedGeneratedSessionFilePath({
+    previousSessionId: baseEntry.sessionId,
+    nextSessionId: sessionId,
+    previousSessionFile: baseEntry.sessionFile,
+    sessionsDir: sessionsDirForRotation,
+    agentId: params.agentId,
   });
+  const sessionFile =
+    rotatedSessionFile ?? resolveSessionFilePath(sessionId, entryForResolve, sessionPathOptions);
   const persistedEntry: SessionEntry = {
     ...baseEntry,
     sessionId,

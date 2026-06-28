@@ -20,7 +20,11 @@ import {
   type SessionEntry,
   updateSessionStore,
 } from "../config/sessions.js";
-import { resolveSessionFilePath, resolveSessionFilePathOptions } from "../config/sessions/paths.js";
+import {
+  resolveRotatedGeneratedSessionFilePath,
+  resolveSessionFilePath,
+  resolveSessionFilePathOptions,
+} from "../config/sessions/paths.js";
 import type { SessionAcpMeta } from "../config/sessions/types.js";
 import { logVerbose } from "../globals.js";
 import { createInternalHookEvent, triggerInternalHook } from "../hooks/internal-hooks.js";
@@ -569,14 +573,24 @@ export async function performGatewaySessionReset(params: {
     oldSessionFile = currentEntry?.sessionFile;
     const now = Date.now();
     const nextSessionId = randomUUID();
-    const sessionFile = resolveSessionFilePath(
-      nextSessionId,
-      currentEntry?.sessionFile ? { sessionFile: currentEntry.sessionFile } : undefined,
-      resolveSessionFilePathOptions({
-        storePath,
+    const sessionPathOptions = resolveSessionFilePathOptions({
+      storePath,
+      agentId: sessionAgentId,
+    });
+    const sessionsDir = sessionPathOptions?.sessionsDir ?? path.dirname(storePath);
+    const sessionFile =
+      resolveRotatedGeneratedSessionFilePath({
+        previousSessionId: currentEntry?.sessionId ?? "",
+        nextSessionId,
+        previousSessionFile: currentEntry?.sessionFile,
+        sessionsDir,
         agentId: sessionAgentId,
-      }),
-    );
+      }) ??
+      resolveSessionFilePath(
+        nextSessionId,
+        currentEntry?.sessionFile ? { sessionFile: currentEntry.sessionFile } : undefined,
+        sessionPathOptions,
+      );
     const nextEntry: SessionEntry = {
       sessionId: nextSessionId,
       sessionFile,

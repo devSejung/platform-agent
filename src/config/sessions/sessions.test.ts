@@ -8,6 +8,7 @@ import { createSuiteTempRootTracker, withTempDirSync } from "../../test-helpers/
 import type { OpenClawConfig } from "../config.js";
 import type { SessionConfig } from "../types.base.js";
 import {
+  resolveRotatedGeneratedSessionFilePath,
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
   resolveSessionTranscriptPathInDir,
@@ -93,6 +94,62 @@ describe("session path safety", () => {
       expect(fs.realpathSync(path.dirname(resolved))).toBe(fs.realpathSync(sessionsDir));
       expect(path.basename(resolved)).toBe("sess-1.jsonl");
     });
+  });
+
+  it("rotates generated transcript paths when session id changes", () => {
+    const sessionsDir = "/tmp/openclaw/agents/main/sessions";
+    const previousSessionFile = path.join(sessionsDir, "sess-1.jsonl");
+
+    const resolved = resolveRotatedGeneratedSessionFilePath({
+      previousSessionId: "sess-1",
+      nextSessionId: "sess-2",
+      previousSessionFile,
+      sessionsDir,
+    });
+
+    expect(resolved).toBe(path.resolve(sessionsDir, "sess-2.jsonl"));
+  });
+
+  it("rotates already-stale generated UUID transcript paths", () => {
+    const sessionsDir = "/tmp/openclaw/agents/main/sessions";
+    const staleSessionFile = path.join(sessionsDir, "685a51f7-7adf-48b1-89ca-d3ab86dd6e0f.jsonl");
+
+    const resolved = resolveRotatedGeneratedSessionFilePath({
+      previousSessionId: "63b16647-ea0c-4a22-808b-ce616326b445",
+      nextSessionId: "a8ea43fe-8729-4742-8db0-d4ab4522d5d1",
+      previousSessionFile: staleSessionFile,
+      sessionsDir,
+    });
+
+    expect(resolved).toBe(path.resolve(sessionsDir, "a8ea43fe-8729-4742-8db0-d4ab4522d5d1.jsonl"));
+  });
+
+  it("does not rotate custom transcript paths when session id changes", () => {
+    const sessionsDir = "/tmp/openclaw/agents/main/sessions";
+    const customPath = path.join(sessionsDir, "custom-owned-child-transcript.jsonl");
+
+    const resolved = resolveRotatedGeneratedSessionFilePath({
+      previousSessionId: "sess-1",
+      nextSessionId: "sess-2",
+      previousSessionFile: customPath,
+      sessionsDir,
+    });
+
+    expect(resolved).toBeUndefined();
+  });
+
+  it("keeps topic transcript suffixes when generated session paths rotate", () => {
+    const sessionsDir = "/tmp/openclaw/agents/main/sessions";
+    const topicPath = path.join(sessionsDir, "sess-1-topic-456.jsonl");
+
+    const resolved = resolveRotatedGeneratedSessionFilePath({
+      previousSessionId: "sess-1",
+      nextSessionId: "sess-2",
+      previousSessionFile: topicPath,
+      sessionsDir,
+    });
+
+    expect(resolved).toBe(path.resolve(sessionsDir, "sess-2-topic-456.jsonl"));
   });
 });
 
@@ -395,5 +452,65 @@ describe("resolveAndPersistSessionFile", () => {
     expect(result.sessionEntry.sessionId).toBe(sessionId);
     const saved = loadSessionStore(fixture.storePath(), { skipCache: true });
     expect(saved[sessionKey]?.sessionFile).toBe(fallbackSessionFile);
+  });
+
+  it("rotates generated sessionFile when persisted session id changes", async () => {
+    const sessionKey = "agent:main:main";
+    const previousSessionId = "old-session-id";
+    const nextSessionId = "new-session-id";
+    const previousSessionFile = resolveSessionTranscriptPathInDir(
+      previousSessionId,
+      fixture.sessionsDir(),
+    );
+    const store = {
+      [sessionKey]: {
+        sessionId: previousSessionId,
+        updatedAt: Date.now() - 1,
+        sessionFile: previousSessionFile,
+      },
+    };
+    fs.writeFileSync(fixture.storePath(), JSON.stringify(store), "utf-8");
+    const sessionStore = loadSessionStore(fixture.storePath(), { skipCache: true });
+
+    const result = await resolveAndPersistSessionFile({
+      sessionId: nextSessionId,
+      sessionKey,
+      sessionStore,
+      storePath: fixture.storePath(),
+      sessionEntry: sessionStore[sessionKey],
+    });
+
+    expect(result.sessionFile).toBe(
+      resolveSessionTranscriptPathInDir(nextSessionId, fixture.sessionsDir()),
+    );
+    const saved = loadSessionStore(fixture.storePath(), { skipCache: true });
+    expect(saved[sessionKey]?.sessionFile).toBe(result.sessionFile);
+  });
+
+  it("preserves custom sessionFile when persisted session id changes", async () => {
+    const sessionKey = "agent:main:main";
+    const customSessionFile = path.join(
+      fixture.sessionsDir(),
+      "custom-owned-child-transcript.jsonl",
+    );
+    const store = {
+      [sessionKey]: {
+        sessionId: "old-session-id",
+        updatedAt: Date.now() - 1,
+        sessionFile: customSessionFile,
+      },
+    };
+    fs.writeFileSync(fixture.storePath(), JSON.stringify(store), "utf-8");
+    const sessionStore = loadSessionStore(fixture.storePath(), { skipCache: true });
+
+    const result = await resolveAndPersistSessionFile({
+      sessionId: "new-session-id",
+      sessionKey,
+      sessionStore,
+      storePath: fixture.storePath(),
+      sessionEntry: sessionStore[sessionKey],
+    });
+
+    expect(result.sessionFile).toBe(customSessionFile);
   });
 });

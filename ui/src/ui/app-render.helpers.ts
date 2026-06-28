@@ -2,7 +2,7 @@ import { html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import { buildAgentMainSessionKey } from "../../../src/routing/session-key.js";
 import { t } from "../i18n/index.ts";
-import { refreshChat } from "./app-chat.ts";
+import { refreshChat, refreshChatAvatar } from "./app-chat.ts";
 import { syncUrlWithSessionKey } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
 import { OpenClawApp } from "./app.ts";
@@ -64,7 +64,17 @@ export function resolveSidebarChatSessionKey(state: AppViewState): string {
 function resetChatStateForSessionSwitch(state: AppViewState, sessionKey: string) {
   state.sessionKey = sessionKey;
   state.chatMessage = "";
+  state.chatAttachments = [];
+  state.chatMessages = [];
+  state.chatToolMessages = [];
+  state.chatStreamSegments = [];
+  state.chatThinkingLevel = null;
   state.chatStream = null;
+  state.lastError = null;
+  state.compactionStatus = null;
+  state.fallbackStatus = null;
+  state.chatAvatarUrl = null;
+  state.chatQueue = [];
   (state as unknown as OpenClawApp).chatStreamStartedAt = null;
   state.chatRunId = null;
   (state as unknown as OpenClawApp).resetToolStream();
@@ -637,22 +647,12 @@ export async function switchChatSession(
   if (!(await confirmDiscardUnsentQueueIfNeeded(state))) {
     return false;
   }
-  state.sessionKey = nextSessionKey;
-  state.chatMessage = "";
-  state.chatStream = null;
   discardChatQueueForSessionSwitch(state);
   state.chatSendDrafts = {};
   state.chatSendFailures = {};
-  (state as unknown as OpenClawApp).chatStreamStartedAt = null;
-  state.chatRunId = null;
-  (state as unknown as OpenClawApp).resetToolStream();
-  (state as unknown as OpenClawApp).resetChatScroll();
-  state.applySettings({
-    ...state.settings,
-    sessionKey: nextSessionKey,
-    lastActiveSessionKey: nextSessionKey,
-  });
+  resetChatStateForSessionSwitch(state, nextSessionKey);
   void state.loadAssistantIdentity();
+  void refreshChatAvatar(state);
   syncUrlWithSessionKey(
     state as unknown as Parameters<typeof syncUrlWithSessionKey>[0],
     nextSessionKey,

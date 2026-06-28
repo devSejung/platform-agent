@@ -108,7 +108,6 @@ import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import { resolveAgentIdFromSessionKey } from "./session-key.ts";
 import { loadSettings, type UiSettings } from "./storage.ts";
-import { normalizeLowercaseStringOrEmpty, normalizeOptionalString } from "./string-coerce.ts";
 import { VALID_THEME_NAMES, type ResolvedTheme, type ThemeMode, type ThemeName } from "./theme.ts";
 import type {
   AgentsListResult,
@@ -162,7 +161,7 @@ function resolveOnboardingMode(): boolean {
   if (!raw) {
     return false;
   }
-  const normalized = normalizeLowercaseStringOrEmpty(raw);
+  const normalized = raw.trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
@@ -345,6 +344,7 @@ export class OpenClawApp extends LitElement {
   @state() dreamingStatus: DreamingStatus | null = null;
   @state() dreamingModeSaving = false;
   @state() dreamDiaryLoading = false;
+  @state() dreamDiaryActionLoading = false;
   @state() dreamDiaryError: string | null = null;
   @state() dreamDiaryPath: string | null = null;
   @state() dreamDiaryContent: string | null = null;
@@ -1053,7 +1053,7 @@ export class OpenClawApp extends LitElement {
     if (!nextGatewayUrl) {
       return;
     }
-    const nextToken = normalizeOptionalString(this.pendingGatewayToken) ?? "";
+    const nextToken = this.pendingGatewayToken?.trim() || "";
     this.pendingGatewayUrl = null;
     this.pendingGatewayToken = null;
     applySettingsInternal(this as unknown as Parameters<typeof applySettingsInternal>[0], {

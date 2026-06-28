@@ -75,8 +75,11 @@ import {
   rotateDeviceToken,
 } from "./controllers/devices.ts";
 import {
+  backfillDreamDiary,
   loadDreamDiary,
   loadDreamingStatus,
+  resetGroundedShortTerm,
+  resetDreamDiary,
   resolveConfiguredDreaming,
   updateDreamingEnabled,
 } from "./controllers/dreaming.ts";
@@ -145,8 +148,8 @@ import {
   resolveEmployeeAnnouncement,
 } from "./employee-announcement.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
-import { icons } from "./icons.ts";
 import "./components/dashboard-header.ts";
+import { icons } from "./icons.ts";
 import { toSanitizedMarkdownHtml } from "./markdown.ts";
 import {
   normalizeBasePath,
@@ -177,6 +180,7 @@ import {
 import { renderChat } from "./views/chat.ts";
 import { renderCommandPalette } from "./views/command-palette.ts";
 import { renderConfig } from "./views/config.ts";
+import { renderDreaming } from "./views/dreaming.ts";
 import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderLoginGate } from "./views/login-gate.ts";
@@ -219,7 +223,6 @@ const lazySkills = createLazy(() => import("./views/skills.ts"));
 const lazySkillHub = createLazy(() => import("./views/skill-hub.ts"));
 const lazyGroups = createLazy(() => import("./views/groups.ts"));
 const lazyAdmin = createLazy(() => import("./views/admin.ts"));
-const lazyDreamingView = createLazy(() => import("./views/dreaming.ts"));
 
 function formatDreamNextCycle(nextRunAtMs: number | undefined): string | null {
   if (typeof nextRunAtMs !== "number" || !Number.isFinite(nextRunAtMs)) {
@@ -269,7 +272,7 @@ function isHttpUrl(value: string): boolean {
 }
 
 function normalizeSuggestionValue(value: unknown): string {
-  return normalizeOptionalString(value) ?? "";
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function uniquePreserveOrder(values: string[]): string[] {
@@ -280,7 +283,7 @@ function uniquePreserveOrder(values: string[]): string[] {
     if (!normalized) {
       continue;
     }
-    const key = normalizeLowercaseStringOrEmpty(normalized);
+    const key = normalized.toLowerCase();
     if (seen.has(key)) {
       continue;
     }
@@ -955,7 +958,9 @@ export function renderApp(state: AppViewState) {
     new Set(
       [
         ...(state.agentsList?.agents?.map((entry) => entry.id.trim()) ?? []),
-        ...state.cronJobs.map((job) => normalizeOptionalString(job.agentId) ?? "").filter(Boolean),
+        ...state.cronJobs
+          .map((job) => (typeof job.agentId === "string" ? job.agentId.trim() : ""))
+          .filter(Boolean),
       ].filter(Boolean),
     ),
   );
@@ -969,7 +974,7 @@ export function renderApp(state: AppViewState) {
             if (job.payload.kind !== "agentTurn" || typeof job.payload.model !== "string") {
               return "";
             }
-            return normalizeOptionalString(job.payload.model) ?? "";
+            return job.payload.model.trim();
           })
           .filter(Boolean),
       ].filter(Boolean),
@@ -2130,7 +2135,7 @@ export function renderApp(state: AppViewState) {
                   const entry = Array.isArray(list)
                     ? (list[index] as { skills?: unknown })
                     : undefined;
-                  const normalizedSkill = normalizeOptionalString(skillName) ?? "";
+                  const normalizedSkill = skillName.trim();
                   if (!normalizedSkill) {
                     return;
                   }
@@ -2138,9 +2143,7 @@ export function renderApp(state: AppViewState) {
                     state.agentSkillsReport?.skills?.map((skill) => skill.name).filter(Boolean) ??
                     [];
                   const existing = Array.isArray(entry?.skills)
-                    ? entry.skills
-                        .map((name) => normalizeStringifiedOptionalString(name) ?? "")
-                        .filter(Boolean)
+                    ? entry.skills.map((name) => String(name).trim()).filter(Boolean)
                     : undefined;
                   const base = existing ?? allSkills;
                   const next = new Set(base);
@@ -3771,29 +3774,35 @@ export function renderApp(state: AppViewState) {
             )
           : nothing}
         ${state.tab === "dreams"
-          ? lazyRender(lazyDreamingView, (m) =>
-              m.renderDreaming({
-                active: dreamingOn,
-                shortTermCount: state.dreamingStatus?.shortTermCount ?? 0,
-                totalSignalCount: state.dreamingStatus?.totalSignalCount ?? 0,
-                phaseSignalCount: state.dreamingStatus?.phaseSignalCount ?? 0,
-                promotedCount: state.dreamingStatus?.promotedToday ?? 0,
-                dreamingOf: null,
-                nextCycle: dreamingNextCycle,
-                timezone: state.dreamingStatus?.timezone ?? null,
-                statusLoading: state.dreamingStatusLoading,
-                statusError: state.dreamingStatusError,
-                modeSaving: state.dreamingModeSaving,
-                dreamDiaryLoading: state.dreamDiaryLoading,
-                dreamDiaryError: state.dreamDiaryError,
-                dreamDiaryPath: state.dreamDiaryPath,
-                dreamDiaryContent: state.dreamDiaryContent,
-                onRefresh: refreshDreaming,
-                onRefreshDiary: () => loadDreamDiary(state),
-                onToggleEnabled: applyDreamingEnabled,
-                onRequestUpdate: requestHostUpdate,
-              }),
-            )
+          ? renderDreaming({
+              active: dreamingOn,
+              shortTermCount: state.dreamingStatus?.shortTermCount ?? 0,
+              groundedSignalCount: state.dreamingStatus?.groundedSignalCount ?? 0,
+              totalSignalCount: state.dreamingStatus?.totalSignalCount ?? 0,
+              promotedCount: state.dreamingStatus?.promotedToday ?? 0,
+              phaseSignalCount: state.dreamingStatus?.phaseSignalCount ?? 0,
+              shortTermEntries: state.dreamingStatus?.shortTermEntries ?? [],
+              signalEntries: state.dreamingStatus?.signalEntries ?? [],
+              promotedEntries: state.dreamingStatus?.promotedEntries ?? [],
+              dreamingOf: null,
+              nextCycle: dreamingNextCycle,
+              timezone: state.dreamingStatus?.timezone ?? null,
+              statusLoading: state.dreamingStatusLoading,
+              statusError: state.dreamingStatusError,
+              modeSaving: state.dreamingModeSaving,
+              dreamDiaryLoading: state.dreamDiaryLoading,
+              dreamDiaryActionLoading: state.dreamDiaryActionLoading,
+              dreamDiaryError: state.dreamDiaryError,
+              dreamDiaryPath: state.dreamDiaryPath,
+              dreamDiaryContent: state.dreamDiaryContent,
+              onRefresh: refreshDreaming,
+              onRefreshDiary: () => loadDreamDiary(state),
+              onBackfillDiary: () => backfillDreamDiary(state),
+              onResetDiary: () => resetDreamDiary(state),
+              onResetGroundedShortTerm: () => resetGroundedShortTerm(state),
+              onToggleEnabled: applyDreamingEnabled,
+              onRequestUpdate: requestHostUpdate,
+            })
           : nothing}
       </main>
       ${renderExecApprovalPrompt(state)} ${renderGatewayUrlConfirmation(state)}

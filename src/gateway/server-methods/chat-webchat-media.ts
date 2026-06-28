@@ -8,8 +8,14 @@ import { normalizeLowercaseStringOrEmpty } from "../../shared/string-coerce.js";
 
 /** Cap embedded audio size to avoid multi‑MB payloads on the chat WebSocket. */
 const MAX_WEBCHAT_AUDIO_BYTES = 15 * 1024 * 1024;
+const MAX_WEBCHAT_IMAGE_BYTES = 15 * 1024 * 1024;
 
 const MIME_BY_EXT: Record<string, string> = {
+  ".gif": "image/gif",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
   ".aac": "audio/aac",
   ".m4a": "audio/mp4",
   ".mp3": "audio/mpeg",
@@ -72,6 +78,88 @@ function resolveLocalAudioFileForEmbedding(raw: string): string | null {
 function mimeTypeForPath(filePath: string): string {
   const ext = normalizeLowercaseStringOrEmpty(path.extname(filePath));
   return MIME_BY_EXT[ext] ?? "audio/mpeg";
+}
+
+function imageMimeTypeForPath(filePath: string): string | null {
+  const ext = normalizeLowercaseStringOrEmpty(path.extname(filePath));
+  const mime = MIME_BY_EXT[ext];
+  return mime?.startsWith("image/") ? mime : null;
+}
+
+function parseDataImageBlock(raw: string): Record<string, unknown> | null {
+  const match = raw.match(/^data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=\s]+)$/i);
+  if (!match?.[1] || !match[2]) {
+    return null;
+  }
+  return {
+    type: "image",
+    source: {
+      type: "base64",
+      media_type: match[1].toLowerCase(),
+      data: match[2].replace(/\s+/g, ""),
+    },
+  };
+}
+
+function tryReadLocalImageContentBlock(filePath: string): Record<string, unknown> | null {
+  const mediaType = imageMimeTypeForPath(filePath);
+  if (!mediaType) {
+    return null;
+  }
+  try {
+    const st = fs.statSync(filePath);
+    if (!st.isFile() || st.size > MAX_WEBCHAT_IMAGE_BYTES) {
+      return null;
+    }
+    const buf = fs.readFileSync(filePath);
+    if (buf.length > MAX_WEBCHAT_IMAGE_BYTES) {
+      return null;
+    }
+    return {
+      type: "image",
+      source: { type: "base64", media_type: mediaType, data: buf.toString("base64") },
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function buildWebchatMediaContentBlocksFromReplyPayloads(
+  payloads: ReplyPayload[],
+): Array<Record<string, unknown>> {
+  const seen = new Set<string>();
+  const blocks: Array<Record<string, unknown>> = [];
+  for (const payload of payloads) {
+    const parts = resolveSendableOutboundReplyParts(payload);
+    for (const raw of parts.mediaUrls) {
+      const url = raw.trim();
+      if (!url || seen.has(url)) {
+        continue;
+      }
+      const dataBlock = parseDataImageBlock(url);
+      if (dataBlock) {
+        seen.add(url);
+        blocks.push(dataBlock);
+        continue;
+      }
+      const localPath = resolveLocalMediaPathForEmbedding(url);
+      if (!localPath || seen.has(localPath)) {
+        continue;
+      }
+      const imageBlock = tryReadLocalImageContentBlock(localPath);
+      if (imageBlock) {
+        seen.add(localPath);
+        blocks.push(imageBlock);
+        continue;
+      }
+      const audioBlock = tryReadLocalAudioContentBlock(localPath);
+      if (audioBlock) {
+        seen.add(localPath);
+        blocks.push(audioBlock);
+      }
+    }
+  }
+  return blocks;
 }
 
 /**

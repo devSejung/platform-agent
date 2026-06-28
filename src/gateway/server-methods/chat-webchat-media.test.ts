@@ -3,7 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildWebchatAudioContentBlocksFromReplyPayloads } from "./chat-webchat-media.js";
+import {
+  buildWebchatAudioContentBlocksFromReplyPayloads,
+  buildWebchatMediaContentBlocksFromReplyPayloads,
+} from "./chat-webchat-media.js";
 
 describe("buildWebchatAudioContentBlocksFromReplyPayloads", () => {
   let tmpDir: string | undefined;
@@ -98,5 +101,47 @@ describe("buildWebchatAudioContentBlocksFromReplyPayloads", () => {
 
     statSpy.mockRestore();
     readSpy.mockRestore();
+  });
+});
+
+describe("buildWebchatMediaContentBlocksFromReplyPayloads", () => {
+  let tmpDir: string | undefined;
+
+  afterEach(() => {
+    if (tmpDir && fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+    tmpDir = undefined;
+  });
+
+  it("embeds data image replies", () => {
+    const data = Buffer.from("png").toString("base64");
+    const blocks = buildWebchatMediaContentBlocksFromReplyPayloads([
+      { mediaUrls: [`data:image/png;base64,${data}`] },
+    ]);
+
+    expect(blocks).toEqual([
+      {
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data },
+      },
+    ]);
+  });
+
+  it("embeds local image files without creating attachment blocks", () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-webchat-media-"));
+    const imagePath = path.join(tmpDir, "plot.png");
+    fs.writeFileSync(imagePath, Buffer.from("png"));
+
+    const blocks = buildWebchatMediaContentBlocksFromReplyPayloads([{ mediaUrls: [imagePath] }]);
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toEqual(
+      expect.objectContaining({
+        type: "image",
+        source: expect.objectContaining({ type: "base64", media_type: "image/png" }),
+      }),
+    );
+    expect((blocks[0] as { type?: unknown }).type).not.toBe("attachment");
   });
 });

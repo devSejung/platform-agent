@@ -99,8 +99,9 @@ import { formatForLog } from "../ws-log.js";
 import { injectTimestamp, timestampOptsFromConfig } from "./agent-timestamp.js";
 import { setGatewayDedupeEntry } from "./agent-wait-dedupe.js";
 import { normalizeRpcAttachmentsToChatAttachments } from "./attachment-normalize.js";
+import { normalizeWebchatReplyMediaPathsForDisplay } from "./chat-reply-media.js";
 import { appendInjectedAssistantMessageToTranscript } from "./chat-transcript-inject.js";
-import { buildWebchatAudioContentBlocksFromReplyPayloads } from "./chat-webchat-media.js";
+import { buildWebchatMediaContentBlocksFromReplyPayloads } from "./chat-webchat-media.js";
 import type {
   GatewayRequestContext,
   GatewayRequestHandlerOptions,
@@ -2236,15 +2237,21 @@ export const chatHandlers: GatewayRequestHandlers = {
                 sessionKey,
               });
             } else {
-              const finalPayloads = deliveredReplies
+              const rawFinalPayloads = deliveredReplies
                 .filter((entry) => entry.kind === "final")
                 .map((entry) => entry.payload);
+              const finalPayloads = await normalizeWebchatReplyMediaPathsForDisplay({
+                cfg,
+                sessionKey,
+                agentId,
+                payloads: rawFinalPayloads,
+              });
               const combinedReply = finalPayloads
                 .map((part) => part.text?.trim() ?? "")
                 .filter(Boolean)
                 .join("\n\n")
                 .trim();
-              const audioBlocks = buildWebchatAudioContentBlocksFromReplyPayloads(finalPayloads);
+              const mediaBlocks = buildWebchatMediaContentBlocksFromReplyPayloads(finalPayloads);
               const assistantArtifactMediaUrls = Array.from(
                 new Set(
                   finalPayloads
@@ -2273,10 +2280,10 @@ export const chatHandlers: GatewayRequestHandlers = {
               const assistantContent: Array<Record<string, unknown>> = [];
               if (combinedReply) {
                 assistantContent.push({ type: "text", text: combinedReply });
-              } else if (audioBlocks.length > 0) {
-                assistantContent.push({ type: "text", text: "Audio reply" });
+              } else if (mediaBlocks.length > 0) {
+                assistantContent.push({ type: "text", text: "Media reply" });
               }
-              assistantContent.push(...audioBlocks);
+              assistantContent.push(...mediaBlocks);
               assistantContent.push(...artifactBlocks);
 
               let message: Record<string, unknown> | undefined;
@@ -2286,8 +2293,8 @@ export const chatHandlers: GatewayRequestHandlers = {
                 const sessionId = latestEntry?.sessionId ?? entry?.sessionId ?? clientRunId;
                 const transcriptFallbackText =
                   combinedReply ||
-                  (audioBlocks.length > 0
-                    ? "Audio reply"
+                  (mediaBlocks.length > 0
+                    ? "Media reply"
                     : artifactBlocks.length > 0
                       ? "Generated attachment"
                       : "");

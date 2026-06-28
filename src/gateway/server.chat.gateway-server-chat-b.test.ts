@@ -676,7 +676,7 @@ describe("gateway server chat", () => {
     });
   });
 
-  test("chat.send does not materialize existing ReplyPayload mediaUrls without artifact marker", async () => {
+  test("chat.send displays regular ReplyPayload mediaUrls without artifact attachment marker", async () => {
     await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
       await connectOk(ws);
       const sessionDir = await createSessionDir();
@@ -748,11 +748,15 @@ describe("gateway server chat", () => {
       expect(content.some((block) => (block as { type?: unknown })?.type === "attachment")).toBe(
         false,
       );
+      expect(content.some((block) => (block as { type?: unknown })?.type === "image")).toBe(true);
 
       const messages = await fetchHistoryMessages(ws);
       expect(messages.at(-1)).toMatchObject({
         role: "assistant",
-        content: [expect.objectContaining({ type: "text", text: "붙였습니다." })],
+        content: [
+          expect.objectContaining({ type: "text", text: "붙였습니다." }),
+          expect.objectContaining({ type: "image" }),
+        ],
       });
     });
   });

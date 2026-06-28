@@ -1,4 +1,5 @@
 import type { OpenClawConfig } from "../config/config.js";
+import type { AgentCompactionMode } from "../config/types.agent-defaults.js";
 import type { ContextEngineInfo } from "../context-engine/types.js";
 
 export const DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR = 20_000;
@@ -98,20 +99,32 @@ export function applyPiCompactionSettingsFromConfig(params: {
   };
 }
 
+/** Resolve the compaction mode after provider-backed safeguard promotion. */
+export function resolveEffectiveCompactionMode(cfg?: OpenClawConfig): AgentCompactionMode {
+  const compaction = cfg?.agents?.defaults?.compaction;
+  if (compaction?.provider) {
+    return "safeguard";
+  }
+  return compaction?.mode === "safeguard" ? "safeguard" : "default";
+}
+
 /** Decide whether Pi's internal auto-compaction should be disabled for this run. */
 export function shouldDisablePiAutoCompaction(params: {
   contextEngineInfo?: ContextEngineInfo;
+  compactionMode?: AgentCompactionMode;
 }): boolean {
-  return params.contextEngineInfo?.ownsCompaction === true;
+  return params.contextEngineInfo?.ownsCompaction === true || params.compactionMode === "safeguard";
 }
 
 /** Disable Pi auto-compaction via settings when a context engine owns compaction. */
 export function applyPiAutoCompactionGuard(params: {
   settingsManager: PiSettingsManagerLike;
   contextEngineInfo?: ContextEngineInfo;
+  compactionMode?: AgentCompactionMode;
 }): { supported: boolean; disabled: boolean } {
   const disable = shouldDisablePiAutoCompaction({
     contextEngineInfo: params.contextEngineInfo,
+    compactionMode: params.compactionMode,
   });
   const hasMethod = typeof params.settingsManager.setCompactionEnabled === "function";
   if (!disable || !hasMethod) {

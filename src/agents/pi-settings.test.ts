@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   applyPiCompactionSettingsFromConfig,
+  applyPiAutoCompactionGuard,
   DEFAULT_PI_COMPACTION_RESERVE_TOKENS_FLOOR,
   resolveCompactionReserveTokensFloor,
+  resolveEffectiveCompactionMode,
+  shouldDisablePiAutoCompaction,
 } from "./pi-settings.js";
 
 describe("applyPiCompactionSettingsFromConfig", () => {
@@ -138,5 +141,81 @@ describe("resolveCompactionReserveTokensFloor", () => {
         agents: { defaults: { compaction: { reserveTokensFloor: 0 } } },
       }),
     ).toBe(0);
+  });
+});
+
+describe("resolveEffectiveCompactionMode", () => {
+  it("defaults to default compaction mode", () => {
+    expect(resolveEffectiveCompactionMode()).toBe("default");
+    expect(resolveEffectiveCompactionMode({ agents: { defaults: { compaction: {} } } })).toBe(
+      "default",
+    );
+    expect(
+      resolveEffectiveCompactionMode({
+        agents: { defaults: { compaction: { mode: "default" } } },
+      }),
+    ).toBe("default");
+  });
+
+  it("returns safeguard for explicit safeguard mode or configured compaction provider", () => {
+    expect(
+      resolveEffectiveCompactionMode({
+        agents: { defaults: { compaction: { mode: "safeguard" } } },
+      }),
+    ).toBe("safeguard");
+    expect(
+      resolveEffectiveCompactionMode({
+        agents: { defaults: { compaction: { provider: "deepseek" } } },
+      }),
+    ).toBe("safeguard");
+    expect(
+      resolveEffectiveCompactionMode({
+        agents: { defaults: { compaction: { mode: "default", provider: "deepseek" } } },
+      }),
+    ).toBe("safeguard");
+  });
+});
+
+describe("shouldDisablePiAutoCompaction", () => {
+  it("returns false with no owner and default compaction mode", () => {
+    expect(shouldDisablePiAutoCompaction({})).toBe(false);
+    expect(shouldDisablePiAutoCompaction({ compactionMode: "default" })).toBe(false);
+    expect(
+      shouldDisablePiAutoCompaction({
+        contextEngineInfo: { id: "legacy", name: "Legacy", ownsCompaction: false },
+        compactionMode: "default",
+      }),
+    ).toBe(false);
+  });
+
+  it("returns true when a context engine or safeguard mode owns compaction", () => {
+    expect(
+      shouldDisablePiAutoCompaction({
+        contextEngineInfo: { id: "third-party", name: "Third-party", ownsCompaction: true },
+      }),
+    ).toBe(true);
+    expect(shouldDisablePiAutoCompaction({ compactionMode: "safeguard" })).toBe(true);
+  });
+});
+
+describe("applyPiAutoCompactionGuard", () => {
+  it("disables Pi auto-compaction when provider config forces safeguard mode", () => {
+    const setCompactionEnabled = vi.fn();
+    const settingsManager = {
+      getCompactionReserveTokens: () => 20_000,
+      getCompactionKeepRecentTokens: () => 4_000,
+      applyOverrides: () => {},
+      setCompactionEnabled,
+    };
+
+    const result = applyPiAutoCompactionGuard({
+      settingsManager,
+      compactionMode: resolveEffectiveCompactionMode({
+        agents: { defaults: { compaction: { provider: "deepseek" } } },
+      }),
+    });
+
+    expect(result).toEqual({ supported: true, disabled: true });
+    expect(setCompactionEnabled).toHaveBeenCalledWith(false);
   });
 });

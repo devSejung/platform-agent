@@ -38,6 +38,42 @@ function replaceLatestCompactionBoundary(params: {
   });
 }
 
+function entryCreatesCompactionInputMessage(entry: SessionEntry): boolean {
+  return (
+    entry.type === "message" || entry.type === "custom_message" || entry.type === "branch_summary"
+  );
+}
+
+function hasMessagesToSummarizeBeforeKeptTail(params: {
+  entries: SessionEntry[];
+  compaction: CompactionEntry;
+}): boolean {
+  const compactionIndex = params.entries.findIndex((entry) => entry.id === params.compaction.id);
+  const firstKeptIndex = params.entries.findIndex(
+    (entry) => entry.id === params.compaction.firstKeptEntryId,
+  );
+  if (compactionIndex <= 0 || firstKeptIndex < 0 || firstKeptIndex >= compactionIndex) {
+    return false;
+  }
+
+  let boundaryStartIndex = 0;
+  for (let i = compactionIndex - 1; i >= 0; i -= 1) {
+    const entry = params.entries[i];
+    if (entry?.type !== "compaction") {
+      continue;
+    }
+    const previousFirstKeptIndex = params.entries.findIndex(
+      (candidate) => candidate.id === entry.firstKeptEntryId,
+    );
+    boundaryStartIndex = previousFirstKeptIndex >= 0 ? previousFirstKeptIndex : i + 1;
+    break;
+  }
+
+  return params.entries
+    .slice(boundaryStartIndex, firstKeptIndex)
+    .some((entry) => entryCreatesCompactionInputMessage(entry));
+}
+
 export async function hardenManualCompactionBoundary(params: {
   sessionFile: string;
 }): Promise<HardenedManualCompactionBoundary> {
@@ -68,8 +104,8 @@ export async function hardenManualCompactionBoundary(params: {
     };
   }
 
+  const sessionContext = sessionManager.buildSessionContext();
   if (leaf.firstKeptEntryId === leaf.id) {
-    const sessionContext = sessionManager.buildSessionContext();
     return {
       applied: false,
       firstKeptEntryId: leaf.id,
@@ -81,10 +117,29 @@ export async function hardenManualCompactionBoundary(params: {
     };
   }
 
+  const entries = sessionManager.getEntries();
+  if (
+    !leaf.summary.trim() ||
+    !hasMessagesToSummarizeBeforeKeptTail({
+      entries,
+      compaction: leaf,
+    })
+  ) {
+    return {
+      applied: false,
+      firstKeptEntryId: leaf.firstKeptEntryId,
+      leafId:
+        typeof sessionManager.getLeafId === "function"
+          ? (sessionManager.getLeafId() ?? undefined)
+          : undefined,
+      messages: sessionContext.messages,
+    };
+  }
+
   const content = serializeSessionFile(
     header,
     replaceLatestCompactionBoundary({
-      entries: sessionManager.getEntries(),
+      entries,
       compactionEntryId: leaf.id,
     }),
   );
@@ -93,11 +148,11 @@ export async function hardenManualCompactionBoundary(params: {
   await fs.rename(tmpFile, params.sessionFile);
 
   const refreshed = SessionManager.open(params.sessionFile);
-  const sessionContext = refreshed.buildSessionContext();
+  const refreshedContext = refreshed.buildSessionContext();
   return {
     applied: true,
     firstKeptEntryId: leaf.id,
     leafId: refreshed.getLeafId() ?? undefined,
-    messages: sessionContext.messages,
+    messages: refreshedContext.messages,
   };
 }

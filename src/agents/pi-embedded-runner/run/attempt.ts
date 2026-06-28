@@ -82,7 +82,7 @@ import {
 } from "../../pi-embedded-helpers.js";
 import { subscribeEmbeddedPiSession } from "../../pi-embedded-subscribe.js";
 import { createPreparedEmbeddedPiSettingsManager } from "../../pi-project-settings.js";
-import { applyPiAutoCompactionGuard } from "../../pi-settings.js";
+import { applyPiAutoCompactionGuard, resolveEffectiveCompactionMode } from "../../pi-settings.js";
 import { toClientToolDefinitions } from "../../pi-tool-definition-adapter.js";
 import { createOpenClawCodingTools, resolveToolLoopDetectionConfig } from "../../pi-tools.js";
 import { registerProviderStreamForModel } from "../../provider-stream.js";
@@ -927,6 +927,7 @@ export async function runEmbeddedAttempt(
       applyPiAutoCompactionGuard({
         settingsManager,
         contextEngineInfo: params.contextEngine?.info,
+        compactionMode: resolveEffectiveCompactionMode(params.config),
       });
 
       // Sets compaction/pruning runtime state and returns extension factories

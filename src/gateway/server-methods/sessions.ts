@@ -42,6 +42,7 @@ import {
   enforceEmployeeAgent,
   enforceEmployeeSessionKey,
   filterEmployeeSessionRows,
+  getEmployeeAgentId,
   isEmployeeClient,
 } from "../employee-access.js";
 import { GATEWAY_CLIENT_IDS } from "../protocol/client-info.js";
@@ -633,7 +634,13 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     }
     const p = params;
     const cfg = loadConfig();
-    const { storePath, store } = loadCombinedSessionStoreForGateway(cfg);
+    const employeeAgentId = getEmployeeAgentId(client);
+    const scopedAgentId =
+      employeeAgentId ??
+      (typeof p.agentId === "string" && p.agentId.trim() ? normalizeAgentId(p.agentId) : undefined);
+    const { storePath, store } = loadCombinedSessionStoreForGateway(cfg, {
+      agentId: scopedAgentId,
+    });
     const result = listSessionsFromStore({
       cfg,
       storePath,
@@ -809,7 +816,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     }
     respond(true, { ok: true, key: resolved.key }, undefined);
   },
-  "sessions.compaction.list": ({ params, respond }) => {
+  "sessions.compaction.list": ({ params, respond, client }) => {
     if (
       !assertValidParams(
         params,
@@ -824,6 +831,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     if (!key) {
       return;
     }
+    if (!enforceEmployeeSessionKey(client, key, respond, "session compaction")) {
+      return;
+    }
     const { entry, canonicalKey } = loadSessionEntry(key);
     respond(
       true,
@@ -835,7 +845,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       undefined,
     );
   },
-  "sessions.compaction.get": ({ params, respond }) => {
+  "sessions.compaction.get": ({ params, respond, client }) => {
     if (
       !assertValidParams(
         params,
@@ -849,6 +859,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const p = params;
     const key = requireSessionKey(p.key, respond);
     if (!key) {
+      return;
+    }
+    if (!enforceEmployeeSessionKey(client, key, respond, "session compaction")) {
       return;
     }
     const checkpointId = normalizeOptionalString(p.checkpointId) ?? "";
@@ -1064,7 +1077,7 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       });
     }
   },
-  "sessions.compaction.branch": async ({ params, respond, context }) => {
+  "sessions.compaction.branch": async ({ params, respond, context, client }) => {
     if (
       !assertValidParams(
         params,
@@ -1078,6 +1091,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const p = params;
     const key = requireSessionKey(p.key, respond);
     if (!key) {
+      return;
+    }
+    if (!enforceEmployeeSessionKey(client, key, respond, "session compaction")) {
       return;
     }
     const checkpointId =
@@ -1190,6 +1206,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const p = params;
     const key = requireSessionKey(p.key, respond);
     if (!key) {
+      return;
+    }
+    if (!enforceEmployeeSessionKey(client, key, respond, "session compaction")) {
       return;
     }
     const checkpointId =
@@ -1450,13 +1469,16 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       reason: "patch",
     });
   },
-  "sessions.reset": async ({ params, respond, context }) => {
+  "sessions.reset": async ({ params, respond, context, client }) => {
     if (!assertValidParams(params, validateSessionsResetParams, "sessions.reset", respond)) {
       return;
     }
     const p = params;
     const key = requireSessionKey(p.key, respond);
     if (!key) {
+      return;
+    }
+    if (!enforceEmployeeSessionKey(client, key, respond, "session reset")) {
       return;
     }
 
@@ -1487,6 +1509,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       return;
     }
     if (rejectWebchatSessionMutation({ action: "delete", client, isWebchatConnect, respond })) {
+      return;
+    }
+    if (!enforceEmployeeSessionKey(client, key, respond, "session delete")) {
       return;
     }
 
@@ -1571,10 +1596,13 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       });
     }
   },
-  "sessions.get": ({ params, respond }) => {
+  "sessions.get": ({ params, respond, client }) => {
     const p = params;
     const key = requireSessionKey(p.key ?? p.sessionKey, respond);
     if (!key) {
+      return;
+    }
+    if (!enforceEmployeeSessionKey(client, key, respond, "session get")) {
       return;
     }
     const limit =

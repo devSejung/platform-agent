@@ -1031,6 +1031,120 @@ describe("gateway server sessions", () => {
     );
   });
 
+  test("employee session checkpoint and restore paths are limited to the employee session", async () => {
+    await createSessionStoreDir();
+    await writeSessionStore({
+      entries: {
+        "agent:eon:main": {
+          sessionId: "sess-eon",
+          updatedAt: Date.now(),
+        },
+        "agent:minji:main": {
+          sessionId: "sess-minji",
+          updatedAt: Date.now(),
+          compactionCheckpoints: [
+            {
+              checkpointId: "checkpoint-minji",
+              sessionKey: "agent:minji:main",
+              sessionId: "sess-minji",
+              createdAt: Date.now(),
+              reason: "manual",
+              preCompaction: {
+                sessionId: "pre-minji",
+                sessionFile: "/tmp/minji-pre.jsonl",
+                leafId: "leaf-minji",
+              },
+              postCompaction: {
+                sessionId: "sess-minji",
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const sessionsHandlers = await getSessionsHandlers();
+    const employeeClient = {
+      connect: { role: "employee" },
+      internal: { employee: { agentId: "eon" } },
+    } as never;
+    const context = {
+      broadcastToConnIds: vi.fn(),
+      broadcast: vi.fn(),
+      getSessionEventSubscriberConnIds: () => new Set<string>(),
+      chatAbortControllers: new Map(),
+      loadGatewayModelCatalog: async () => ({ providers: [] }),
+    } as never;
+
+    const deniedCases: Array<{
+      method:
+        | "sessions.compaction.list"
+        | "sessions.compaction.get"
+        | "sessions.compaction.branch"
+        | "sessions.compaction.restore"
+        | "sessions.reset"
+        | "sessions.delete"
+        | "sessions.get";
+      params: Record<string, unknown>;
+      label: string;
+    }> = [
+      {
+        method: "sessions.compaction.list",
+        params: { key: "agent:minji:main" },
+        label: "session compaction",
+      },
+      {
+        method: "sessions.compaction.get",
+        params: { key: "agent:minji:main", checkpointId: "checkpoint-minji" },
+        label: "session compaction",
+      },
+      {
+        method: "sessions.compaction.branch",
+        params: { key: "agent:minji:main", checkpointId: "checkpoint-minji" },
+        label: "session compaction",
+      },
+      {
+        method: "sessions.compaction.restore",
+        params: { key: "agent:minji:main", checkpointId: "checkpoint-minji" },
+        label: "session compaction",
+      },
+      {
+        method: "sessions.reset",
+        params: { key: "agent:minji:main" },
+        label: "session reset",
+      },
+      {
+        method: "sessions.delete",
+        params: { key: "agent:minji:main" },
+        label: "session delete",
+      },
+      {
+        method: "sessions.get",
+        params: { key: "agent:minji:main" },
+        label: "session get",
+      },
+    ];
+
+    for (const { method, params, label } of deniedCases) {
+      const respond = vi.fn();
+      await sessionsHandlers[method]({
+        req: {} as never,
+        params,
+        respond,
+        context,
+        client: employeeClient,
+        isWebchatConnect: () => false,
+      });
+      expect(respond).toHaveBeenCalledWith(
+        false,
+        undefined,
+        expect.objectContaining({
+          message: expect.stringMatching(new RegExp(`employee access denied for ${label}`, "i")),
+        }),
+      );
+    }
+  });
+
   test("sessions.changed mutation events include sendPolicy metadata", async () => {
     await createSessionStoreDir();
     await writeSessionStore({

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   addSubagentRunForTests,
   resetSubagentRegistryForTests,
@@ -859,6 +859,59 @@ describe("loadCombinedSessionStoreForGateway includes disk-only agents (#32804)"
       const { store } = loadCombinedSessionStoreForGateway(cfg);
       expect(store["agent:main:main"]).toBeDefined();
       expect(store["agent:codex:acp-task"]).toBeDefined();
+    });
+  });
+
+  test("agent-scoped loads read only matching agent stores", async () => {
+    await withStateDirEnv("openclaw-acp-scoped-", async ({ stateDir }) => {
+      const customRoot = path.join(stateDir, "custom-state");
+      const agentsDir = path.join(customRoot, "agents");
+      const mainDir = path.join(agentsDir, "main", "sessions");
+      const codexDir = path.join(agentsDir, "codex", "sessions");
+      fs.mkdirSync(mainDir, { recursive: true });
+      fs.mkdirSync(codexDir, { recursive: true });
+
+      const mainStorePath = path.join(mainDir, "sessions.json");
+      const codexStorePath = path.join(codexDir, "sessions.json");
+      fs.writeFileSync(
+        mainStorePath,
+        JSON.stringify({
+          "agent:main:main": { sessionId: "s-main", updatedAt: 100 },
+        }),
+        "utf8",
+      );
+      fs.writeFileSync(
+        codexStorePath,
+        JSON.stringify({
+          "agent:codex:acp-task": { sessionId: "s-codex", updatedAt: 200 },
+        }),
+        "utf8",
+      );
+
+      const cfg = {
+        session: {
+          mainKey: "main",
+          store: path.join(customRoot, "agents", "{agentId}", "sessions", "sessions.json"),
+        },
+        agents: {
+          list: [{ id: "main", default: true }],
+        },
+      } as OpenClawConfig;
+
+      const readSpy = vi.spyOn(fs, "readFileSync");
+
+      const { store, storePath } = loadCombinedSessionStoreForGateway(cfg, { agentId: "codex" });
+
+      expect(storePath).toBe(fs.realpathSync.native(codexStorePath));
+      expect(store["agent:codex:acp-task"]).toBeDefined();
+      expect(store["agent:main:main"]).toBeUndefined();
+      const readPaths = readSpy.mock.calls
+        .map((call) => call[0])
+        .filter((arg): arg is string => typeof arg === "string");
+      expect(readPaths).toContain(fs.realpathSync.native(codexStorePath));
+      expect(readPaths).not.toContain(fs.realpathSync.native(mainStorePath));
+
+      readSpy.mockRestore();
     });
   });
 });

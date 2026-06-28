@@ -31,6 +31,7 @@ import {
   canonicalizeMainSessionAlias,
   loadSessionStore,
   resolveAllAgentSessionStoreTargetsSync,
+  resolveAgentSessionStoreTargetsSync,
   resolveAgentMainSessionKey,
   resolveFreshSessionTotalTokens,
   resolveMainSessionKey,
@@ -945,6 +946,55 @@ export function resolveGatewaySessionStoreTarget(params: {
 }
 
 // Merge with existing entry based on latest timestamp to ensure data consistency and avoid overwriting with less complete data.
+type SessionEntryPair = [string, SessionEntry];
+
+function compareSessionEntryPairsByUpdatedAt(a: SessionEntryPair, b: SessionEntryPair): number {
+  return (b[1]?.updatedAt ?? 0) - (a[1]?.updatedAt ?? 0);
+}
+
+const SESSIONS_LIST_TOP_N_LIMIT = 200;
+
+function resolveSessionsListLimit(
+  opts: import("./protocol/index.js").SessionsListParams,
+): number | undefined {
+  if (typeof opts.limit !== "number" || !Number.isFinite(opts.limit)) {
+    return undefined;
+  }
+  return Math.max(1, Math.floor(opts.limit));
+}
+
+function selectNewestLimitedEntries(
+  entries: SessionEntryPair[],
+  limit: number,
+): SessionEntryPair[] {
+  const selected: SessionEntryPair[] = [];
+  for (const entry of entries) {
+    const insertAt = selected.findIndex(
+      (candidate) => compareSessionEntryPairsByUpdatedAt(entry, candidate) < 0,
+    );
+    if (insertAt >= 0) {
+      selected.splice(insertAt, 0, entry);
+      if (selected.length > limit) {
+        selected.pop();
+      }
+    } else if (selected.length < limit) {
+      selected.push(entry);
+    }
+  }
+  return selected;
+}
+
+function sortAndLimitSessionEntries(
+  entries: SessionEntryPair[],
+  limit: number | undefined,
+): SessionEntryPair[] {
+  if (limit !== undefined && limit <= SESSIONS_LIST_TOP_N_LIMIT) {
+    return selectNewestLimitedEntries(entries, limit);
+  }
+  const sorted = entries.toSorted(compareSessionEntryPairsByUpdatedAt);
+  return limit === undefined ? sorted : sorted.slice(0, limit);
+}
+
 function mergeSessionEntryIntoCombined(params: {
   cfg: OpenClawConfig;
   combined: Record<string, SessionEntry>;
@@ -956,25 +1006,39 @@ function mergeSessionEntryIntoCombined(params: {
   const existing = combined[canonicalKey];
 
   if (existing && (existing.updatedAt ?? 0) > (entry.updatedAt ?? 0)) {
+    const spawnedBy = canonicalizeSpawnedByForAgent(
+      cfg,
+      agentId,
+      existing.spawnedBy ?? entry.spawnedBy,
+    );
     combined[canonicalKey] = {
       ...entry,
       ...existing,
-      spawnedBy: canonicalizeSpawnedByForAgent(cfg, agentId, existing.spawnedBy ?? entry.spawnedBy),
+      spawnedBy,
     };
-  } else {
-    combined[canonicalKey] = {
-      ...existing,
-      ...entry,
-      spawnedBy: canonicalizeSpawnedByForAgent(
-        cfg,
-        agentId,
-        entry.spawnedBy ?? existing?.spawnedBy,
-      ),
-    };
+    return;
   }
+
+  const spawnedBy = canonicalizeSpawnedByForAgent(
+    cfg,
+    agentId,
+    entry.spawnedBy ?? existing?.spawnedBy,
+  );
+  if (!existing && entry.spawnedBy === spawnedBy) {
+    combined[canonicalKey] = entry;
+    return;
+  }
+  combined[canonicalKey] = {
+    ...existing,
+    ...entry,
+    spawnedBy,
+  };
 }
 
-export function loadCombinedSessionStoreForGateway(cfg: OpenClawConfig): {
+export function loadCombinedSessionStoreForGateway(
+  cfg: OpenClawConfig,
+  opts: { agentId?: string } = {},
+): {
   storePath: string;
   store: Record<string, SessionEntry>;
 } {
@@ -982,7 +1046,7 @@ export function loadCombinedSessionStoreForGateway(cfg: OpenClawConfig): {
   if (storeConfig && !isStorePathTemplate(storeConfig)) {
     const storePath = resolveStorePath(storeConfig);
     const defaultAgentId = normalizeAgentId(resolveDefaultAgentId(cfg));
-    const store = loadSessionStore(storePath);
+    const store = loadSessionStore(storePath, { clone: false });
     const combined: Record<string, SessionEntry> = {};
     for (const [key, entry] of Object.entries(store)) {
       const canonicalKey = canonicalizeSessionKeyForAgent(defaultAgentId, key);
@@ -997,12 +1061,18 @@ export function loadCombinedSessionStoreForGateway(cfg: OpenClawConfig): {
     return { storePath, store: combined };
   }
 
-  const targets = resolveAllAgentSessionStoreTargetsSync(cfg);
+  const requestedAgentId =
+    typeof opts.agentId === "string" && opts.agentId.trim()
+      ? normalizeAgentId(opts.agentId)
+      : undefined;
+  const targets = requestedAgentId
+    ? resolveAgentSessionStoreTargetsSync(cfg, requestedAgentId)
+    : resolveAllAgentSessionStoreTargetsSync(cfg);
   const combined: Record<string, SessionEntry> = {};
   for (const target of targets) {
     const agentId = target.agentId;
     const storePath = target.storePath;
-    const store = loadSessionStore(storePath);
+    const store = loadSessionStore(storePath, { clone: false });
     for (const [key, entry] of Object.entries(store)) {
       const canonicalKey = canonicalizeSessionKeyForAgent(agentId, key);
       mergeSessionEntryIntoCombined({
@@ -1016,7 +1086,11 @@ export function loadCombinedSessionStoreForGateway(cfg: OpenClawConfig): {
   }
 
   const storePath =
-    typeof storeConfig === "string" && storeConfig.trim() ? storeConfig.trim() : "(multiple)";
+    targets.length === 1
+      ? targets[0].storePath
+      : typeof storeConfig === "string" && storeConfig.trim()
+        ? storeConfig.trim()
+        : "(multiple)";
   return { storePath, store: combined };
 }
 
@@ -1427,7 +1501,8 @@ export function listSessionsFromStore(params: {
       ? Math.max(1, Math.floor(opts.activeMinutes))
       : undefined;
 
-  let sessions = Object.entries(store)
+  const limit = resolveSessionsListLimit(opts);
+  let entries = Object.entries(store)
     .filter(([key]) => {
       if (isCronRunSessionKey(key)) {
         return false;
@@ -1471,20 +1546,32 @@ export function listSessionsFromStore(params: {
         return true;
       }
       return entry?.label === label;
-    })
-    .map(([key, entry]) =>
-      buildGatewaySessionRow({
-        cfg,
-        storePath,
-        store,
-        key,
-        entry,
-        now,
-        includeDerivedTitles,
-        includeLastMessage,
-      }),
-    )
-    .toSorted((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+    });
+
+  if (activeMinutes !== undefined) {
+    const cutoff = now - activeMinutes * 60_000;
+    entries = entries.filter(([, entry]) => (entry?.updatedAt ?? 0) >= cutoff);
+  }
+
+  const canPrelimit = !search;
+  if (canPrelimit) {
+    entries = sortAndLimitSessionEntries(entries, limit);
+  } else {
+    entries = entries.toSorted(compareSessionEntryPairsByUpdatedAt);
+  }
+
+  let sessions = entries.map(([key, entry]) =>
+    buildGatewaySessionRow({
+      cfg,
+      storePath,
+      store,
+      key,
+      entry,
+      now,
+      includeDerivedTitles,
+      includeLastMessage,
+    }),
+  );
 
   if (search) {
     sessions = sessions.filter((s) => {
@@ -1495,13 +1582,7 @@ export function listSessionsFromStore(params: {
     });
   }
 
-  if (activeMinutes !== undefined) {
-    const cutoff = now - activeMinutes * 60_000;
-    sessions = sessions.filter((s) => (s.updatedAt ?? 0) >= cutoff);
-  }
-
-  if (typeof opts.limit === "number" && Number.isFinite(opts.limit)) {
-    const limit = Math.max(1, Math.floor(opts.limit));
+  if (!canPrelimit && limit !== undefined) {
     sessions = sessions.slice(0, limit);
   }
 

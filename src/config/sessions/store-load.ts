@@ -12,6 +12,7 @@ import { normalizeSessionRuntimeModelFields, type SessionEntry } from "./types.j
 
 export type LoadSessionStoreOptions = {
   skipCache?: boolean;
+  clone?: boolean;
 };
 
 function isSessionStoreRecord(value: unknown): value is Record<string, SessionEntry> {
@@ -73,6 +74,7 @@ export function loadSessionStore(
       storePath,
       mtimeMs: currentFileStat?.mtimeMs,
       sizeBytes: currentFileStat?.sizeBytes,
+      clone: opts.clone,
     });
     if (cached) {
       return cached;

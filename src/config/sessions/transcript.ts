@@ -1,6 +1,6 @@
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
 import { prepareSessionManagerForRun } from "../../agents/pi-embedded-runner/session-manager-init.js";
 import { formatErrorMessage } from "../../infra/errors.js";
@@ -16,6 +16,39 @@ import { loadSessionStore, normalizeStoreSessionKey } from "./store.js";
 import { parseSessionThreadInfo } from "./thread-info.js";
 import { resolveMirroredTranscriptText } from "./transcript-mirror.js";
 import type { SessionEntry } from "./types.js";
+
+const transcriptAppendQueues = new Map<string, Promise<void>>();
+
+async function resolveTranscriptAppendQueueKey(sessionFile: string): Promise<string> {
+  const resolvedSessionFile = path.resolve(sessionFile);
+  const sessionDir = path.dirname(resolvedSessionFile);
+  await fs.promises.mkdir(sessionDir, { recursive: true });
+  try {
+    return path.join(await fs.promises.realpath(sessionDir), path.basename(resolvedSessionFile));
+  } catch {
+    return resolvedSessionFile;
+  }
+}
+
+async function withTranscriptAppendQueue<T>(sessionFile: string, fn: () => Promise<T>): Promise<T> {
+  const queueKey = await resolveTranscriptAppendQueueKey(sessionFile);
+  const previous = transcriptAppendQueues.get(queueKey) ?? Promise.resolve();
+  let releaseCurrent!: () => void;
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const tail = previous.catch(() => undefined).then(() => current);
+  transcriptAppendQueues.set(queueKey, tail);
+  await previous.catch(() => undefined);
+  try {
+    return await fn();
+  } finally {
+    releaseCurrent();
+    if (transcriptAppendQueues.get(queueKey) === tail) {
+      transcriptAppendQueues.delete(queueKey);
+    }
+  }
+}
 
 async function ensureSessionHeader(params: {
   sessionFile: string;
@@ -189,6 +222,27 @@ export async function appendExactMessageToSessionTranscript(params: {
       reason: formatErrorMessage(err),
     };
   }
+
+  return await withTranscriptAppendQueue(sessionFile, () =>
+    appendExactMessageToSessionTranscriptFile({
+      ...params,
+      sessionKey,
+      entry,
+      sessionFile,
+    }),
+  );
+}
+
+async function appendExactMessageToSessionTranscriptFile(params: {
+  agentId?: string;
+  sessionKey: string;
+  message: SessionTranscriptMessage;
+  idempotencyKey?: string;
+  updateMode?: SessionTranscriptUpdateMode;
+  entry: SessionEntry;
+  sessionFile: string;
+}): Promise<SessionTranscriptAppendResult> {
+  const { entry, sessionFile, sessionKey } = params;
 
   const hadSessionFile = await fs.promises
     .access(sessionFile)

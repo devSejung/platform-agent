@@ -287,6 +287,40 @@ describe("appendAssistantMessageToSessionTranscript", () => {
     emitSpy.mockRestore();
   });
 
+  it("serializes concurrent assistant transcript appends for the same file", async () => {
+    writeTranscriptStore();
+
+    const [first, second] = await Promise.all([
+      appendAssistantMessageToSessionTranscript({
+        sessionKey,
+        text: "first concurrent message",
+        storePath: fixture.storePath(),
+      }),
+      appendAssistantMessageToSessionTranscript({
+        sessionKey,
+        text: "second concurrent message",
+        storePath: fixture.storePath(),
+      }),
+    ]);
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    const sessionFile = resolveSessionTranscriptPathInDir(sessionId, fixture.sessionsDir());
+    const entries = fs
+      .readFileSync(sessionFile, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const messages = entries.filter((entry) => entry.type === "message");
+    expect(messages).toHaveLength(2);
+    expect(
+      messages.map((entry) => entry.message.content[0].text).toSorted((a, b) => a.localeCompare(b)),
+    ).toEqual(["first concurrent message", "second concurrent message"]);
+    expect(messages.every((entry) => typeof entry.id === "string" && entry.id.length > 0)).toBe(
+      true,
+    );
+  });
+
   it("appends exact user transcript messages with structured attachment metadata", async () => {
     writeTranscriptStore();
 

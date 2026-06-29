@@ -95,6 +95,8 @@ export const cronHandlers: GatewayRequestHandlers = {
       offset?: number;
       query?: string;
       enabled?: "all" | "enabled" | "disabled";
+      scheduleKind?: "all" | "at" | "every" | "cron";
+      lastRunStatus?: "all" | "ok" | "error" | "skipped" | "unknown";
       sortBy?: "nextRunAtMs" | "updatedAtMs" | "name";
       sortDir?: "asc" | "desc";
     };
@@ -104,6 +106,8 @@ export const cronHandlers: GatewayRequestHandlers = {
       offset: p.offset,
       query: p.query,
       enabled: p.enabled,
+      scheduleKind: p.scheduleKind,
+      lastRunStatus: p.lastRunStatus,
       sortBy: p.sortBy,
       sortDir: p.sortDir,
     });

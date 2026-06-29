@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createMockCronStateForJobs } from "./service.test-harness.js";
 import { listPage } from "./service/ops.js";
@@ -49,5 +52,40 @@ describe("cron listPage sort guards", () => {
 
     const page = await listPage(state, { sortBy: "nextRunAtMs", sortDir: "asc" });
     expect(page.jobs).toHaveLength(2);
+  });
+
+  it("applies schedule kind and last run status filters before pagination", async () => {
+    const jobs = [
+      createBaseJob({
+        id: "cron-ok",
+        schedule: { kind: "cron", expr: "0 * * * *" },
+        state: { nextRunAtMs: 4_102_444_800_000, lastRunStatus: "ok" },
+      }),
+      createBaseJob({
+        id: "every-error",
+        schedule: { kind: "every", everyMs: 60_000 },
+        state: { nextRunAtMs: 4_102_444_800_000, lastRunStatus: "error" },
+      }),
+      createBaseJob({
+        id: "cron-unknown",
+        schedule: { kind: "cron", expr: "5 * * * *" },
+        state: { nextRunAtMs: 4_102_444_800_000 },
+      }),
+    ];
+    const state = createMockCronStateForJobs({ jobs });
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-cron-list-page-"));
+    try {
+      state.deps.storePath = path.join(dir, "cron", "jobs.json");
+      const page = await listPage(state, {
+        includeDisabled: true,
+        scheduleKind: "cron",
+        lastRunStatus: "unknown",
+      });
+
+      expect(page.jobs.map((job) => job.id)).toEqual(["cron-unknown"]);
+      expect(page.total).toBe(1);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });

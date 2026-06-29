@@ -6,7 +6,7 @@ import {
   createRunningTaskRun,
   failTaskRunByRunId,
 } from "../../tasks/task-executor.js";
-import type { CronJob, CronJobCreate, CronJobPatch } from "../types.js";
+import type { CronJob, CronJobCreate, CronJobPatch, CronRunStatus } from "../types.js";
 import {
   applyJobPatch,
   assertSupportedJobSpec,
@@ -34,6 +34,8 @@ import {
 } from "./timer.js";
 
 type CronJobsEnabledFilter = "all" | "enabled" | "disabled";
+type CronJobsScheduleKindFilter = "all" | "at" | "every" | "cron";
+type CronJobsLastRunStatusFilter = "all" | CronRunStatus | "unknown";
 type CronJobsSortBy = "nextRunAtMs" | "updatedAtMs" | "name";
 type CronSortDir = "asc" | "desc";
 
@@ -43,6 +45,8 @@ export type CronListPageOptions = {
   offset?: number;
   query?: string;
   enabled?: CronJobsEnabledFilter;
+  scheduleKind?: CronJobsScheduleKindFilter;
+  lastRunStatus?: CronJobsLastRunStatusFilter;
   sortBy?: CronJobsSortBy;
   sortDir?: CronSortDir;
 };
@@ -186,6 +190,35 @@ function resolveEnabledFilter(opts?: CronListPageOptions): CronJobsEnabledFilter
   return opts?.includeDisabled ? "all" : "enabled";
 }
 
+function resolveScheduleKindFilter(opts?: CronListPageOptions): CronJobsScheduleKindFilter {
+  if (
+    opts?.scheduleKind === "all" ||
+    opts?.scheduleKind === "at" ||
+    opts?.scheduleKind === "every" ||
+    opts?.scheduleKind === "cron"
+  ) {
+    return opts.scheduleKind;
+  }
+  return "all";
+}
+
+function resolveLastRunStatusFilter(opts?: CronListPageOptions): CronJobsLastRunStatusFilter {
+  if (
+    opts?.lastRunStatus === "all" ||
+    opts?.lastRunStatus === "ok" ||
+    opts?.lastRunStatus === "error" ||
+    opts?.lastRunStatus === "skipped" ||
+    opts?.lastRunStatus === "unknown"
+  ) {
+    return opts.lastRunStatus;
+  }
+  return "all";
+}
+
+function resolveJobLastRunStatus(job: CronJob): CronJobsLastRunStatusFilter {
+  return job.state.lastRunStatus ?? job.state.lastStatus ?? "unknown";
+}
+
 function sortJobs(jobs: CronJob[], sortBy: CronJobsSortBy, sortDir: CronSortDir) {
   const dir = sortDir === "desc" ? -1 : 1;
   return jobs.toSorted((a, b) => {
@@ -223,6 +256,8 @@ export async function listPage(state: CronServiceState, opts?: CronListPageOptio
     await ensureLoadedForRead(state);
     const query = normalizeLowercaseStringOrEmpty(opts?.query);
     const enabledFilter = resolveEnabledFilter(opts);
+    const scheduleKindFilter = resolveScheduleKindFilter(opts);
+    const lastRunStatusFilter = resolveLastRunStatusFilter(opts);
     const sortBy = opts?.sortBy ?? "nextRunAtMs";
     const sortDir = opts?.sortDir ?? "asc";
     const source = state.store?.jobs ?? [];
@@ -233,11 +268,17 @@ export async function listPage(state: CronServiceState, opts?: CronListPageOptio
       if (enabledFilter === "disabled" && isJobEnabled(job)) {
         return false;
       }
+      if (scheduleKindFilter !== "all" && job.schedule.kind !== scheduleKindFilter) {
+        return false;
+      }
+      if (lastRunStatusFilter !== "all" && resolveJobLastRunStatus(job) !== lastRunStatusFilter) {
+        return false;
+      }
       if (!query) {
         return true;
       }
       const haystack = normalizeLowercaseStringOrEmpty(
-        [job.name, job.description ?? "", job.agentId ?? ""].join(" "),
+        [job.id, job.name, job.description ?? "", job.agentId ?? ""].join(" "),
       );
       return haystack.includes(query);
     });

@@ -10,7 +10,7 @@ import type { ModelCatalogEntry } from "./types.ts";
 
 type ChatModelSelectStateInput = Pick<
   AppViewState,
-  "sessionKey" | "chatModelOverrides" | "chatModelCatalog" | "sessionsResult" | "employeeMode"
+  "sessionKey" | "chatModelOverrides" | "chatModelCatalog" | "sessionsResult"
 >;
 
 export type ChatModelSelectOption = {
@@ -58,7 +58,6 @@ function buildChatModelOptions(
   catalog: ModelCatalogEntry[],
   currentOverride: string,
   defaultModel: string,
-  opts?: { catalogOptions?: boolean },
 ): ChatModelSelectOption[] {
   const seen = new Set<string>();
   const options: ChatModelSelectOption[] = [];
@@ -76,11 +75,9 @@ function buildChatModelOptions(
     options.push({ value: trimmed, label: label ?? trimmed });
   };
 
-  if (opts?.catalogOptions ?? true) {
-    for (const entry of catalog) {
-      const option = buildChatModelOption(entry);
-      addOption(option.value, option.label);
-    }
+  for (const entry of catalog) {
+    const option = buildChatModelOption(entry);
+    addOption(option.value, option.label);
   }
 
   if (currentOverride) {
@@ -104,8 +101,6 @@ export function resolveChatModelSelectState(
     defaultModel,
     defaultDisplay,
     defaultLabel: defaultModel ? `Default (${defaultDisplay})` : "Default model",
-    options: buildChatModelOptions(state.chatModelCatalog ?? [], currentOverride, defaultModel, {
-      catalogOptions: !state.employeeMode,
-    }),
+    options: buildChatModelOptions(state.chatModelCatalog ?? [], currentOverride, defaultModel),
   };
 }

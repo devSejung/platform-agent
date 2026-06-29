@@ -775,7 +775,7 @@
 .employee-chat-sessions {
   display: grid;
   gap: 8px;
-  margin: 6px 0 14px 24px;
+  margin: 6px 0 14px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -893,8 +893,8 @@
 
 .employee-chat-session--active,
 .employee-chat-session--active:disabled {
-  background: color-mix(in srgb, #c64545 9%, #faf9f5 91%);
-  border-color: color-mix(in srgb, #c64545 26%, #e6dfd8 74%);
+  background: #efe9de;
+  border-color: #e6dfd8;
   color: #141413;
   cursor: default;
 }
@@ -907,8 +907,8 @@
 }
 
 .employee-chat-session__dot--active {
-  background: #c64545;
-  box-shadow: 0 0 0 3px color-mix(in srgb, #c64545 12%, transparent);
+  background: #0f7c72;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #0f7c72 12%, transparent);
 }
 
 .employee-chat-session__body {

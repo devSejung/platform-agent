@@ -775,8 +775,8 @@
 .employee-chat-sessions {
   display: grid;
   gap: 8px;
-  margin: 6px 0 14px;
-  padding: 0;
+  margin: 8px 0 14px;
+  padding: 2px 0 0;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -788,7 +788,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 3px;
+  padding: 0 8px;
   color: #6c6a64;
   font-size: 12px;
   font-weight: 600;
@@ -818,7 +818,7 @@
 }
 
 .employee-chat-sessions__new:hover:not(:disabled) {
-  border-color: color-mix(in srgb, #0f7c72 32%, #e6dfd8 68%);
+  border-color: color-mix(in srgb, #0f7c72 38%, #e6dfd8 62%);
   background: #f5f0e8;
   color: #141413;
 }
@@ -899,6 +899,10 @@
   background: #b9b5ad;
 }
 
+.employee-chat-session--active .employee-chat-session__dot {
+  background: #0f7c72;
+}
+
 .employee-chat-session__body {
   min-width: 0;
   display: grid;
@@ -948,7 +952,7 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 3px;
+  padding: 0 8px;
 }
 
 .sidebar--collapsed .sidebar-shell {

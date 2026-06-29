@@ -194,7 +194,7 @@ describe("employee mode", () => {
     expect(app.querySelector(".employee-chat-session__live")).not.toBeNull();
   });
 
-  it("keeps the employee recent chat session list visible outside the Chat tab", async () => {
+  it("shows the employee recent chat session list only while Chat is active", async () => {
     const app = mountConnectedEmployeeApp("/employee/files");
     app.employeeProfile = {
       employeeId: "eon",
@@ -211,14 +211,19 @@ describe("employee mode", () => {
     app.requestUpdate();
     await app.updateComplete;
 
+    expect(app.querySelector(".employee-chat-sessions")).toBeNull();
+
+    app.tab = "chat";
+    app.requestUpdate();
+    await app.updateComplete;
+
     const sidebarSessions = app.querySelector(".employee-chat-sessions");
-    expect(sidebarSessions).not.toBeNull();
     expect(sidebarSessions?.textContent).toContain("최근");
     expect(sidebarSessions?.textContent).toContain("Main");
   });
 
-  it("navigates back to Chat when selecting a recent employee session", async () => {
-    const app = mountConnectedEmployeeApp("/employee/files");
+  it("switches to a recent employee session from the Chat sidebar panel", async () => {
+    const app = mountConnectedEmployeeApp("/employee/chat");
     const request = vi.fn(async (method: string) => {
       if (method === "chat.history") {
         return { messages: [] };
@@ -243,7 +248,7 @@ describe("employee mode", () => {
       department: "Ops",
       agentId: "eon",
     };
-    app.tab = "files";
+    app.tab = "chat";
     app.sessionKey = "agent:eon:main";
     app.sessionsResult = createSessionsResult([
       { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
@@ -264,7 +269,6 @@ describe("employee mode", () => {
     alpha?.click();
     await flushEmployeeApp(app);
 
-    expect(app.tab).toBe("chat");
     expect(app.sessionKey).toBe("agent:eon:dashboard:alpha");
     expect(request).toHaveBeenCalledWith(
       "chat.history",

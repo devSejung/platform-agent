@@ -153,7 +153,7 @@ describe("employee mode", () => {
     const list = app.querySelector<HTMLElement>(".employee-chat-sessions__list");
     expect(list).not.toBeNull();
     expect(Array.from(list!.querySelectorAll(".employee-chat-session"))).toHaveLength(4);
-    expect(app.textContent).toContain("4개 세션");
+    expect(app.querySelector(".employee-chat-sessions__header")?.textContent).toContain("4개");
     expect(app.textContent).toContain("Alpha Plan");
     expect(app.textContent).not.toContain("agent:eon:dashboard:alpha");
 
@@ -166,6 +166,84 @@ describe("employee mode", () => {
     const sidebarSessions = app.querySelector(".employee-chat-sessions");
     expect(sidebarSessions?.textContent).toContain("Beta Notes");
     expect(sidebarSessions?.textContent).not.toContain("Alpha Plan");
+  });
+
+  it("keeps the employee recent chat session list visible outside the Chat tab", async () => {
+    const app = mountConnectedEmployeeApp("/employee/files");
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.tab = "files";
+    app.sessionKey = "agent:eon:main";
+    app.sessionsResult = createSessionsResult([
+      { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+    ]);
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const sidebarSessions = app.querySelector(".employee-chat-sessions");
+    expect(sidebarSessions).not.toBeNull();
+    expect(sidebarSessions?.textContent).toContain("최근");
+    expect(sidebarSessions?.textContent).toContain("Main");
+  });
+
+  it("navigates back to Chat when selecting a recent employee session", async () => {
+    const app = mountConnectedEmployeeApp("/employee/files");
+    const request = vi.fn(async (method: string) => {
+      if (method === "chat.history") {
+        return { messages: [] };
+      }
+      if (method === "sessions.list") {
+        return createSessionsResult([
+          { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+          {
+            key: "agent:eon:dashboard:alpha",
+            kind: "direct",
+            label: "Alpha Plan",
+            updatedAt: Date.now(),
+          },
+        ]);
+      }
+      return {};
+    });
+    app.client = { request, stop: vi.fn() } as never;
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.tab = "files";
+    app.sessionKey = "agent:eon:main";
+    app.sessionsResult = createSessionsResult([
+      { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+      {
+        key: "agent:eon:dashboard:alpha",
+        kind: "direct",
+        label: "Alpha Plan",
+        updatedAt: Date.now(),
+      },
+    ]);
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const alpha = Array.from(
+      app.querySelectorAll<HTMLButtonElement>(".employee-chat-session"),
+    ).find((button) => button.textContent?.includes("Alpha Plan"));
+    alpha?.click();
+    await flushEmployeeApp(app);
+
+    expect(app.tab).toBe("chat");
+    expect(app.sessionKey).toBe("agent:eon:dashboard:alpha");
+    expect(request).toHaveBeenCalledWith(
+      "chat.history",
+      expect.objectContaining({ sessionKey: "agent:eon:dashboard:alpha" }),
+    );
   });
 
   it("creates and switches employee chat sessions through sessions.create and chat.history", async () => {

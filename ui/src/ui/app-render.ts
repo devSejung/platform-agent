@@ -610,6 +610,18 @@ function formatEmployeeSessionMeta(
   return [modelLabel, formatEmployeeRelative(row.updatedAt)].filter(Boolean).join(" · ");
 }
 
+function formatEmployeeSessionTitle(row: GatewaySessionRow): string {
+  const displayName = resolveSessionDisplayName(row.key, row);
+  if (displayName && displayName !== row.key) {
+    return displayName;
+  }
+  const parsed = parseAgentSessionKey(row.key);
+  if (parsed?.agentId && parsed.rest) {
+    return parsed.rest;
+  }
+  return displayName || row.key;
+}
+
 async function createEmployeeChatSession(state: AppViewState) {
   if (!state.client || !state.connected) {
     return;
@@ -629,6 +641,7 @@ async function createEmployeeChatSession(state: AppViewState) {
     const key = typeof created?.key === "string" ? created.key.trim() : "";
     if (key) {
       await switchChatSession(state, key);
+      state.setTab("chat");
     }
   } catch (err) {
     state.sessionsError = String(err);
@@ -636,7 +649,7 @@ async function createEmployeeChatSession(state: AppViewState) {
 }
 
 function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollapsed: boolean) {
-  if (!state.employeeMode || tab !== "chat" || navCollapsed || state.tab !== "chat") {
+  if (!state.employeeMode || tab !== "chat" || navCollapsed) {
     return nothing;
   }
   const query = state.employeeChatSessionSearch.trim().toLowerCase();
@@ -646,14 +659,18 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
       if (!query) {
         return true;
       }
-      const name = resolveSessionDisplayName(row.key, row).toLowerCase();
+      const name = formatEmployeeSessionTitle(row).toLowerCase();
       const meta = formatEmployeeSessionMeta(row, state.sessionsResult?.defaults).toLowerCase();
       return name.includes(query) || meta.includes(query);
     });
   const count = rows.length;
   return html`
     <div class="employee-chat-sessions" aria-label="Chat sessions">
-      <div class="employee-chat-sessions__actions">
+      <div class="employee-chat-sessions__header">
+        <span>최근</span>
+        <span>${count}개</span>
+      </div>
+      <div class="employee-chat-sessions__tools">
         <button
           type="button"
           class="employee-chat-sessions__new"
@@ -663,23 +680,23 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
           <span aria-hidden="true">${icons.plus}</span>
           <span>새 대화</span>
         </button>
+        <label class="employee-chat-sessions__search">
+          <span aria-hidden="true">${icons.search}</span>
+          <input
+            type="search"
+            placeholder="검색"
+            .value=${state.employeeChatSessionSearch}
+            @input=${(event: Event) => {
+              state.employeeChatSessionSearch = (event.target as HTMLInputElement).value;
+            }}
+          />
+        </label>
       </div>
-      <label class="employee-chat-sessions__search">
-        <span aria-hidden="true">${icons.search}</span>
-        <input
-          type="search"
-          placeholder="세션 검색"
-          .value=${state.employeeChatSessionSearch}
-          @input=${(event: Event) => {
-            state.employeeChatSessionSearch = (event.target as HTMLInputElement).value;
-          }}
-        />
-      </label>
       <div class="employee-chat-sessions__list" role="list">
         ${rows.length
           ? rows.map((row) => {
               const selected = row.key === state.sessionKey;
-              const label = resolveSessionDisplayName(row.key, row);
+              const label = formatEmployeeSessionTitle(row);
               const meta = formatEmployeeSessionMeta(row, state.sessionsResult?.defaults);
               return html`
                 <button
@@ -690,6 +707,7 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                   ?disabled=${selected}
                   @click=${async () => {
                     if (await switchChatSession(state, row.key)) {
+                      state.setTab("chat");
                       void refreshChatAvatar(state);
                     }
                   }}
@@ -709,10 +727,14 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
             })
           : html`<div class="employee-chat-sessions__empty">표시할 세션이 없습니다.</div>`}
       </div>
-      <div class="employee-chat-sessions__footer">
-        ${state.sessionsLoading ? "불러오는 중" : `${count}개 세션`}
-        ${state.sessionsError ? html`<span>${state.sessionsError}</span>` : nothing}
-      </div>
+      ${state.sessionsLoading || state.sessionsError
+        ? html`
+            <div class="employee-chat-sessions__footer">
+              ${state.sessionsLoading ? "불러오는 중" : nothing}
+              ${state.sessionsError ? html`<span>${state.sessionsError}</span>` : nothing}
+            </div>
+          `
+        : nothing}
     </div>
   `;
 }

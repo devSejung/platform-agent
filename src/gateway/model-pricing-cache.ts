@@ -10,6 +10,7 @@ import {
 import type { OpenClawConfig } from "../config/config.js";
 import { resolvePluginWebSearchConfig } from "../config/plugin-web-search-config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { readResponseWithLimit } from "../media/read-response-with-limit.js";
 import { resolveManifestContractPluginIds } from "../plugins/manifest-registry.js";
 import { normalizeProviderModelIdWithPlugin } from "../plugins/provider-runtime.js";
 import { normalizeOptionalString, resolvePrimaryStringValue } from "../shared/string-coerce.js";
@@ -38,6 +39,7 @@ export { getCachedGatewayModelPricing };
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
 const CACHE_TTL_MS = 24 * 60 * 60_000;
 const FETCH_TIMEOUT_MS = 15_000;
+const MAX_PRICING_CATALOG_BYTES = 5 * 1024 * 1024;
 const PROVIDER_ALIAS_TO_OPENROUTER: Record<string, string> = {
   "google-gemini-cli": "google",
   kimi: "moonshotai",
@@ -321,26 +323,40 @@ export function collectConfiguredModelPricingRefs(config: OpenClawConfig): Model
 async function fetchOpenRouterPricingCatalog(
   fetchImpl: typeof fetch,
 ): Promise<Map<string, OpenRouterPricingEntry>> {
-  const response = await fetchImpl(OPENROUTER_MODELS_URL, {
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-  if (!response.ok) {
-    throw new Error(`OpenRouter /models failed: HTTP ${response.status}`);
-  }
-  const payload = (await response.json()) as { data?: unknown };
-  const entries = Array.isArray(payload.data) ? payload.data : [];
-  const catalog = new Map<string, OpenRouterPricingEntry>();
-  for (const entry of entries) {
-    const obj = entry as OpenRouterModelPayload;
-    const id = normalizeOptionalString(obj.id) ?? "";
-    const pricing = parseOpenRouterPricing(obj.pricing);
-    if (!id || !pricing) {
-      continue;
+  let response: Response | undefined;
+  try {
+    response = await fetchImpl(OPENROUTER_MODELS_URL, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw new Error(`OpenRouter /models failed: HTTP ${response.status}`);
     }
-    catalog.set(id, { id, pricing });
+    const contentLength = Number(response.headers.get("content-length") ?? "0");
+    if (Number.isFinite(contentLength) && contentLength > MAX_PRICING_CATALOG_BYTES) {
+      throw new Error(`OpenRouter pricing response too large: ${contentLength} bytes`);
+    }
+    const buffer = await readResponseWithLimit(response, MAX_PRICING_CATALOG_BYTES, {
+      onOverflow: ({ size }) => new Error(`OpenRouter pricing response too large: ${size} bytes`),
+    });
+    const payload = JSON.parse(buffer.toString("utf8")) as { data?: unknown };
+    const entries = Array.isArray(payload.data) ? payload.data : [];
+    const catalog = new Map<string, OpenRouterPricingEntry>();
+    for (const entry of entries) {
+      const obj = entry as OpenRouterModelPayload;
+      const id = normalizeOptionalString(obj.id) ?? "";
+      const pricing = parseOpenRouterPricing(obj.pricing);
+      if (!id || !pricing) {
+        continue;
+      }
+      catalog.set(id, { id, pricing });
+    }
+    return catalog;
+  } finally {
+    if (response?.bodyUsed !== true) {
+      await response?.body?.cancel().catch(() => undefined);
+    }
   }
-  return catalog;
 }
 
 function resolveCatalogPricingForRef(params: {

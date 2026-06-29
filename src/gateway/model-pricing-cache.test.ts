@@ -241,4 +241,43 @@ describe("model-pricing-cache", () => {
       cacheWrite: 0,
     });
   });
+
+  it("bounds streamed OpenRouter catalog responses without content-length", async () => {
+    const config = {
+      agents: {
+        defaults: {
+          model: { primary: "anthropic/claude-opus-4-6" },
+        },
+      },
+    } as unknown as OpenClawConfig;
+
+    const cancel = vi.fn();
+    let pullCount = 0;
+    const fetchImpl = withFetchPreconnect(
+      async () =>
+        new Response(
+          new ReadableStream({
+            pull(controller) {
+              pullCount += 1;
+              controller.enqueue(new Uint8Array(pullCount === 1 ? 5 * 1024 * 1024 : 1));
+            },
+            cancel,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    );
+
+    await expect(refreshGatewayModelPricingCache({ config, fetchImpl })).rejects.toThrow(
+      "OpenRouter pricing response too large: 5242881 bytes",
+    );
+
+    expect(pullCount).toBeGreaterThanOrEqual(2);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(
+      getCachedGatewayModelPricing({ provider: "anthropic", model: "claude-opus-4-6" }),
+    ).toBeUndefined();
+  });
 });

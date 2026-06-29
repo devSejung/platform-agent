@@ -1,4 +1,5 @@
 import { html, nothing } from "lit";
+import { live } from "lit/directives/live.js";
 import { repeat } from "lit/directives/repeat.js";
 import { buildAgentMainSessionKey } from "../../../src/routing/session-key.js";
 import { t } from "../i18n/index.ts";
@@ -888,6 +889,7 @@ function renderChatModelSelect(state: AppViewState) {
         data-chat-model-select="true"
         aria-label="Chat model"
         title=${selectedLabel}
+        .value=${live(currentOverride)}
         ?disabled=${disabled}
         @change=${async (e: Event) => {
           const next = (e.target as HTMLSelectElement).value.trim();

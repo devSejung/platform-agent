@@ -45,6 +45,7 @@ import {
 import {
   INTERNAL_MESSAGE_CHANNEL,
   isGatewayCliClient,
+  isOperatorUiClient,
   isWebchatClient,
   normalizeMessageChannel,
 } from "../../utils/message-channel.js";
@@ -2003,9 +2004,13 @@ export const chatHandlers: GatewayRequestHandlers = {
         ChatType: "direct",
         CommandAuthorized: true,
         MessageSid: clientRunId,
-        SenderId: clientInfo?.id,
-        SenderName: clientInfo?.displayName,
-        SenderUsername: clientInfo?.displayName,
+        ...(!isOperatorUiClient(clientInfo)
+          ? {
+              SenderId: clientInfo?.id,
+              SenderName: clientInfo?.displayName,
+              SenderUsername: clientInfo?.displayName,
+            }
+          : {}),
         GatewayClientScopes: client?.connect?.scopes,
       };
 

@@ -601,6 +601,67 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     expect(extractFirstTextBlock(payload)).toBe("hello");
   });
 
+  it("chat.send does not inject sender identity fields for Control UI clients", async () => {
+    createTranscriptFixture("openclaw-chat-send-control-ui-sender-");
+    mockState.finalText = "ok";
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-control-ui-sender",
+      client: {
+        connect: {
+          client: {
+            id: GATEWAY_CLIENT_NAMES.CONTROL_UI,
+            mode: GATEWAY_CLIENT_MODES.WEBCHAT,
+            version: "dev",
+            platform: "web",
+          },
+          scopes: ["operator.write"],
+        },
+      },
+      expectBroadcast: false,
+    });
+
+    expect(mockState.lastDispatchCtx?.SenderId).toBeUndefined();
+    expect(mockState.lastDispatchCtx?.SenderName).toBeUndefined();
+    expect(mockState.lastDispatchCtx?.SenderUsername).toBeUndefined();
+  });
+
+  it("chat.send keeps sender identity fields for non-operator clients", async () => {
+    createTranscriptFixture("openclaw-chat-send-cli-sender-");
+    mockState.finalText = "ok";
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-cli-sender",
+      client: {
+        connect: {
+          client: {
+            id: GATEWAY_CLIENT_NAMES.CLI,
+            mode: GATEWAY_CLIENT_MODES.CLI,
+            displayName: "OpenClaw CLI",
+          },
+          scopes: ["operator.write"],
+        },
+      },
+      expectBroadcast: false,
+    });
+
+    expect(mockState.lastDispatchCtx).toEqual(
+      expect.objectContaining({
+        SenderId: GATEWAY_CLIENT_NAMES.CLI,
+        SenderName: "OpenClaw CLI",
+        SenderUsername: "OpenClaw CLI",
+      }),
+    );
+  });
+
   it("chat.send non-streaming final broadcasts and routes on the canonical session key", async () => {
     createTranscriptFixture("openclaw-chat-send-canonical-key-");
     mockState.sessionEntry = {

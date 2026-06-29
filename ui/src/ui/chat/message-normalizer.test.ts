@@ -5,6 +5,9 @@ import {
   isToolResultMessage,
 } from "./message-normalizer.ts";
 
+const SENDER_METADATA_BLOCK =
+  'Sender (untrusted metadata):\n```json\n{"label":"openclaw-control-ui","id":"openclaw-control-ui"}\n```';
+
 describe("message-normalizer", () => {
   describe("normalizeMessage", () => {
     beforeEach(() => {
@@ -31,6 +34,24 @@ describe("message-normalizer", () => {
         id: "msg-1",
         senderLabel: null,
       });
+    });
+
+    it("strips sender metadata blocks from assistant text before display", () => {
+      const result = normalizeMessage({
+        role: "assistant",
+        content: `${SENDER_METADATA_BLOCK}\n\nVisible reply`,
+      });
+
+      expect(result.content).toEqual([{ type: "text", text: "Visible reply" }]);
+    });
+
+    it("drops standalone sender metadata blocks before display", () => {
+      const result = normalizeMessage({
+        role: "system",
+        content: SENDER_METADATA_BLOCK,
+      });
+
+      expect(result.content).toEqual([]);
     });
 
     it("normalizes message with array content", () => {
@@ -95,7 +116,7 @@ describe("message-normalizer", () => {
       });
 
       expect(result.role).toBe("toolResult");
-      expect(result.content[0]).toEqual({
+      expect(result.content[0]).toMatchObject({
         type: "toolcall",
         text: undefined,
         name: "Bash",

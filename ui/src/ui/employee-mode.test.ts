@@ -168,6 +168,32 @@ describe("employee mode", () => {
     expect(sidebarSessions?.textContent).not.toContain("Alpha Plan");
   });
 
+  it("shows active employee sessions with a right-side live indicator", async () => {
+    const app = mountConnectedEmployeeApp();
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.sessionKey = "agent:eon:main";
+    app.sessionsResult = createSessionsResult([
+      {
+        key: "agent:eon:dashboard:live",
+        kind: "direct",
+        label: "Live session",
+        updatedAt: Date.now(),
+        hasActiveRun: true,
+      },
+    ]);
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    expect(app.querySelector(".employee-chat-sessions__search svg")).toBeNull();
+    expect(app.querySelector(".employee-chat-session__live")).not.toBeNull();
+  });
+
   it("keeps the employee recent chat session list visible outside the Chat tab", async () => {
     const app = mountConnectedEmployeeApp("/employee/files");
     app.employeeProfile = {

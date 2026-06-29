@@ -681,7 +681,6 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
           <span>새 대화</span>
         </button>
         <label class="employee-chat-sessions__search">
-          <span aria-hidden="true">${icons.search}</span>
           <input
             type="search"
             placeholder="검색"
@@ -712,16 +711,20 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                     }
                   }}
                 >
-                  <span
-                    class="employee-chat-session__dot ${row.hasActiveRun
-                      ? "employee-chat-session__dot--active"
-                      : ""}"
-                    aria-hidden="true"
-                  ></span>
+                  <span class="employee-chat-session__dot" aria-hidden="true"></span>
                   <span class="employee-chat-session__body">
                     <span class="employee-chat-session__title">${label}</span>
                     <span class="employee-chat-session__meta">${meta}</span>
                   </span>
+                  ${row.hasActiveRun
+                    ? html`
+                        <span
+                          class="employee-chat-session__live"
+                          title="진행 중"
+                          aria-label="진행 중"
+                        ></span>
+                      `
+                    : nothing}
                 </button>
               `;
             })

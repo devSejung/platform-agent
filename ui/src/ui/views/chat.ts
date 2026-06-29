@@ -1973,10 +1973,9 @@ export function renderChat(props: ChatProps) {
 
   const handleInput = (e: InputEvent) => {
     const target = e.target as HTMLTextAreaElement;
-    if (e.isComposing) {
-      return;
+    if (!e.isComposing) {
+      adjustTextareaHeight(target);
     }
-    adjustTextareaHeight(target);
     updateSlashMenu(target.value, requestUpdate);
     inputHistory.reset();
     props.onDraftChange(target.value);

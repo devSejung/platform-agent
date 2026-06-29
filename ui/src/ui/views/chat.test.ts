@@ -1745,7 +1745,8 @@ describe("chat view", () => {
 
   it("does not force textarea resize during IME composition", () => {
     const container = document.createElement("div");
-    render(renderChat(createProps({ draft: "" })), container);
+    const onDraftChange = vi.fn();
+    render(renderChat(createProps({ draft: "", onDraftChange })), container);
 
     const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
     expect(textarea).not.toBeNull();
@@ -1756,6 +1757,7 @@ describe("chat view", () => {
     textarea!.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
 
     expect(textarea!.style.height).toBe("42px");
+    expect(onDraftChange).toHaveBeenLastCalledWith("하");
   });
 
   it("shows a new session button when aborting is unavailable", () => {

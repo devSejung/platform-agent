@@ -1,5 +1,6 @@
 import { DEFAULT_PROVIDER } from "../../agents/defaults.js";
-import { buildAllowedModelSet } from "../../agents/model-selection.js";
+import { resolveVisibleModelCatalog } from "../../agents/model-catalog-visibility.js";
+import { buildAllowedModelSet, resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import { loadConfig } from "../../config/config.js";
 import {
   ErrorCodes,
@@ -10,7 +11,7 @@ import {
 import type { GatewayRequestHandlers } from "./types.js";
 
 export const modelsHandlers: GatewayRequestHandlers = {
-  "models.list": async ({ params, respond, context }) => {
+  "models.list": async ({ params, respond, context, client }) => {
     if (!validateModelsListParams(params)) {
       respond(
         false,
@@ -25,6 +26,24 @@ export const modelsHandlers: GatewayRequestHandlers = {
     try {
       const catalog = await context.loadGatewayModelCatalog();
       const cfg = loadConfig();
+      const employeeAgentId = client?.internal?.employee?.agentId;
+      if (employeeAgentId) {
+        const defaultRef = resolveDefaultModelForAgent({ cfg, agentId: employeeAgentId });
+        respond(
+          true,
+          {
+            models: resolveVisibleModelCatalog({
+              cfg,
+              catalog,
+              defaultProvider: defaultRef.provider,
+              defaultModel: `${defaultRef.provider}/${defaultRef.model}`,
+              agentId: employeeAgentId,
+            }),
+          },
+          undefined,
+        );
+        return;
+      }
       const { allowedCatalog } = buildAllowedModelSet({
         cfg,
         catalog,

@@ -48,6 +48,7 @@ export type CronProps = {
   fieldErrors: CronFieldErrors;
   canSubmit: boolean;
   editingJobId: string | null;
+  cronFormCollapsed?: boolean;
   channels: string[];
   channelLabels?: Record<string, string>;
   channelMeta?: ChannelUiMetaEntry[];
@@ -74,6 +75,7 @@ export type CronProps = {
   onEdit: (job: CronJob) => void;
   onClone: (job: CronJob) => void;
   onCancelEdit: () => void;
+  onToggleFormCollapsed?: (collapsed: boolean) => void;
   onToggle: (job: CronJob, enabled: boolean) => void;
   onRun: (job: CronJob, mode?: "force" | "due") => void;
   onRemove: (job: CronJob) => void;
@@ -395,6 +397,9 @@ export function renderCron(props: CronProps) {
   const selectedDeliveryMode =
     props.form.deliveryMode === "announce" && !supportsAnnounce ? "none" : props.form.deliveryMode;
   const lockedAgentId = props.lockedAgentId?.trim() || "";
+  const formCollapsed = props.cronFormCollapsed === true;
+  const formTitle = isEditing ? t("cron.form.editJob") : t("cron.form.newJob");
+  const toggleFormCollapsed = props.onToggleFormCollapsed;
   const blockingFields = collectBlockingFields(props.fieldErrors, props.form, selectedDeliveryMode);
   const blockedByValidation = !props.busy && blockingFields.length > 0;
   const hasActiveJobsFilters =
@@ -446,7 +451,7 @@ export function renderCron(props: CronProps) {
       </div>
     </section>
 
-    <section class="cron-workspace">
+    <section class=${`cron-workspace ${formCollapsed ? "cron-workspace--form-collapsed" : ""}`}>
       <div class="cron-workspace-main">
         <section class="card">
           <div
@@ -717,12 +722,44 @@ export function renderCron(props: CronProps) {
         </section>
       </div>
 
-      <section class="card cron-workspace-form">
-        <div class="card-title">${isEditing ? t("cron.form.editJob") : t("cron.form.newJob")}</div>
-        <div class="card-sub">
-          ${isEditing ? t("cron.form.updateSubtitle") : t("cron.form.createSubtitle")}
+      <section
+        class=${`card cron-workspace-form ${formCollapsed ? "cron-workspace-form--collapsed" : ""}`}
+      >
+        <div class="cron-form-header">
+          <div class="cron-form-header__copy">
+            <div class="card-title">${formTitle}</div>
+            ${formCollapsed
+              ? nothing
+              : html`
+                  <div class="card-sub">
+                    ${isEditing ? t("cron.form.updateSubtitle") : t("cron.form.createSubtitle")}
+                  </div>
+                `}
+          </div>
+          ${toggleFormCollapsed
+            ? html`
+                <button
+                  type="button"
+                  class="btn cron-form-collapse-toggle"
+                  data-test-id="cron-form-collapse-toggle"
+                  title=${formCollapsed ? t("nav.expand") : t("nav.collapse")}
+                  aria-label=${formCollapsed ? t("nav.expand") : t("nav.collapse")}
+                  aria-expanded=${formCollapsed ? "false" : "true"}
+                  @click=${() => toggleFormCollapsed(!formCollapsed)}
+                >
+                  <span
+                    class="collapse-chevron ${formCollapsed ? "collapse-chevron--collapsed" : ""}"
+                    aria-hidden="true"
+                  >
+                    <svg viewBox="0 0 16 16" focusable="false">
+                      <path d="M5.5 3.5 10 8l-4.5 4.5" />
+                    </svg>
+                  </span>
+                </button>
+              `
+            : nothing}
         </div>
-        <div class="cron-form">
+        <div class="cron-form" ?hidden=${formCollapsed}>
           <div class="cron-required-legend">
             <span class="cron-required-marker" aria-hidden="true">*</span> ${t(
               "cron.form.required",
@@ -1351,7 +1388,12 @@ export function renderCron(props: CronProps) {
         </div>
         ${blockedByValidation
           ? html`
-              <div class="cron-form-status" role="status" aria-live="polite">
+              <div
+                class="cron-form-status"
+                role="status"
+                aria-live="polite"
+                ?hidden=${formCollapsed}
+              >
                 <div class="cron-form-status__title">${t("cron.form.cantAddYet")}</div>
                 <div class="cron-help">${t("cron.form.fillRequired")}</div>
                 <ul class="cron-form-status__list">
@@ -1372,7 +1414,7 @@ export function renderCron(props: CronProps) {
               </div>
             `
           : nothing}
-        <div class="row cron-form-actions">
+        <div class="row cron-form-actions" ?hidden=${formCollapsed}>
           <button
             class="btn primary"
             ?disabled=${props.busy || !props.canSubmit}

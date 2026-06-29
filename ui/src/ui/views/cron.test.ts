@@ -269,6 +269,48 @@ describe("cron view", () => {
     expect(summaries[1]).toBe("older run");
   });
 
+  it("collapses the new job panel while preserving the upstream state hook", () => {
+    const container = document.createElement("div");
+    const onToggleFormCollapsed = vi.fn();
+
+    render(
+      renderCron(
+        createProps({
+          cronFormCollapsed: false,
+          onToggleFormCollapsed,
+        }),
+      ),
+      container,
+    );
+
+    const collapseButton = container.querySelector('[data-test-id="cron-form-collapse-toggle"]');
+    expect(collapseButton).not.toBeNull();
+    expect(collapseButton?.getAttribute("aria-expanded")).toBe("true");
+    collapseButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onToggleFormCollapsed).toHaveBeenCalledWith(true);
+    expect(container.querySelector(".cron-form")?.hasAttribute("hidden")).toBe(false);
+
+    render(
+      renderCron(
+        createProps({
+          cronFormCollapsed: true,
+          onToggleFormCollapsed,
+        }),
+      ),
+      container,
+    );
+
+    const expandButton = container.querySelector('[data-test-id="cron-form-collapse-toggle"]');
+    expect(container.querySelector(".cron-workspace--form-collapsed")).not.toBeNull();
+    expect(container.querySelector(".cron-workspace-form--collapsed")).not.toBeNull();
+    expect(expandButton?.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector(".cron-form")?.hasAttribute("hidden")).toBe(true);
+    expect(container.querySelector(".cron-form-actions")?.hasAttribute("hidden")).toBe(true);
+
+    expandButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(onToggleFormCollapsed).toHaveBeenLastCalledWith(false);
+  });
+
   it("renders cron markdown summaries and skips malformed job payloads", () => {
     const container = document.createElement("div");
     render(

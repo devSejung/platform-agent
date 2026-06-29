@@ -1794,6 +1794,10 @@
   align-items: start;
 }
 
+.cron-workspace--form-collapsed {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+}
+
 .cron-workspace-main {
   display: grid;
   gap: 16px;
@@ -1807,10 +1811,44 @@
   overflow-y: auto;
 }
 
+.cron-workspace-form--collapsed {
+  overflow: hidden;
+}
+
+.cron-form-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cron-form-header__copy {
+  min-width: 0;
+}
+
+.cron-form-collapse-toggle {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  justify-content: center;
+}
+
+.cron-form-collapse-toggle .collapse-chevron svg {
+  width: 15px;
+  height: 15px;
+}
+
 .cron-form {
   margin-top: 16px;
   display: grid;
   gap: 14px;
+}
+
+.cron-form[hidden],
+.cron-form-status[hidden],
+.cron-form-actions[hidden] {
+  display: none;
 }
 
 .cron-form-section {
@@ -2134,6 +2172,10 @@
   }
 
   .cron-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .cron-workspace--form-collapsed {
     grid-template-columns: 1fr;
   }
 

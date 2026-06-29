@@ -1337,6 +1337,7 @@ export function renderApp(state: AppViewState) {
             error: state.cronError,
             busy: state.cronBusy,
             form: state.employeeMode ? employeeCronForm : state.cronForm,
+            cronFormCollapsed: state.cronFormCollapsed,
             channels: state.channelsSnapshot?.channelMeta?.length
               ? state.channelsSnapshot.channelMeta.map((entry) => entry.id)
               : (state.channelsSnapshot?.channelOrder ?? []),
@@ -1380,6 +1381,7 @@ export function renderApp(state: AppViewState) {
               return addCronJob(state);
             },
             onEdit: (job) => {
+              state.cronFormCollapsed = false;
               startCronEdit(state, job);
               if (state.employeeMode) {
                 state.cronForm = normalizeCronFormState({
@@ -1390,6 +1392,7 @@ export function renderApp(state: AppViewState) {
               }
             },
             onClone: (job) => {
+              state.cronFormCollapsed = false;
               startCronClone(state, job);
               if (state.employeeMode) {
                 state.cronForm = normalizeCronFormState({
@@ -1400,6 +1403,9 @@ export function renderApp(state: AppViewState) {
               }
             },
             onCancelEdit: () => cancelCronEdit(state),
+            onToggleFormCollapsed: (collapsed) => {
+              state.cronFormCollapsed = collapsed;
+            },
             onToggle: (job, enabled) => toggleCronJob(state, job, enabled),
             onRun: (job, mode) => runCronJob(state, job, mode ?? "force"),
             onRemove: (job) => removeCronJob(state, job),

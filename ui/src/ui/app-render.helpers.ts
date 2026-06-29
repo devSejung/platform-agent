@@ -11,6 +11,7 @@ import {
   resolveChatModelOverrideValue,
   resolveChatModelSelectState,
 } from "./chat-model-select-state.ts";
+import { cacheChatMessages, readChatMessagesFromCache } from "./chat/session-message-cache.ts";
 import { refreshVisibleToolsEffectiveForCurrentSession } from "./controllers/agents.ts";
 import { ChatState, loadChatHistory } from "./controllers/chat.ts";
 import { loadSessions } from "./controllers/sessions.ts";
@@ -69,10 +70,15 @@ export function resolveSidebarChatSessionKey(state: AppViewState): string {
 }
 
 function resetChatStateForSessionSwitch(state: AppViewState, sessionKey: string) {
+  if (state.chatMessagesBySession) {
+    cacheChatMessages(state.chatMessagesBySession, state.sessionKey, state.chatMessages);
+  }
   state.sessionKey = sessionKey;
   state.chatMessage = "";
   state.chatAttachments = [];
-  state.chatMessages = [];
+  state.chatMessages = state.chatMessagesBySession
+    ? readChatMessagesFromCache(state.chatMessagesBySession, sessionKey)
+    : [];
   state.chatToolMessages = [];
   state.chatStreamSegments = [];
   state.chatThinkingLevel = null;

@@ -2,6 +2,11 @@ import { EMPLOYEE_WORKSPACE_FILES_DOWNLOAD_PATH } from "../../../../src/gateway/
 import { resetToolStream } from "../app-tool-stream.ts";
 import { extractText } from "../chat/message-extract.ts";
 import { describeChatFailure } from "../chat/send-failure.ts";
+import {
+  appendChatMessageToCache,
+  cacheChatMessages,
+  type ChatMessageCache,
+} from "../chat/session-message-cache.ts";
 import { formatConnectError } from "../connect-error.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
@@ -69,6 +74,20 @@ function isAssistantSilentReply(message: unknown): boolean {
   return typeof text === "string" && isSilentReplyStream(text);
 }
 
+function replaceCachedChatMessages(state: ChatState, sessionKey: string, messages: unknown[]) {
+  if (!state.chatMessagesBySession) {
+    return;
+  }
+  cacheChatMessages(state.chatMessagesBySession, sessionKey, messages);
+}
+
+function appendCachedChatMessage(state: ChatState, sessionKey: string, message: unknown) {
+  if (!state.chatMessagesBySession) {
+    return;
+  }
+  appendChatMessageToCache(state.chatMessagesBySession, sessionKey, message);
+}
+
 export type ChatState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
@@ -76,6 +95,7 @@ export type ChatState = {
   sessionKey: string;
   chatLoading: boolean;
   chatMessages: unknown[];
+  chatMessagesBySession?: ChatMessageCache;
   chatThinkingLevel: string | null;
   chatSending: boolean;
   chatMessage: string;
@@ -187,6 +207,7 @@ export async function loadChatHistory(state: ChatState) {
     }
     const messages = Array.isArray(res.messages) ? res.messages : [];
     state.chatMessages = messages.filter((message) => !isAssistantSilentReply(message));
+    replaceCachedChatMessages(state, sessionKey, state.chatMessages);
     state.chatThinkingLevel = res.thinkingLevel ?? null;
     // Clear all streaming state — history includes tool results and text
     // inline, so keeping streaming artifacts would cause duplicates.
@@ -309,7 +330,7 @@ export async function sendChatMessage(
   const now = Date.now();
   const runId = options.runId ?? generateUUID();
   state.chatSendDrafts = {
-    ...(state.chatSendDrafts ?? {}),
+    ...state.chatSendDrafts,
     [runId]: {
       message: msg,
       attachments: (attachments ?? []).map((attachment) => ({ ...attachment })),
@@ -444,6 +465,12 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
     return null;
   }
   if (payload.sessionKey !== state.sessionKey) {
+    if (payload.state === "final") {
+      const finalMessage = normalizeFinalAssistantMessage(payload.message);
+      if (finalMessage && !isAssistantSilentReply(finalMessage)) {
+        appendCachedChatMessage(state, payload.sessionKey, finalMessage);
+      }
+    }
     return null;
   }
 
@@ -454,6 +481,7 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
       const finalMessage = normalizeFinalAssistantMessage(payload.message);
       if (finalMessage && !isAssistantSilentReply(finalMessage)) {
         state.chatMessages = [...state.chatMessages, finalMessage];
+        replaceCachedChatMessages(state, state.sessionKey, state.chatMessages);
         return null;
       }
       return "final";
@@ -480,6 +508,7 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
         },
       ];
     }
+    replaceCachedChatMessages(state, state.sessionKey, state.chatMessages);
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;
@@ -508,6 +537,7 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
         ];
       }
     }
+    replaceCachedChatMessages(state, state.sessionKey, state.chatMessages);
     state.chatStream = null;
     state.chatRunId = null;
     state.chatStreamStartedAt = null;

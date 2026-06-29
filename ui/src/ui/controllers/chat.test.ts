@@ -77,6 +77,31 @@ describe("handleChatEvent", () => {
     expect(handleChatEvent(state, payload)).toBe(null);
   });
 
+  it("caches final messages for a switched-away session", () => {
+    const visibleMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "main visible" }],
+    };
+    const state = createState({
+      sessionKey: "main",
+      chatMessages: [visibleMessage],
+      chatMessagesBySession: new Map(),
+    });
+    const payload: ChatEventPayload = {
+      runId: "run-1",
+      sessionKey: "other",
+      state: "final",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "other final" }],
+      },
+    };
+
+    expect(handleChatEvent(state, payload)).toBe(null);
+    expect(state.chatMessages).toEqual([visibleMessage]);
+    expect(state.chatMessagesBySession?.get("other")).toEqual([payload.message]);
+  });
+
   it("returns null for delta from another run", () => {
     const state = createState({
       sessionKey: "main",
@@ -546,6 +571,22 @@ describe("loadChatHistory", () => {
     expect(state.chatMessages[1]).toEqual(messages[2]);
     expect(state.chatThinkingLevel).toBe("low");
     expect(state.chatLoading).toBe(false);
+  });
+
+  it("caches loaded history for the active session", async () => {
+    const messages = [{ role: "assistant", content: [{ type: "text", text: "Real answer" }] }];
+    const mockClient = {
+      request: vi.fn().mockResolvedValue({ messages }),
+    };
+    const state = createState({
+      client: mockClient as unknown as ChatState["client"],
+      connected: true,
+      chatMessagesBySession: new Map(),
+    });
+
+    await loadChatHistory(state);
+
+    expect(state.chatMessagesBySession?.get("main")).toEqual(messages);
   });
 
   it("keeps assistant message when text field has real content but content is NO_REPLY", async () => {

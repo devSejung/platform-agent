@@ -649,7 +649,13 @@ async function createEmployeeChatSession(state: AppViewState) {
 }
 
 function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollapsed: boolean) {
-  if (!state.employeeMode || tab !== "chat" || navCollapsed || state.tab !== "chat") {
+  if (
+    !state.employeeMode ||
+    tab !== "chat" ||
+    navCollapsed ||
+    state.tab !== "chat" ||
+    state.employeeChatSessionsCollapsed
+  ) {
     return nothing;
   }
   const query = state.employeeChatSessionSearch.trim().toLowerCase();

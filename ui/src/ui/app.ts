@@ -430,6 +430,7 @@ export class OpenClawApp extends LitElement {
   @state() sessionsHideCron = true;
   @state() sessionsSearchQuery = "";
   @state() employeeChatSessionSearch = "";
+  @state() employeeChatSessionsCollapsed = false;
   @state() sessionsSortColumn: "key" | "kind" | "updated" | "tokens" = "updated";
   @state() sessionsSortDir: "asc" | "desc" = "desc";
   @state() sessionsPage = 0;

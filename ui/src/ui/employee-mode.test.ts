@@ -194,7 +194,7 @@ describe("employee mode", () => {
     expect(app.querySelector(".employee-chat-session__live")).not.toBeNull();
   });
 
-  it("shows the employee recent chat session list only while Chat is active", async () => {
+  it("shows the employee recent chat session list only while Chat is active and toggles on Chat click", async () => {
     const app = mountConnectedEmployeeApp("/employee/files");
     app.employeeProfile = {
       employeeId: "eon",
@@ -220,6 +220,20 @@ describe("employee mode", () => {
     const sidebarSessions = app.querySelector(".employee-chat-sessions");
     expect(sidebarSessions?.textContent).toContain("최근");
     expect(sidebarSessions?.textContent).toContain("Main");
+
+    app
+      .querySelector<HTMLAnchorElement>(".nav-item--active")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await app.updateComplete;
+
+    expect(app.querySelector(".employee-chat-sessions")).toBeNull();
+
+    app
+      .querySelector<HTMLAnchorElement>(".nav-item--active")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await app.updateComplete;
+
+    expect(app.querySelector(".employee-chat-sessions")?.textContent).toContain("Main");
   });
 
   it("switches to a recent employee session from the Chat sidebar panel", async () => {

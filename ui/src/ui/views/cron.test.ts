@@ -1,5 +1,6 @@
 import { render } from "lit";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { i18n } from "../../i18n/index.ts";
 import { DEFAULT_CRON_FORM } from "../app-defaults.ts";
 import type { CronJob } from "../types.ts";
 import { renderCron, type CronProps } from "./cron.ts";
@@ -78,6 +79,10 @@ function createProps(overrides: Partial<CronProps> = {}): CronProps {
 }
 
 describe("cron view", () => {
+  beforeEach(async () => {
+    await i18n.setLocale("en");
+  });
+
   it("shows all-job history mode by default", () => {
     const container = document.createElement("div");
     render(renderCron(createProps()), container);
@@ -165,6 +170,44 @@ describe("cron view", () => {
     expect(onLoadRuns).toHaveBeenCalledWith("job-1");
   });
 
+  it("scrolls run history into view when clicking History", () => {
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    const container = document.createElement("div");
+    const onLoadRuns = vi.fn();
+    document.body.append(container);
+    try {
+      render(
+        renderCron(
+          createProps({
+            jobs: [createJob("job-1")],
+            onLoadRuns,
+          }),
+        ),
+        container,
+      );
+      const runHistory = container.querySelector("[data-run-history]");
+      const scrollIntoView = vi.fn();
+      Object.defineProperty(runHistory, "scrollIntoView", {
+        configurable: true,
+        value: scrollIntoView,
+      });
+
+      const historyButton = Array.from(container.querySelectorAll("button")).find(
+        (btn) => btn.textContent?.trim() === "History",
+      );
+      historyButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+      expect(onLoadRuns).toHaveBeenCalledWith("job-1");
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    } finally {
+      container.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders run chat links when session keys are present", () => {
     const container = document.createElement("div");
     render(
@@ -224,6 +267,25 @@ describe("cron view", () => {
     ).map((el) => (el.textContent ?? "").trim());
     expect(summaries[0]).toBe("newer run");
     expect(summaries[1]).toBe("older run");
+  });
+
+  it("renders cron markdown summaries and skips malformed job payloads", () => {
+    const container = document.createElement("div");
+    render(
+      renderCron(
+        createProps({
+          jobs: [
+            { ...createJob("bad"), payload: undefined as unknown as CronJob["payload"] },
+            { ...createJob("agent"), payload: { kind: "agentTurn", message: "**ship** it" } },
+          ],
+          runs: [{ ts: 1, jobId: "job-1", status: "ok", summary: "**done**" }],
+        }),
+      ),
+      container,
+    );
+
+    expect(container.querySelector(".cron-job-detail-value strong")?.textContent).toBe("ship");
+    expect(container.querySelector(".cron-run-entry__summary strong")?.textContent).toBe("done");
   });
 
   it("labels past nextRunAtMs as due instead of next", () => {

@@ -23,8 +23,8 @@ import {
   loadCronRuns,
   loadCronStatus,
 } from "./controllers/cron.ts";
-import { loadDebug } from "./controllers/debug.ts";
 import { loadDashboard } from "./controllers/dashboard.ts";
+import { loadDebug } from "./controllers/debug.ts";
 import { loadDevices } from "./controllers/devices.ts";
 import { loadDreamDiary, loadDreamingStatus } from "./controllers/dreaming.ts";
 import { loadExecApprovals } from "./controllers/exec-approvals.ts";
@@ -38,6 +38,7 @@ import { loadSkillHub, loadSkillHubWorkspacePublish } from "./controllers/skill-
 import { loadSkills } from "./controllers/skills.ts";
 import { loadUsage } from "./controllers/usage.ts";
 import { loadWorkspaceFiles } from "./controllers/workspace-files.ts";
+import { isCronJobActiveFailure } from "./cron-status.ts";
 import {
   inferBasePathFromPathname,
   normalizeBasePath,
@@ -759,7 +760,7 @@ function buildAttentionItems(host: OpenClawApp) {
   }
 
   const cronJobs = host.cronJobs ?? [];
-  const failedCron = cronJobs.filter((j) => j.state?.lastStatus === "error");
+  const failedCron = cronJobs.filter(isCronJobActiveFailure);
   if (failedCron.length > 0) {
     items.push({
       severity: "error",

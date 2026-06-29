@@ -1,6 +1,7 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { t } from "../../i18n/index.ts";
+import { isCronJobActiveFailure } from "../cron-status.ts";
 import { formatCost, formatTokens, formatRelativeTimestamp } from "../format.ts";
 import { formatNextRun } from "../presenter.ts";
 import type {
@@ -84,7 +85,7 @@ export function renderOverviewCards(props: OverviewCardsProps) {
   const cronEnabled = props.cronStatus?.enabled ?? null;
   const cronNext = props.cronStatus?.nextWakeAtMs ?? null;
   const cronJobCount = props.cronJobs.length;
-  const failedCronCount = props.cronJobs.filter((j) => j.state?.lastStatus === "error").length;
+  const failedCronCount = props.cronJobs.filter(isCronJobActiveFailure).length;
 
   const cronValue =
     cronEnabled == null

@@ -514,6 +514,8 @@ export type {
 export type CronRunStatus = "ok" | "error" | "skipped";
 export type CronDeliveryStatus = "delivered" | "not-delivered" | "unknown" | "not-requested";
 export type CronJobsEnabledFilter = "all" | "enabled" | "disabled";
+export type CronJobsScheduleKindFilter = "all" | "at" | "every" | "cron";
+export type CronJobsLastRunStatusFilter = "all" | CronRunStatus | "unknown";
 export type CronJobsSortBy = "nextRunAtMs" | "updatedAtMs" | "name";
 export type CronRunScope = "job" | "all";
 export type CronRunsStatusValue = CronRunStatus;

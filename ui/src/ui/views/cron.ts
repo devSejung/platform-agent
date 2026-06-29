@@ -1,5 +1,6 @@
 import { html, nothing } from "lit";
 import { ifDefined } from "lit/directives/if-defined.js";
+import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { t } from "../../i18n/index.ts";
 import type {
   CronFieldErrors,
@@ -7,7 +8,10 @@ import type {
   CronJobsLastStatusFilter,
   CronJobsScheduleKindFilter,
 } from "../controllers/cron.ts";
+import { getCronJobPayload } from "../cron-payload.ts";
+import { resolveCronJobLastRunStatus } from "../cron-status.ts";
 import { formatRelativeTimestamp, formatMs } from "../format.ts";
+import { toSanitizedMarkdownHtml } from "../markdown.ts";
 import { pathForTab } from "../navigation.ts";
 import { formatCronSchedule, formatNextRun } from "../presenter.ts";
 import type { ChannelUiMetaEntry, CronJob, CronRunLogEntry, CronStatus } from "../types.ts";
@@ -340,6 +344,16 @@ function focusFormField(id: string) {
   el.focus();
 }
 
+function stopPropagationForInteractive(event: Event) {
+  const target = event.target;
+  if (
+    target instanceof HTMLElement &&
+    target.closest("a, button, input, textarea, select, details, summary")
+  ) {
+    event.stopPropagation();
+  }
+}
+
 function renderFieldLabel(text: string, required = false) {
   return html`<span>
     ${text}
@@ -509,6 +523,7 @@ export function renderCron(props: CronProps) {
                 <option value="ok">${t("cron.runs.runStatusOk")}</option>
                 <option value="error">${t("cron.runs.runStatusError")}</option>
                 <option value="skipped">${t("cron.runs.runStatusSkipped")}</option>
+                <option value="unknown">${t("cron.runs.runStatusUnknown")}</option>
               </select>
             </label>
             <label class="field">
@@ -572,7 +587,7 @@ export function renderCron(props: CronProps) {
             : nothing}
         </section>
 
-        <section class="card">
+        <section class="card" data-run-history>
           <div
             class="row"
             style="justify-content: space-between; align-items: flex-start; gap: 12px;"
@@ -745,7 +760,11 @@ export function renderCron(props: CronProps) {
                 ? html`
                     <label class="field">
                       ${renderFieldLabel("담당 에이전트")}
-                      <input id="cron-agent-id" .value=${lockedAgentId || props.form.agentId} disabled />
+                      <input
+                        id="cron-agent-id"
+                        .value=${lockedAgentId || props.form.agentId}
+                        disabled
+                      />
                       <div class="cron-help">
                         직원용 스케줄은 본인에게 연결된 에이전트에서만 실행됩니다.
                       </div>
@@ -1038,7 +1057,9 @@ export function renderCron(props: CronProps) {
                             clearAgent: (e.target as HTMLInputElement).checked,
                           })}
                       />
-                      <span class="field-checkbox__label">${t("cron.form.clearAgentOverride")}</span>
+                      <span class="field-checkbox__label"
+                        >${t("cron.form.clearAgentOverride")}</span
+                      >
                       <div class="cron-help">${t("cron.form.clearAgentHelp")}</div>
                     </label>
                     <label class="field cron-span-2">
@@ -1052,7 +1073,9 @@ export function renderCron(props: CronProps) {
                           })}
                         placeholder="agent:main:main"
                       />
-                      <div class="cron-help">Optional routing key for job delivery and wake routing.</div>
+                      <div class="cron-help">
+                        Optional routing key for job delivery and wake routing.
+                      </div>
                     </label>
                   `}
               ${isCronSchedule
@@ -1569,6 +1592,15 @@ function renderJob(job: CronJob, props: CronProps) {
             @click=${(event: Event) => {
               event.stopPropagation();
               props.onLoadRuns(job.id);
+              requestAnimationFrame(() => {
+                const runHistory = document.querySelector("[data-run-history]");
+                if (
+                  runHistory instanceof HTMLElement &&
+                  typeof runHistory.scrollIntoView === "function"
+                ) {
+                  runHistory.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+              });
             }}
           >
             ${t("cron.jobList.history")}
@@ -1590,10 +1622,14 @@ function renderJob(job: CronJob, props: CronProps) {
 }
 
 function renderJobPayload(job: CronJob) {
-  if (job.payload.kind === "systemEvent") {
+  const payload = getCronJobPayload(job);
+  if (!payload) {
+    return nothing;
+  }
+  if (payload.kind === "systemEvent") {
     return html`<div class="cron-job-detail">
       <span class="cron-job-detail-label">${t("cron.jobDetail.system")}</span>
-      <span class="muted cron-job-detail-value">${job.payload.text}</span>
+      <span class="muted cron-job-detail-value">${payload.text}</span>
     </div>`;
   }
 
@@ -1610,7 +1646,9 @@ function renderJobPayload(job: CronJob) {
   return html`
     <div class="cron-job-detail">
       <span class="cron-job-detail-label">${t("cron.jobDetail.prompt")}</span>
-      <span class="muted cron-job-detail-value">${job.payload.message}</span>
+      <div class="muted cron-job-detail-value chat-text" @click=${stopPropagationForInteractive}>
+        ${unsafeHTML(toSanitizedMarkdownHtml(payload.message))}
+      </div>
     </div>
     ${delivery
       ? html`<div class="cron-job-detail">
@@ -1634,7 +1672,7 @@ function formatRunNextLabel(nextRunAtMs: number, nowMs = Date.now()) {
 }
 
 function renderJobState(job: CronJob) {
-  const rawStatus = job.state?.lastStatus;
+  const rawStatus = resolveCronJobLastRunStatus(job);
   const statusClass =
     rawStatus === "ok"
       ? "cron-job-status-ok"
@@ -1650,7 +1688,7 @@ function renderJobState(job: CronJob) {
         ? t("cron.runs.runStatusError")
         : rawStatus === "skipped"
           ? t("cron.runs.runStatusSkipped")
-          : t("common.na");
+          : t("cron.runs.runStatusUnknown");
   const nextRunAtMs = job.state?.nextRunAtMs;
   const lastRunAtMs = job.state?.lastRunAtMs;
 
@@ -1729,8 +1767,13 @@ function renderRun(
           ${entry.jobName ?? entry.jobId}
           <span class="muted"> · ${status}</span>
         </div>
-        <div class="list-sub cron-run-entry__summary">
-          ${entry.summary ?? entry.error ?? t("cron.runEntry.noSummary")}
+        <div
+          class="list-sub cron-run-entry__summary chat-text"
+          @click=${stopPropagationForInteractive}
+        >
+          ${unsafeHTML(
+            toSanitizedMarkdownHtml(entry.summary ?? entry.error ?? t("cron.runEntry.noSummary")),
+          )}
         </div>
         <div class="chip-row" style="margin-top: 6px;">
           <span class="chip">${delivery}</span>

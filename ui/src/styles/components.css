@@ -2095,6 +2095,28 @@
   line-height: 1.45;
 }
 
+.cron-run-entry__summary.chat-text,
+.cron-job-detail-value.chat-text {
+  white-space: normal;
+}
+
+.cron-run-entry__summary.chat-text :where(p, ul, ol, pre, blockquote, table),
+.cron-job-detail-value.chat-text :where(p, ul, ol, pre, blockquote, table) {
+  margin-top: 0;
+  margin-bottom: 0.75em;
+}
+
+.cron-run-entry__summary.chat-text > :last-child,
+.cron-job-detail-value.chat-text > :last-child {
+  margin-bottom: 0;
+}
+
+.cron-run-entry__summary.chat-text :where(pre, table),
+.cron-job-detail-value.chat-text :where(pre, table) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 @media (max-width: 1100px) {
   .cron-summary-strip {
     flex-direction: column;

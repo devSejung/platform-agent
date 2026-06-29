@@ -1010,11 +1010,20 @@ describe("cron controller", () => {
           offset: 0,
           query: "daily",
           enabled: "enabled",
+          scheduleKind: "cron",
+          lastRunStatus: "error",
           sortBy: "updatedAtMs",
           sortDir: "desc",
         });
         return {
-          jobs: [{ id: "job-1", name: "Daily", enabled: true }],
+          jobs: [
+            {
+              id: "job-1",
+              name: "Daily",
+              enabled: true,
+              payload: { kind: "systemEvent", text: "ping" },
+            },
+          ],
           total: 1,
           hasMore: false,
           nextOffset: null,
@@ -1026,6 +1035,8 @@ describe("cron controller", () => {
       client: { request } as unknown as CronState["client"],
       cronJobsQuery: "daily",
       cronJobsEnabledFilter: "enabled",
+      cronJobsScheduleKindFilter: "cron",
+      cronJobsLastStatusFilter: "error",
       cronJobsSortBy: "updatedAtMs",
       cronJobsSortDir: "desc",
     });
@@ -1035,6 +1046,36 @@ describe("cron controller", () => {
     expect(state.cronJobs).toHaveLength(1);
     expect(state.cronJobsTotal).toBe(1);
     expect(state.cronJobsHasMore).toBe(false);
+  });
+
+  it("drops malformed jobs from paged results without breaking pagination metadata", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "cron.list") {
+        return {
+          jobs: [
+            { id: "bad", name: "Bad", enabled: true },
+            {
+              id: "job-1",
+              name: "Daily",
+              enabled: true,
+              payload: { kind: "systemEvent", text: "ping" },
+            },
+          ],
+          total: 2,
+          hasMore: false,
+          nextOffset: null,
+        };
+      }
+      return {};
+    });
+    const state = createState({
+      client: { request } as unknown as CronState["client"],
+    });
+
+    await loadCronJobsPage(state);
+
+    expect(state.cronJobs.map((job) => job.id)).toEqual(["job-1"]);
+    expect(state.cronJobsTotal).toBe(2);
   });
 
   it("loads and appends paged run history", async () => {

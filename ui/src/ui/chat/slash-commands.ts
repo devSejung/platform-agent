@@ -36,6 +36,7 @@ const COMMAND_ICON_OVERRIDES: Partial<Record<string, IconName>> = {
   skill: "zap",
   commands: "book",
   new: "plus",
+  name: "edit",
   reset: "refresh",
   compact: "loader",
   stop: "stop",
@@ -57,6 +58,7 @@ const COMMAND_ICON_OVERRIDES: Partial<Record<string, IconName>> = {
 const LOCAL_COMMANDS = new Set([
   "help",
   "new",
+  "name",
   "reset",
   "stop",
   "compact",

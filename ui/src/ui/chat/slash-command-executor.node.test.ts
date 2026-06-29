@@ -237,6 +237,64 @@ describe("executeSlashCommand /kill", () => {
 });
 
 describe("executeSlashCommand directives", () => {
+  it("renames the current session through sessions.patch for /name", async () => {
+    const request = vi.fn(async (method: string, _payload?: unknown) => {
+      if (method === "sessions.patch") {
+        return {
+          ok: true,
+          key: "agent:eon:main",
+          entry: { label: "Planning" },
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+
+    const result = await executeSlashCommand(
+      { request } as unknown as GatewayBrowserClient,
+      "agent:eon:main",
+      "name",
+      "Planning",
+    );
+
+    expect(request).toHaveBeenCalledWith("sessions.patch", {
+      key: "agent:eon:main",
+      label: "Planning",
+    });
+    expect(result).toMatchObject({
+      content: "Session renamed to `Planning`.",
+      action: "refresh",
+    });
+  });
+
+  it("shows the current session name for bare /name without mutating", async () => {
+    const request = vi.fn();
+
+    const result = await executeSlashCommand(
+      { request } as unknown as GatewayBrowserClient,
+      "agent:eon:main",
+      "name",
+      "",
+      {
+        sessionsResult: {
+          ts: 1,
+          path: "/tmp/sessions.json",
+          count: 1,
+          defaults: {
+            modelProvider: "openai",
+            model: "gpt-5",
+            contextTokens: 272_000,
+          },
+          sessions: [row("agent:eon:main", { label: "Current Plan" })],
+        },
+      },
+    );
+
+    expect(request).not.toHaveBeenCalled();
+    expect(result.content).toBe(
+      "Current session name: Current Plan\nUse `/name <title>` to rename it.",
+    );
+  });
+
   it("resolves the legacy main alias for bare /model", async () => {
     const request = vi.fn(async (method: string, _payload?: unknown) => {
       if (method === "sessions.list") {

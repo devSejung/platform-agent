@@ -89,6 +89,8 @@ export async function executeSlashCommand(
       return executeHelp();
     case "new":
       return { content: "Starting new session...", action: "new-session" };
+    case "name":
+      return await executeName(client, sessionKey, args, context);
     case "reset":
       return { content: "Resetting session...", action: "reset" };
     case "stop":
@@ -170,6 +172,43 @@ async function executeCompact(
     return { content: "Compaction skipped.", action: "refresh" };
   } catch (err) {
     return { content: `Compaction failed: ${String(err)}` };
+  }
+}
+
+async function executeName(
+  client: GatewayBrowserClient,
+  sessionKey: string,
+  args: string,
+  context: SlashCommandContext,
+): Promise<SlashCommandResult> {
+  const title = args.trim();
+  if (!title) {
+    try {
+      const sessions =
+        context.sessionsResult ?? (await client.request<SessionsListResult>("sessions.list", {}));
+      const session = resolveCurrentSession(sessions, sessionKey);
+      const current = session?.label || session?.displayName;
+      return {
+        content: current
+          ? `Current session name: ${current}\nUse \`/name <title>\` to rename it.`
+          : "This session has no custom name yet.\nUse `/name <title>` to set one.",
+      };
+    } catch (err) {
+      return { content: `Failed to get session name: ${String(err)}` };
+    }
+  }
+
+  try {
+    await client.request<SessionsPatchResult>("sessions.patch", {
+      key: sessionKey,
+      label: title,
+    });
+    return {
+      content: `Session renamed to \`${title}\`.`,
+      action: "refresh",
+    };
+  } catch (err) {
+    return { content: `Failed to rename session: ${String(err)}` };
   }
 }
 

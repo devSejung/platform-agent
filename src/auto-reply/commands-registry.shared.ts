@@ -625,6 +625,22 @@ export function buildBuiltinChatCommands(): ChatCommandDefinition[] {
       category: "session",
     }),
     defineChatCommand({
+      key: "name",
+      nativeName: "name",
+      description: "Name or rename the current session.",
+      textAlias: "/name",
+      acceptsArgs: true,
+      category: "session",
+      args: [
+        {
+          name: "title",
+          description: "New session name (omit to see a suggestion)",
+          type: "string",
+          captureRemaining: true,
+        },
+      ],
+    }),
+    defineChatCommand({
       key: "compact",
       nativeName: "compact",
       description: "Compact the session context.",

@@ -1013,7 +1013,7 @@ describe("gateway server sessions", () => {
     );
   });
 
-  test("employee sessions.patch only permits session tuning fields on the employee session", async () => {
+  test("employee sessions.patch permits session tuning and label fields on the employee session", async () => {
     await createSessionStoreDir();
     await writeSessionStore({
       entries: {
@@ -1067,12 +1067,38 @@ describe("gateway server sessions", () => {
       undefined,
     );
 
-    const respondDeniedField = vi.fn();
+    const respondLabel = vi.fn();
     await sessionsHandlers["sessions.patch"]({
       req: {} as never,
       params: {
         key: "agent:eon:main",
         label: "rename",
+      },
+      respond: respondLabel,
+      context: {
+        broadcastToConnIds: vi.fn(),
+        getSessionEventSubscriberConnIds: () => new Set<string>(),
+        loadGatewayModelCatalog,
+      } as never,
+      client: employeeClient,
+      isWebchatConnect: () => false,
+    });
+    expect(respondLabel).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        ok: true,
+        key: "agent:eon:main",
+        entry: expect.objectContaining({ label: "rename" }),
+      }),
+      undefined,
+    );
+
+    const respondDeniedField = vi.fn();
+    await sessionsHandlers["sessions.patch"]({
+      req: {} as never,
+      params: {
+        key: "agent:eon:main",
+        sendPolicy: "deny",
       },
       respond: respondDeniedField,
       context: {
@@ -1088,7 +1114,7 @@ describe("gateway server sessions", () => {
       undefined,
       expect.objectContaining({
         message: expect.stringMatching(
-          /only allows model, thinkingLevel, fastMode, and verboseLevel/i,
+          /only allows model, thinkingLevel, fastMode, verboseLevel, and label/i,
         ),
       }),
     );

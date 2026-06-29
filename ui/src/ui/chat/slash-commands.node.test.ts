@@ -100,4 +100,16 @@ describe("parseSlashCommand", () => {
       args: "",
     });
   });
+
+  it("keeps name as a local slash command backed by the shared registry", () => {
+    expect(SLASH_COMMANDS.find((entry) => entry.key === "name")).toMatchObject({
+      name: "name",
+      args: "[title]",
+      executeLocal: true,
+    });
+    expect(parseSlashCommand("/name Planning")).toMatchObject({
+      command: { key: "name", executeLocal: true },
+      args: "Planning",
+    });
+  });
 });

@@ -304,7 +304,11 @@ function rejectEmployeeSessionsPatch(params: {
     .map(([key]) => key)
     .filter(
       (key) =>
-        key !== "model" && key !== "thinkingLevel" && key !== "fastMode" && key !== "verboseLevel",
+        key !== "model" &&
+        key !== "thinkingLevel" &&
+        key !== "fastMode" &&
+        key !== "verboseLevel" &&
+        key !== "label",
     );
   if (disallowedKeys.length === 0) {
     return false;
@@ -314,7 +318,7 @@ function rejectEmployeeSessionsPatch(params: {
     undefined,
     errorShape(
       ErrorCodes.INVALID_REQUEST,
-      `employee sessions.patch only allows model, thinkingLevel, fastMode, and verboseLevel (received: ${disallowedKeys.join(", ")})`,
+      `employee sessions.patch only allows model, thinkingLevel, fastMode, verboseLevel, and label (received: ${disallowedKeys.join(", ")})`,
     ),
   );
   return true;

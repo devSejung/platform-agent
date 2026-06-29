@@ -1,3 +1,4 @@
+import { createChatModelOverride, type ChatModelOverride } from "./chat-model-ref.ts";
 import { formatUnknownText, truncateText } from "./format.ts";
 import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
 
@@ -36,6 +37,7 @@ type ToolStreamHost = {
   toolStreamOrder: string[];
   chatToolMessages: Record<string, unknown>[];
   toolStreamSyncTimer: number | null;
+  chatModelOverrides?: Record<string, ChatModelOverride | null>;
 };
 
 function toTrimmedString(value: unknown): string | null {
@@ -213,6 +215,53 @@ function syncToolStreamMessages(host: ToolStreamHost) {
   host.chatToolMessages = host.toolStreamOrder
     .map((id) => host.toolStreamById.get(id)?.message)
     .filter((msg): msg is Record<string, unknown> => Boolean(msg));
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function syncSessionStatusModelOverride(
+  host: ToolStreamHost,
+  data: Record<string, unknown>,
+  sessionKey?: string,
+) {
+  if (!host.chatModelOverrides) {
+    return;
+  }
+  const result = readRecord(data.result);
+  const details = readRecord(result?.details);
+  if (!details) {
+    return;
+  }
+  const targetSessionKey =
+    typeof details.sessionKey === "string" && details.sessionKey.trim()
+      ? details.sessionKey.trim()
+      : (sessionKey ?? host.sessionKey);
+  if (targetSessionKey !== host.sessionKey) {
+    return;
+  }
+  if (!Object.hasOwn(details, "modelOverride") && typeof details.model !== "string") {
+    return;
+  }
+  const modelOverride =
+    typeof details.modelOverride === "string" && details.modelOverride.trim()
+      ? details.modelOverride.trim()
+      : null;
+  const model =
+    typeof details.model === "string" && details.model.trim() ? details.model.trim() : null;
+  const provider =
+    typeof details.modelProvider === "string" && details.modelProvider.trim()
+      ? details.modelProvider.trim()
+      : null;
+  const value =
+    modelOverride ?? (model && provider && !model.includes("/") ? `${provider}/${model}` : model);
+  host.chatModelOverrides = {
+    ...host.chatModelOverrides,
+    [targetSessionKey]: value ? createChatModelOverride(value) : null,
+  };
 }
 
 export function flushToolStreamSync(host: ToolStreamHost) {
@@ -482,7 +531,9 @@ function handleRunPhaseEvent(host: CompactionHost, payload: AgentEventPayload) {
     return;
   }
   const startedAt =
-    typeof data.startedAt === "number" && Number.isFinite(data.startedAt) ? data.startedAt : Date.now();
+    typeof data.startedAt === "number" && Number.isFinite(data.startedAt)
+      ? data.startedAt
+      : Date.now();
   const endedAt =
     typeof data.endedAt === "number" && Number.isFinite(data.endedAt) ? data.endedAt : null;
   host.runPhaseStatus = {
@@ -678,6 +729,9 @@ export function handleAgentEvent(host: ToolStreamHost, payload?: AgentEventPaylo
       : phase === "result"
         ? formatToolOutput(data.result)
         : undefined;
+  if (name === "session_status" && phase === "result") {
+    syncSessionStatusModelOverride(host, data, sessionKey);
+  }
 
   const now = Date.now();
   let entry = host.toolStreamById.get(toolCallId);

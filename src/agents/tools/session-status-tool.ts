@@ -561,6 +561,16 @@ export function createSessionStatusTool(opts?: {
       });
       const fullStatusText =
         taskLine && !statusText.includes(taskLine) ? `${statusText}\n${taskLine}` : statusText;
+      const resultOverrideProvider = statusSessionEntry.providerOverride?.trim();
+      const resultOverrideModel = statusSessionEntry.modelOverride?.trim();
+      const modelOverrideForResult =
+        modelRaw === undefined
+          ? undefined
+          : resultOverrideModel
+            ? resultOverrideProvider
+              ? `${resultOverrideProvider}/${resultOverrideModel}`
+              : resultOverrideModel
+            : null;
 
       return {
         content: [{ type: "text", text: fullStatusText }],
@@ -568,6 +578,15 @@ export function createSessionStatusTool(opts?: {
           ok: true,
           sessionKey: resolved.key,
           changedModel,
+          ...(modelRaw !== undefined
+            ? {
+                model: resultOverrideModel ?? defaultModelForCard,
+                ...((resultOverrideProvider ?? providerForCard)
+                  ? { modelProvider: resultOverrideProvider ?? providerForCard }
+                  : {}),
+                modelOverride: modelOverrideForResult,
+              }
+            : {}),
           statusText: fullStatusText,
         },
       };

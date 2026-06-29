@@ -242,7 +242,7 @@ function formatTokenDeltaCompact(before?: number, after?: number): string | null
   return `${formatTokensCompact(before)} -> ${formatTokensCompact(clampedAfter)} · ${reducedPercent}% reduced`;
 }
 
-function renderCompactionIndicator(status: CompactionIndicatorStatus | null | undefined) {
+export function renderCompactionIndicator(status: CompactionIndicatorStatus | null | undefined) {
   if (!status) {
     return nothing;
   }
@@ -653,9 +653,7 @@ function deriveLiveRunViewState(props: ChatProps): LiveRunViewState {
       title: localizedKo
         ? "대화 정리를 완료하지 못했습니다."
         : "Conversation cleanup was incomplete.",
-      body: localizedKo
-        ? "응답은 계속 진행될 수 있습니다."
-        : "The response may still continue.",
+      body: localizedKo ? "응답은 계속 진행될 수 있습니다." : "The response may still continue.",
       meta: `${formatElapsedMs(incompleteElapsedMs)} elapsed`,
       icon: icons.brain,
       mascotPhase: "attention",
@@ -840,9 +838,7 @@ function renderLiveRunStatusBanner(status: LiveRunViewState) {
       data-phase=${status.kind}
     >
       <div class="live-run-status__rail" aria-hidden="true"></div>
-      <div class="live-run-status__icon" aria-hidden="true">
-        ${renderLiveRunMascot(status)}
-      </div>
+      <div class="live-run-status__icon" aria-hidden="true">${renderLiveRunMascot(status)}</div>
       <div class="live-run-status__main">
         <div class="live-run-status__topline">
           <span class="live-run-status__title">${status.title}</span>
@@ -900,8 +896,8 @@ function deriveComposerControlState(
 }
 
 /**
- * Compact notice when context usage reaches 85%+.
- * Progressively shifts from amber (85%) to red (90%+).
+ * Compact context usage notice.
+ * Shows fresh usage persistently and shifts from amber (85%) to red (90%+).
  */
 /** Parse a 6-digit CSS hex color string to [r, g, b] integer components. */
 function parseHexRgb(hex: string): [number, number, number] | null {
@@ -942,16 +938,31 @@ function renderContextNotice(
   if (session?.totalTokensFresh === false) {
     return nothing;
   }
-  const used = session?.totalTokens ?? 0;
+  const used = session?.totalTokens;
   const limit = session?.contextTokens ?? defaultContextTokens ?? 0;
-  if (!used || !limit) {
+  if (typeof used !== "number" || !Number.isFinite(used) || used < 0 || !limit) {
     return nothing;
   }
   const ratio = used / limit;
-  if (ratio < 0.85) {
-    return nothing;
-  }
   const pct = Math.min(Math.round(ratio * 100), 100);
+  const warning = ratio >= 0.85;
+  const detail = `${formatTokensCompact(used)} / ${formatTokensCompact(limit)}`;
+  if (!warning) {
+    return html`
+      <div
+        class="context-notice context-notice--usage"
+        role="status"
+        style="--ctx-color:var(--muted);--ctx-bg:color-mix(in srgb, var(--muted) 8%, transparent)"
+        title=${`Session context usage: ${detail} (${pct}%)`}
+      >
+        <span class="context-notice__meter" aria-hidden="true">
+          <span class="context-notice__meter-fill" style="width:${pct}%"></span>
+        </span>
+        <span>${pct}% context used</span>
+        <span class="context-notice__detail">${detail}</span>
+      </div>
+    `;
+  }
   // Read theme semantic tokens so color tracks the active theme (Dash, dark, light …)
   const { warnRgb, dangerRgb } = getThemeNoticeColors();
   const [wr, wg, wb] = warnRgb;
@@ -965,7 +976,12 @@ function renderContextNotice(
   const bgOpacity = 0.08 + 0.08 * t;
   const bg = `rgba(${r}, ${g}, ${b}, ${bgOpacity})`;
   return html`
-    <div class="context-notice" role="status" style="--ctx-color:${color};--ctx-bg:${bg}">
+    <div
+      class="context-notice context-notice--warning"
+      role="status"
+      style="--ctx-color:${color};--ctx-bg:${bg}"
+      title=${`Session context usage: ${detail} (${pct}%)`}
+    >
       <svg
         class="context-notice__icon"
         width="16"
@@ -982,9 +998,7 @@ function renderContextNotice(
         <line x1="12" y1="17" x2="12.01" y2="17" />
       </svg>
       <span>${pct}% context used</span>
-      <span class="context-notice__detail"
-        >${formatTokensCompact(used)} / ${formatTokensCompact(limit)}</span
-      >
+      <span class="context-notice__detail">${detail}</span>
     </div>
   `;
 }
@@ -1957,8 +1971,11 @@ export function renderChat(props: ChatProps) {
     }
   };
 
-  const handleInput = (e: Event) => {
+  const handleInput = (e: InputEvent) => {
     const target = e.target as HTMLTextAreaElement;
+    if (e.isComposing) {
+      return;
+    }
     adjustTextareaHeight(target);
     updateSlashMenu(target.value, requestUpdate);
     inputHistory.reset();
@@ -2249,13 +2266,19 @@ function groupMessages(items: ChatItem[]): Array<ChatItem | MessageGroup> {
     const normalized = normalizeMessage(item.message);
     const role = normalizeRoleForGrouping(normalized.role);
     const senderLabel =
-      normalizeLowercaseStringOrEmpty(role) === "user" ? (normalized.senderLabel ?? null) : null;
+      normalizeLowercaseStringOrEmpty(role) === "user" ||
+      normalizeLowercaseStringOrEmpty(role) === "assistant"
+        ? (normalized.senderLabel ?? null)
+        : null;
     const timestamp = normalized.timestamp || Date.now();
+    const shouldSplitBySender =
+      normalizeLowercaseStringOrEmpty(role) === "user" ||
+      normalizeLowercaseStringOrEmpty(role) === "assistant";
 
     if (
       !currentGroup ||
       currentGroup.role !== role ||
-      (normalizeLowercaseStringOrEmpty(role) === "user" && currentGroup.senderLabel !== senderLabel)
+      (shouldSplitBySender && currentGroup.senderLabel !== senderLabel)
     ) {
       if (currentGroup) {
         result.push(currentGroup);
@@ -2278,6 +2301,138 @@ function groupMessages(items: ChatItem[]): Array<ChatItem | MessageGroup> {
     result.push(currentGroup);
   }
   return result;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isPendingSendMessage(message: unknown): boolean {
+  const marker = isRecord(message) ? message.__openclaw : null;
+  return isRecord(marker) && marker.kind === "pending-send";
+}
+
+function sourceMessageId(message: unknown): string | null {
+  if (!isRecord(message)) {
+    return null;
+  }
+  const marker = isRecord(message.__openclaw) ? message.__openclaw : null;
+  const openclawId = typeof marker?.id === "string" ? marker.id.trim() : "";
+  if (openclawId) {
+    return openclawId;
+  }
+  const messageId = typeof message.messageId === "string" ? message.messageId.trim() : "";
+  if (messageId) {
+    return messageId;
+  }
+  const id = typeof message.id === "string" ? message.id.trim() : "";
+  return id || null;
+}
+
+function collapseDuplicateSourceKey(message: unknown): string | null {
+  if (isPendingSendMessage(message)) {
+    return null;
+  }
+  const normalized = normalizeMessage(message);
+  const role = normalizeLowercaseStringOrEmpty(normalizeRoleForGrouping(normalized.role));
+  if (role !== "assistant") {
+    return null;
+  }
+  const id = sourceMessageId(message);
+  return id ? `${role}:${id}` : null;
+}
+
+function prefersNativeChatSurface(message: unknown): boolean {
+  const normalized = normalizeMessage(message);
+  const role = normalizeLowercaseStringOrEmpty(normalizeRoleForGrouping(normalized.role));
+  return (role === "user" || role === "assistant") && !(normalized.senderLabel ?? "").trim();
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripSenderLabelPrefix(text: string, senderLabel: string): string {
+  const label = senderLabel.trim();
+  if (!label) {
+    return text;
+  }
+  return text.replace(new RegExp(`^${escapeRegExp(label)}(?::|：|-|—)?[ \\t]+`), "");
+}
+
+function sourceDuplicateDisplayParts(message: unknown): {
+  role: string;
+  senderLabel: string;
+  text: string;
+} | null {
+  const normalized = normalizeMessage(message);
+  const role = normalizeLowercaseStringOrEmpty(normalizeRoleForGrouping(normalized.role));
+  if (role !== "assistant") {
+    return null;
+  }
+  const textParts: string[] = [];
+  for (const block of normalized.content) {
+    if (block.type !== "text" || typeof block.text !== "string") {
+      return null;
+    }
+    textParts.push(block.text);
+  }
+  const text = textParts.join("\n");
+  if (!text.trim()) {
+    return null;
+  }
+  return {
+    role,
+    senderLabel: (normalized.senderLabel ?? "").trim(),
+    text,
+  };
+}
+
+function isSameSourceRelayNativeDuplicate(previousMessage: unknown, nextMessage: unknown): boolean {
+  const previous = sourceDuplicateDisplayParts(previousMessage);
+  const next = sourceDuplicateDisplayParts(nextMessage);
+  if (!previous || !next || previous.role !== next.role) {
+    return false;
+  }
+  if (Boolean(previous.senderLabel) === Boolean(next.senderLabel)) {
+    return false;
+  }
+  const labeled = previous.senderLabel ? previous : next;
+  const native = previous.senderLabel ? next : previous;
+  return (
+    labeled.text === native.text ||
+    stripSenderLabelPrefix(labeled.text, labeled.senderLabel) === native.text
+  );
+}
+
+function collapseSequentialSourceDuplicates(items: ChatItem[]): ChatItem[] {
+  const collapsed: ChatItem[] = [];
+  let previousSourceKey: string | null = null;
+
+  for (const item of items) {
+    if (item.kind !== "message") {
+      collapsed.push(item);
+      previousSourceKey = null;
+      continue;
+    }
+    const sourceKey = collapseDuplicateSourceKey(item.message);
+    const previous = collapsed[collapsed.length - 1];
+    if (
+      sourceKey &&
+      previousSourceKey === sourceKey &&
+      previous?.kind === "message" &&
+      isSameSourceRelayNativeDuplicate(previous.message, item.message)
+    ) {
+      if (!prefersNativeChatSurface(previous.message) && prefersNativeChatSurface(item.message)) {
+        collapsed[collapsed.length - 1] = item;
+      }
+      continue;
+    }
+    collapsed.push(item);
+    previousSourceKey = sourceKey;
+  }
+
+  return collapsed;
 }
 
 function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
@@ -2366,7 +2521,7 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
     }
   }
 
-  return groupMessages(items);
+  return groupMessages(collapseSequentialSourceDuplicates(items));
 }
 
 function messageKey(message: unknown, index: number): string {
@@ -2393,4 +2548,5 @@ function messageKey(message: unknown, index: number): string {
 
 export const __test = {
   deriveLiveRunStatus,
+  buildChatItems,
 };

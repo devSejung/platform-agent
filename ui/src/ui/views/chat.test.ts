@@ -389,16 +389,11 @@ describe("chat view", () => {
     withDocumentLang("en", () => {
       const container = document.createElement("div");
       const nowSpy = vi.spyOn(Date, "now").mockReturnValue(20_000);
-      render(
-        renderChat(createProps({ sending: true, streamStartedAt: 8_000 })),
-        container,
-      );
+      render(renderChat(createProps({ sending: true, streamStartedAt: 8_000 })), container);
 
       const status = expectLiveRunStatusAndMascotPhase(container, "sending");
       expect(status?.className).toContain("live-run-status--normal");
-      expect(status?.querySelector(".live-run-status__title")?.textContent).toBe(
-        "Sending request",
-      );
+      expect(status?.querySelector(".live-run-status__title")?.textContent).toBe("Sending request");
       expect(status?.querySelector(".live-run-status__body")?.textContent).toBe(
         "The browser is handing this message to the gateway.",
       );
@@ -547,9 +542,9 @@ describe("chat view", () => {
     expect(status?.textContent).toContain("Response failed.");
     expect(status?.textContent).toContain("00:05 elapsed");
     expect(status?.textContent).not.toContain("Compacting context");
-    expect(status?.querySelector(".employee-crab-mascot-wrap")?.getAttribute("data-phase")).not.toBe(
-      "compacting",
-    );
+    expect(
+      status?.querySelector(".employee-crab-mascot-wrap")?.getAttribute("data-phase"),
+    ).not.toBe("compacting");
     nowSpy.mockRestore();
   });
 
@@ -584,12 +579,12 @@ describe("chat view", () => {
     expect(status?.textContent).toContain("00:03 elapsed");
     expect(status?.textContent).not.toContain("Preparing response");
     expect(status?.textContent).not.toContain("Compacting context");
-    expect(status?.querySelector(".employee-crab-mascot-wrap")?.getAttribute("data-phase")).not.toBe(
-      "waiting",
-    );
-    expect(status?.querySelector(".employee-crab-mascot-wrap")?.getAttribute("data-phase")).not.toBe(
-      "compacting",
-    );
+    expect(
+      status?.querySelector(".employee-crab-mascot-wrap")?.getAttribute("data-phase"),
+    ).not.toBe("waiting");
+    expect(
+      status?.querySelector(".employee-crab-mascot-wrap")?.getAttribute("data-phase"),
+    ).not.toBe("compacting");
     nowSpy.mockRestore();
   });
 
@@ -681,7 +676,7 @@ describe("chat view", () => {
     });
   });
 
-  it("hides the context notice when only cumulative inputTokens exceed the limit", () => {
+  it("shows persistent context usage from fresh totalTokens below the warning threshold", () => {
     const container = document.createElement("div");
     render(
       renderChat(
@@ -707,8 +702,12 @@ describe("chat view", () => {
       container,
     );
 
-    expect(container.textContent).not.toContain("context used");
+    expect(container.textContent).toContain("23% context used");
+    expect(container.textContent).toContain("46k / 200k");
     expect(container.textContent).not.toContain("757.3k / 200k");
+    expect(container.querySelector(".context-notice--usage")).not.toBeNull();
+    expect(container.querySelector(".context-notice__meter")).not.toBeNull();
+    expect(container.querySelector(".context-notice__icon")).toBeNull();
   });
 
   it("uses totalTokens for the context notice detail when current usage is high", () => {
@@ -740,6 +739,7 @@ describe("chat view", () => {
     expect(container.textContent).toContain("95% context used");
     expect(container.textContent).toContain("190k / 200k");
     expect(container.textContent).not.toContain("757.3k / 200k");
+    expect(container.querySelector(".context-notice--warning")).not.toBeNull();
   });
 
   it("hides the context notice when totalTokens is missing even if inputTokens is high", () => {
@@ -798,6 +798,68 @@ describe("chat view", () => {
 
     expect(container.textContent).not.toContain("context used");
     expect(container.textContent).not.toContain("190k / 200k");
+  });
+
+  it("deduplicates relay-labeled assistant copies by source message id", () => {
+    const items = __test.buildChatItems(
+      createProps({
+        messages: [
+          {
+            __openclaw: { id: "reply-1" },
+            role: "assistant",
+            content: [{ type: "text", text: "Agent There it is." }],
+            senderLabel: "Agent",
+            timestamp: 1,
+          },
+          {
+            __openclaw: { id: "reply-1" },
+            role: "assistant",
+            content: [{ type: "text", text: "There it is." }],
+            timestamp: 2,
+          },
+        ],
+      }),
+    );
+
+    expect(items).toHaveLength(1);
+    const group = items[0];
+    expect(group.kind).toBe("group");
+    if (group.kind !== "group") {
+      return;
+    }
+    expect(group.senderLabel).toBeNull();
+    expect(group.messages).toHaveLength(1);
+    expect(group.messages[0].message).toMatchObject({
+      content: [{ type: "text", text: "There it is." }],
+    });
+  });
+
+  it("keeps same-id user relay copies separate so sender identity is preserved", () => {
+    const items = __test.buildChatItems(
+      createProps({
+        messages: [
+          {
+            __openclaw: { id: "user-1" },
+            role: "user",
+            content: [{ type: "text", text: "Alice hello" }],
+            senderLabel: "Alice",
+            timestamp: 1,
+          },
+          {
+            __openclaw: { id: "user-1" },
+            role: "user",
+            content: [{ type: "text", text: "hello" }],
+            timestamp: 2,
+          },
+        ],
+      }),
+    );
+
+    expect(items).toHaveLength(2);
+    expect(items.map((item) => (item.kind === "group" ? item.senderLabel : null))).toEqual([
+      "Alice",
+      null,
+    ]);
   });
 
   it("uses the assistant avatar URL for the welcome state when the identity avatar is only initials", () => {
@@ -1679,6 +1741,21 @@ describe("chat view", () => {
 
     expect(onSend).not.toHaveBeenCalled();
     expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("does not force textarea resize during IME composition", () => {
+    const container = document.createElement("div");
+    render(renderChat(createProps({ draft: "" })), container);
+
+    const textarea = container.querySelector<HTMLTextAreaElement>("textarea");
+    expect(textarea).not.toBeNull();
+    textarea!.style.height = "42px";
+    textarea!.value = "ㅎ";
+    textarea!.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    textarea!.value = "하";
+    textarea!.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+
+    expect(textarea!.style.height).toBe("42px");
   });
 
   it("shows a new session button when aborting is unavailable", () => {

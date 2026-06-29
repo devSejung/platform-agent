@@ -32,6 +32,13 @@ type SessionDefaultsSnapshot = {
   mainKey?: string;
 };
 
+type ProviderUsageWindow = {
+  displayName: string;
+  label: string;
+  remaining: number;
+  resetAt?: number;
+};
+
 export function resolveSidebarChatSessionKey(state: AppViewState): string {
   if (state.employeeMode) {
     const employeeAgentId =
@@ -128,8 +135,7 @@ function requestQueuedMessageDiscardConfirmation(): Promise<boolean> {
     const body = document.createElement("div");
     body.className = "callout danger";
     body.style.marginTop = "12px";
-    body.textContent =
-      "다른 대화로 이동하면 이 메시지는 전송되지 않습니다. 이동하시겠습니까?";
+    body.textContent = "다른 대화로 이동하면 이 메시지는 전송되지 않습니다. 이동하시겠습니까?";
 
     const actions = document.createElement("div");
     actions.className = "exec-approval-actions";
@@ -302,6 +308,194 @@ export function renderChatSessionSelect(state: AppViewState) {
   `;
 }
 
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function formatQuotaReset(resetAt: unknown): string | null {
+  if (typeof resetAt !== "number" || !Number.isFinite(resetAt)) {
+    return null;
+  }
+  const deltaMs = resetAt - Date.now();
+  if (deltaMs <= 0) {
+    return "now";
+  }
+  const minutes = Math.round(deltaMs / 60_000);
+  if (minutes < 60) {
+    return `${Math.max(1, minutes)}m`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h`;
+  }
+  return `${Math.round(hours / 24)}d`;
+}
+
+function collectQuotaWindowsFromAuthStatus(value: unknown): ProviderUsageWindow[] {
+  const root = readRecord(value);
+  if (!root) {
+    return [];
+  }
+  const candidates = [
+    root.providers,
+    root.status,
+    root.auth,
+    root.results,
+    root.entries,
+    Array.isArray(root) ? root : null,
+  ].filter(Boolean);
+  const providerRecords: Array<{ provider: string; value: Record<string, unknown> }> = [];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      for (const entry of candidate) {
+        const record = readRecord(entry);
+        if (!record) {
+          continue;
+        }
+        const provider =
+          typeof record.provider === "string"
+            ? record.provider
+            : typeof record.id === "string"
+              ? record.id
+              : "provider";
+        providerRecords.push({ provider, value: record });
+      }
+      continue;
+    }
+    const record = readRecord(candidate);
+    if (!record) {
+      continue;
+    }
+    for (const [provider, providerValue] of Object.entries(record)) {
+      const providerRecord = readRecord(providerValue);
+      if (providerRecord) {
+        providerRecords.push({ provider, value: providerRecord });
+      }
+    }
+  }
+
+  const windows: ProviderUsageWindow[] = [];
+  for (const { provider, value: providerValue } of providerRecords) {
+    const usage = readRecord(providerValue.usage) ?? providerValue;
+    const rawWindows = Array.isArray(usage.windows)
+      ? usage.windows
+      : Array.isArray(usage.usageWindows)
+        ? usage.usageWindows
+        : [];
+    for (const rawWindow of rawWindows) {
+      const windowRecord = readRecord(rawWindow);
+      if (!windowRecord) {
+        continue;
+      }
+      const usedPercent =
+        typeof windowRecord.usedPercent === "number"
+          ? windowRecord.usedPercent
+          : typeof windowRecord.used === "number"
+            ? windowRecord.used
+            : null;
+      const remaining =
+        typeof windowRecord.remaining === "number"
+          ? clampPercent(windowRecord.remaining)
+          : typeof windowRecord.remainingPercent === "number"
+            ? clampPercent(windowRecord.remainingPercent)
+            : typeof usedPercent === "number"
+              ? clampPercent(100 - usedPercent)
+              : null;
+      if (remaining === null) {
+        continue;
+      }
+      windows.push({
+        displayName:
+          typeof providerValue.displayName === "string" ? providerValue.displayName : provider,
+        label: typeof windowRecord.label === "string" ? windowRecord.label : "usage",
+        remaining,
+        resetAt: typeof windowRecord.resetAt === "number" ? windowRecord.resetAt : undefined,
+      });
+    }
+  }
+  return windows.toSorted((a, b) => a.remaining - b.remaining);
+}
+
+function resolveCurrentChatModelLabel(state: AppViewState): string | null {
+  const row = state.sessionsResult?.sessions?.find((entry) => entry.key === state.sessionKey);
+  const model =
+    typeof row?.model === "string" && row.model.trim()
+      ? row.model.trim()
+      : typeof state.sessionsResult?.defaults?.model === "string"
+        ? state.sessionsResult.defaults.model.trim()
+        : "";
+  if (!model) {
+    return null;
+  }
+  const provider =
+    typeof row?.modelProvider === "string" && row.modelProvider.trim()
+      ? row.modelProvider.trim()
+      : typeof state.sessionsResult?.defaults?.modelProvider === "string"
+        ? state.sessionsResult.defaults.modelProvider.trim()
+        : "";
+  if (provider && !model.includes("/")) {
+    return `${provider}/${model}`;
+  }
+  return model;
+}
+
+export function renderChatProviderUsagePill(state: AppViewState) {
+  const windows = collectQuotaWindowsFromAuthStatus(state.modelAuthStatusResult);
+  const primary = windows[0];
+  const modelLabel = resolveCurrentChatModelLabel(state);
+  if (!primary && !modelLabel) {
+    return nothing;
+  }
+  const reset = primary ? formatQuotaReset(primary.resetAt) : null;
+  const usageDetail = primary
+    ? [primary.displayName, primary.label, reset ? `resets ${reset}` : null]
+        .filter(Boolean)
+        .join(" · ")
+    : null;
+  const title = [modelLabel, usageDetail].filter(Boolean).join(" · ");
+  const severity =
+    primary && primary.remaining <= 10
+      ? "danger"
+      : primary && primary.remaining <= 25
+        ? "warn"
+        : "ok";
+
+  return html`
+    <a
+      class="chat-controls__quota chat-controls__quota--${severity}"
+      href=${pathForTab("usage", state.basePath)}
+      title=${title}
+      aria-label=${primary ? `Provider usage: ${title}` : `Chat model: ${title}`}
+      data-chat-provider-usage="true"
+      @click=${(event: MouseEvent) => {
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        ) {
+          return;
+        }
+        event.preventDefault();
+        state.setTab("usage");
+      }}
+    >
+      <span class="chat-controls__quota-label">${modelLabel ?? primary?.displayName}</span>
+      ${primary
+        ? html`<span class="chat-controls__quota-value">${primary.remaining}%</span>`
+        : nothing}
+    </a>
+  `;
+}
+
 export function renderChatControls(state: AppViewState) {
   const hideCron = state.sessionsHideCron ?? true;
   const hiddenCronCount = hideCron
@@ -440,7 +634,7 @@ export function renderChatControls(state: AppViewState) {
       >
         ${focusIcon}
       </button>
-      ${renderChatModelSelect(state)}
+      ${renderChatModelSelect(state)} ${renderChatProviderUsagePill(state)}
       ${state.employeeMode
         ? nothing
         : html`

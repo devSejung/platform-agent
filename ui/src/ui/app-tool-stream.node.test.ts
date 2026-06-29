@@ -10,6 +10,7 @@ type MutableHost = ToolStreamHost & {
   fallbackStatus?: FallbackStatus | null;
   fallbackClearTimer?: number | null;
   requestUpdate?: () => void;
+  chatModelOverrides?: Record<string, unknown>;
 };
 
 function createHost(overrides?: Partial<MutableHost>): MutableHost {
@@ -23,6 +24,7 @@ function createHost(overrides?: Partial<MutableHost>): MutableHost {
     toolStreamOrder: [],
     chatToolMessages: [],
     toolStreamSyncTimer: null,
+    chatModelOverrides: {},
     compactionStatus: null,
     compactionClearTimer: null,
     compactionRefreshTimer: null,
@@ -312,6 +314,65 @@ describe("app-tool-stream fallback lifecycle handling", () => {
     expect(host.compactionRefreshTimer).toBeNull();
 
     vi.useRealTimers();
+  });
+
+  it("updates the current session model cache from session_status tool results", () => {
+    const host = createHost({ sessionKey: "agent:main:main", chatModelOverrides: {} });
+
+    handleAgentEvent(host, {
+      runId: "run-1",
+      seq: 1,
+      stream: "tool",
+      ts: Date.now(),
+      sessionKey: "agent:main:main",
+      data: {
+        toolCallId: "tool-1",
+        name: "session_status",
+        phase: "result",
+        result: {
+          details: {
+            ok: true,
+            sessionKey: "agent:main:main",
+            model: "qwen3-32b",
+            modelProvider: "vllm",
+            modelOverride: "vllm/qwen3-32b",
+          },
+        },
+      },
+    });
+
+    expect(host.chatModelOverrides?.["agent:main:main"]).toEqual({
+      kind: "qualified",
+      value: "vllm/qwen3-32b",
+    });
+  });
+
+  it("ignores session_status model cache updates for other sessions", () => {
+    const host = createHost({ sessionKey: "agent:main:main", chatModelOverrides: {} });
+
+    handleAgentEvent(host, {
+      runId: "run-1",
+      seq: 1,
+      stream: "tool",
+      ts: Date.now(),
+      sessionKey: "agent:other:main",
+      data: {
+        toolCallId: "tool-1",
+        name: "session_status",
+        phase: "result",
+        result: {
+          details: {
+            ok: true,
+            sessionKey: "agent:other:main",
+            model: "other-model",
+            modelProvider: "vllm",
+            modelOverride: "vllm/other-model",
+          },
+        },
+      },
+    });
+
+    expect(host.chatModelOverrides).toEqual({});
   });
 
   it.each([

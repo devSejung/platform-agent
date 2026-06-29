@@ -122,6 +122,7 @@ export type AppViewState = {
   chatAvatarUrl: string | null;
   chatThinkingLevel: string | null;
   chatModelOverrides: Record<string, ChatModelOverride | null>;
+  modelAuthStatusResult?: unknown;
   chatModelsLoading: boolean;
   chatModelCatalog: ModelCatalogEntry[];
   chatQueue: ChatQueueItem[];

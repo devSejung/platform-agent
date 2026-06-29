@@ -9,7 +9,7 @@ import {
 import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
 import type { GatewayRpcOpts } from "../gateway-rpc.js";
 import { addGatewayClientOptions } from "../gateway-rpc.js";
-import { parsePositiveIntOrUndefined } from "../program/helpers.js";
+import { parseStrictPositiveIntOrUndefined } from "../program/helpers.js";
 import { resolveCronCreateSchedule } from "./schedule-options.js";
 import {
   getCronChannelOptions,
@@ -212,7 +212,10 @@ Delivery:
             if (systemEvent) {
               return { kind: "systemEvent" as const, text: systemEvent };
             }
-            const timeoutSeconds = parsePositiveIntOrUndefined(opts.timeoutSeconds);
+            const timeoutSeconds = parseStrictPositiveIntOrUndefined(opts.timeoutSeconds);
+            if (opts.timeoutSeconds !== undefined && timeoutSeconds === undefined) {
+              throw new Error("Invalid --timeout-seconds (must be a positive integer).");
+            }
             return {
               kind: "agentTurn" as const,
               message,

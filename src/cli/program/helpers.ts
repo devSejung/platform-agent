@@ -23,6 +23,24 @@ export function parsePositiveIntOrUndefined(value: unknown): number | undefined 
   return undefined;
 }
 
+export function parseStrictPositiveIntOrUndefined(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (typeof value === "number") {
+    return Number.isInteger(value) && value > 0 ? value : undefined;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      return undefined;
+    }
+    const parsed = Number.parseInt(trimmed, 10);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  return undefined;
+}
+
 export function resolveActionArgs(actionCommand?: import("commander").Command): string[] {
   if (!actionCommand) {
     return [];

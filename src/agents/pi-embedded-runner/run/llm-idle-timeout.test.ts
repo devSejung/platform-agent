@@ -69,16 +69,36 @@ describe("resolveLlmIdleTimeoutMs", () => {
     expect(resolveLlmIdleTimeoutMs({ cfg })).toBe(0);
   });
 
-  it("disables the default idle timeout for cron when no timeout is configured", () => {
-    expect(resolveLlmIdleTimeoutMs({ trigger: "cron" })).toBe(0);
+  it("uses a bounded default idle timeout for remote cron runs", () => {
+    expect(resolveLlmIdleTimeoutMs({ trigger: "cron" })).toBe(DEFAULT_LLM_IDLE_TIMEOUT_MS);
 
     const cfg = { agents: { defaults: { llm: {} } } } as OpenClawConfig;
-    expect(resolveLlmIdleTimeoutMs({ cfg, trigger: "cron" })).toBe(0);
+    expect(resolveLlmIdleTimeoutMs({ cfg, trigger: "cron" })).toBe(DEFAULT_LLM_IDLE_TIMEOUT_MS);
   });
 
-  it("uses agents.defaults.timeoutSeconds for cron before disabling the default idle timeout", () => {
+  it("fails over remote cron streams before the outer agent timeout", () => {
     const cfg = { agents: { defaults: { timeoutSeconds: 300 } } } as OpenClawConfig;
-    expect(resolveLlmIdleTimeoutMs({ cfg, trigger: "cron" })).toBe(300_000);
+    expect(resolveLlmIdleTimeoutMs({ cfg, trigger: "cron" })).toBe(DEFAULT_LLM_IDLE_TIMEOUT_MS);
+  });
+
+  it("preserves self-hosted vLLM cron timeout policy", () => {
+    const cfg = { agents: { defaults: { timeoutSeconds: 300 } } } as OpenClawConfig;
+    expect(
+      resolveLlmIdleTimeoutMs({
+        cfg,
+        trigger: "cron",
+        model: { baseUrl: "http://vllm:8000/v1", provider: "vllm", id: "qwen" },
+      }),
+    ).toBe(300_000);
+  });
+
+  it("keeps self-hosted cron idle timeout disabled when no timeout is configured", () => {
+    expect(
+      resolveLlmIdleTimeoutMs({
+        trigger: "cron",
+        model: { baseUrl: "http://127.0.0.1:8000/v1", provider: "vllm", id: "qwen" },
+      }),
+    ).toBe(0);
   });
 
   it("keeps an explicit cron idle timeout when configured", () => {

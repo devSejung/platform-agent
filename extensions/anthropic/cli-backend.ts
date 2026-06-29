@@ -39,6 +39,8 @@ export function buildAnthropicCliBackend(): CliBackendPlugin {
         "user",
         "--permission-mode",
         "bypassPermissions",
+        "--disallowedTools",
+        "ScheduleWakeup,CronCreate",
       ],
       resumeArgs: [
         "-p",
@@ -50,6 +52,8 @@ export function buildAnthropicCliBackend(): CliBackendPlugin {
         "user",
         "--permission-mode",
         "bypassPermissions",
+        "--disallowedTools",
+        "ScheduleWakeup,CronCreate",
         "--resume",
         "{sessionId}",
       ],

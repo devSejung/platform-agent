@@ -140,6 +140,11 @@ describe("normalizeClaudeBackendConfig", () => {
     expect(backend.config.args).toContain("user");
     expect(backend.config.resumeArgs).toContain("--setting-sources");
     expect(backend.config.resumeArgs).toContain("user");
+    expect(backend.config.args).toContain("--disallowedTools");
+    expect(backend.config.args).toContain("ScheduleWakeup,CronCreate");
+    expect(backend.config.resumeArgs).toContain("--disallowedTools");
+    expect(backend.config.resumeArgs).toContain("ScheduleWakeup,CronCreate");
+    expect(backend.config.args).not.toContain("Tools are disabled");
     expect(backend.config.clearEnv).toEqual([...CLAUDE_CLI_CLEAR_ENV]);
     expect(backend.config.clearEnv).toContain("ANTHROPIC_BASE_URL");
     expect(backend.config.clearEnv).toContain("CLAUDE_CONFIG_DIR");

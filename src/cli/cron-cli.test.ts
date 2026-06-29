@@ -242,39 +242,44 @@ async function runCronRunAndCaptureExit(params: {
 }
 
 describe("cron cli", () => {
-  it.each(["cron.status", "cron.list", "cron.add", "cron.update", "cron.remove", "cron.run", "cron.runs"])(
-    "%s uses local backend shared auth",
-    async (method) => {
-      if (method === "cron.status") {
-        await runCronCommand(["cron", "status"]);
-      } else if (method === "cron.list") {
-        await runCronCommand(["cron", "list"]);
-      } else if (method === "cron.add") {
-        await runCronCommand([
-          "cron",
-          "add",
-          "--name",
-          "reminder",
-          "--at",
-          "2026-01-01T00:00:00Z",
-          "--message",
-          "hello",
-        ]);
-      } else if (method === "cron.update") {
-        await runCronCommand(["cron", "enable", "job-1"]);
-      } else if (method === "cron.remove") {
-        await runCronCommand(["cron", "remove", "job-1"]);
-      } else if (method === "cron.run") {
-        await runCronRunAndCaptureExit({ ran: true });
-      } else if (method === "cron.runs") {
-        await runCronCommand(["cron", "runs", "--id", "job-1"]);
-      }
+  it.each([
+    "cron.status",
+    "cron.list",
+    "cron.add",
+    "cron.update",
+    "cron.remove",
+    "cron.run",
+    "cron.runs",
+  ])("%s uses local backend shared auth", async (method) => {
+    if (method === "cron.status") {
+      await runCronCommand(["cron", "status"]);
+    } else if (method === "cron.list") {
+      await runCronCommand(["cron", "list"]);
+    } else if (method === "cron.add") {
+      await runCronCommand([
+        "cron",
+        "add",
+        "--name",
+        "reminder",
+        "--at",
+        "2026-01-01T00:00:00Z",
+        "--message",
+        "hello",
+      ]);
+    } else if (method === "cron.update") {
+      await runCronCommand(["cron", "enable", "job-1"]);
+    } else if (method === "cron.remove") {
+      await runCronCommand(["cron", "remove", "job-1"]);
+    } else if (method === "cron.run") {
+      await runCronRunAndCaptureExit({ ran: true });
+    } else if (method === "cron.runs") {
+      await runCronCommand(["cron", "runs", "--id", "job-1"]);
+    }
 
-      expect(getGatewayCallExtra<{ useLocalBackendSharedAuth?: boolean }>(method)).toEqual({
-        useLocalBackendSharedAuth: true,
-      });
-    },
-  );
+    expect(getGatewayCallExtra<{ useLocalBackendSharedAuth?: boolean }>(method)).toEqual({
+      useLocalBackendSharedAuth: true,
+    });
+  });
 
   it.each([
     {
@@ -323,6 +328,33 @@ describe("cron cli", () => {
     expect(params?.payload?.model).toBe("opus");
     expect(params?.payload?.thinking).toBe("low");
   });
+
+  it.each(["", "0", "-1", "1.5", "1000ms"])(
+    "rejects invalid cron add timeout %j",
+    async (value) => {
+      await expect(
+        runCronCommand([
+          "cron",
+          "add",
+          "--name",
+          "Invalid timeout",
+          "--cron",
+          "* * * * *",
+          "--session",
+          "isolated",
+          "--message",
+          "hello",
+          "--timeout-seconds",
+          value,
+        ]),
+      ).rejects.toThrow("__exit__:1");
+
+      expect(defaultRuntime.error).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid --timeout-seconds"),
+      );
+      expect(callGatewayFromCli.mock.calls.some((call) => call[0] === "cron.add")).toBe(false);
+    },
+  );
 
   it("defaults isolated cron add to announce delivery", async () => {
     await runCronCommand([

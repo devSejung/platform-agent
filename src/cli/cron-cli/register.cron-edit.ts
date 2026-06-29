@@ -183,7 +183,15 @@ export function registerCronEditCommand(cron: Command) {
           const timeoutSeconds = opts.timeoutSeconds
             ? Number.parseInt(String(opts.timeoutSeconds), 10)
             : undefined;
-          const hasTimeoutSeconds = Boolean(timeoutSeconds && Number.isFinite(timeoutSeconds));
+          const hasTimeoutSeconds = Boolean(
+            timeoutSeconds &&
+            Number.isSafeInteger(timeoutSeconds) &&
+            timeoutSeconds > 0 &&
+            String(opts.timeoutSeconds).trim() === String(timeoutSeconds),
+          );
+          if (opts.timeoutSeconds !== undefined && !hasTimeoutSeconds) {
+            throw new Error("Invalid --timeout-seconds (must be a positive integer).");
+          }
           const hasDeliveryModeFlag = opts.announce || typeof opts.deliver === "boolean";
           const hasDeliveryTarget = typeof opts.channel === "string" || typeof opts.to === "string";
           const hasDeliveryAccount = typeof opts.account === "string";

@@ -211,7 +211,7 @@ export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: bo
           return;
         }
         event.preventDefault();
-        if (tab === "chat") {
+        if (tab === "chat" && !state.employeeMode) {
           const mainSessionKey = resolveSidebarChatSessionKey(state);
           if (state.sessionKey !== mainSessionKey) {
             if (!(await confirmDiscardUnsentQueueIfNeeded(state))) {
@@ -274,6 +274,13 @@ export function renderChatSessionSelect(state: AppViewState) {
   const sessionGroups = resolveSessionOptionGroups(state, state.sessionKey, state.sessionsResult);
   const modelSelect = renderChatModelSelect(state);
   const thinkingSelect = renderChatThinkingSelect(state);
+  if (state.employeeMode) {
+    return html`
+      <div class="chat-controls__session-row chat-controls__session-row--employee">
+        ${modelSelect} ${thinkingSelect}
+      </div>
+    `;
+  }
   const selectedSessionLabel =
     sessionGroups.flatMap((group) => group.options).find((entry) => entry.key === state.sessionKey)
       ?.label ?? state.sessionKey;

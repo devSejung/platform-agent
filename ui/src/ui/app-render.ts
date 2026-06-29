@@ -12,6 +12,7 @@ import {
   renderTab,
   renderSidebarConnectionStatus,
   renderTopbarThemeModeToggle,
+  resolveSessionDisplayName,
   switchChatSession,
 } from "./app-render.helpers.ts";
 import { warnQueryToken } from "./app-settings.ts";
@@ -148,8 +149,8 @@ import {
   resolveEmployeeAnnouncement,
 } from "./employee-announcement.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
-import "./components/dashboard-header.ts";
 import { icons } from "./icons.ts";
+import "./components/dashboard-header.ts";
 import { toSanitizedMarkdownHtml } from "./markdown.ts";
 import {
   normalizeBasePath,
@@ -164,6 +165,7 @@ import {
   parseAgentSessionKey,
   resolveAgentIdFromSessionKey,
 } from "./session-key.ts";
+import type { GatewaySessionRow } from "./types.ts";
 import {
   employeeLogoUrl,
   resolveAgentConfig,
@@ -574,6 +576,145 @@ function formatEmployeeRelative(value: unknown): string {
   }
   const absDays = Math.round(absHours / 24);
   return `${absDays}일 ${diffMs >= 0 ? "전" : "후"}`;
+}
+
+function isEmployeeChatSessionRowVisible(state: AppViewState, row: GatewaySessionRow): boolean {
+  if (!state.employeeMode) {
+    return true;
+  }
+  const agentId = state.employeeProfile?.agentId?.trim();
+  const key = row.key?.trim();
+  if (!agentId || !key) {
+    return false;
+  }
+  return parseAgentSessionKey(key)?.agentId === agentId;
+}
+
+function formatEmployeeSessionMeta(
+  row: GatewaySessionRow,
+  defaults: NonNullable<AppViewState["sessionsResult"]>["defaults"] | undefined,
+): string {
+  const model =
+    typeof row.model === "string" && row.model.trim()
+      ? row.model.trim()
+      : typeof defaults?.model === "string"
+        ? defaults.model.trim()
+        : "";
+  const provider =
+    typeof row.modelProvider === "string" && row.modelProvider.trim()
+      ? row.modelProvider.trim()
+      : typeof defaults?.modelProvider === "string"
+        ? defaults.modelProvider.trim()
+        : "";
+  const modelLabel = provider && model && !model.includes("/") ? `${provider}/${model}` : model;
+  return [modelLabel, formatEmployeeRelative(row.updatedAt)].filter(Boolean).join(" · ");
+}
+
+async function createEmployeeChatSession(state: AppViewState) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  const agentId = state.employeeProfile?.agentId?.trim();
+  try {
+    const created = await state.client.request<{ key?: string }>(
+      "sessions.create",
+      agentId ? { agentId } : {},
+    );
+    await loadSessions(state, {
+      activeMinutes: 0,
+      limit: 0,
+      includeGlobal: false,
+      includeUnknown: false,
+    });
+    const key = typeof created?.key === "string" ? created.key.trim() : "";
+    if (key) {
+      await switchChatSession(state, key);
+    }
+  } catch (err) {
+    state.sessionsError = String(err);
+  }
+}
+
+function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollapsed: boolean) {
+  if (!state.employeeMode || tab !== "chat" || navCollapsed || state.tab !== "chat") {
+    return nothing;
+  }
+  const query = state.employeeChatSessionSearch.trim().toLowerCase();
+  const rows = (state.sessionsResult?.sessions ?? [])
+    .filter((row) => isEmployeeChatSessionRowVisible(state, row))
+    .filter((row) => {
+      if (!query) {
+        return true;
+      }
+      const name = resolveSessionDisplayName(row.key, row).toLowerCase();
+      const meta = formatEmployeeSessionMeta(row, state.sessionsResult?.defaults).toLowerCase();
+      return name.includes(query) || meta.includes(query);
+    });
+  const count = rows.length;
+  return html`
+    <div class="employee-chat-sessions" aria-label="Chat sessions">
+      <div class="employee-chat-sessions__actions">
+        <button
+          type="button"
+          class="employee-chat-sessions__new"
+          ?disabled=${!state.connected || !state.client || state.sessionsLoading}
+          @click=${() => void createEmployeeChatSession(state)}
+        >
+          <span aria-hidden="true">${icons.plus}</span>
+          <span>새 대화</span>
+        </button>
+      </div>
+      <label class="employee-chat-sessions__search">
+        <span aria-hidden="true">${icons.search}</span>
+        <input
+          type="search"
+          placeholder="세션 검색"
+          .value=${state.employeeChatSessionSearch}
+          @input=${(event: Event) => {
+            state.employeeChatSessionSearch = (event.target as HTMLInputElement).value;
+          }}
+        />
+      </label>
+      <div class="employee-chat-sessions__list" role="list">
+        ${rows.length
+          ? rows.map((row) => {
+              const selected = row.key === state.sessionKey;
+              const label = resolveSessionDisplayName(row.key, row);
+              const meta = formatEmployeeSessionMeta(row, state.sessionsResult?.defaults);
+              return html`
+                <button
+                  type="button"
+                  role="listitem"
+                  class="employee-chat-session ${selected ? "employee-chat-session--active" : ""}"
+                  title=${row.key}
+                  ?disabled=${selected}
+                  @click=${async () => {
+                    if (await switchChatSession(state, row.key)) {
+                      void refreshChatAvatar(state);
+                    }
+                  }}
+                >
+                  <span
+                    class="employee-chat-session__dot ${row.hasActiveRun
+                      ? "employee-chat-session__dot--active"
+                      : ""}"
+                    aria-hidden="true"
+                  ></span>
+                  <span class="employee-chat-session__body">
+                    <span class="employee-chat-session__title">${label}</span>
+                    <span class="employee-chat-session__meta">${meta}</span>
+                  </span>
+                </button>
+              `;
+            })
+          : html`<div class="employee-chat-sessions__empty">표시할 세션이 없습니다.</div>`}
+      </div>
+      <div class="employee-chat-sessions__footer">
+        ${state.sessionsLoading ? "불러오는 중" : `${count}개 세션`}
+        ${state.sessionsError ? html`<span>${state.sessionsError}</span>` : nothing}
+      </div>
+    </div>
+  `;
 }
 
 function renderEmployeeHeartbeat(state: AppViewState) {
@@ -1445,8 +1586,11 @@ export function renderApp(state: AppViewState) {
                             `
                           : nothing}
                         <div class="nav-section__items">
-                          ${group.tabs.map((tab) =>
-                            renderTab(state, tab, { collapsed: navCollapsed }),
+                          ${group.tabs.map(
+                            (tab) => html`
+                              ${renderTab(state, tab, { collapsed: navCollapsed })}
+                              ${renderEmployeeChatSessionList(state, tab, navCollapsed)}
+                            `,
                           )}
                         </div>
                       </section>

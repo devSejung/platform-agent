@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import "../styles.css";
-import { mountApp as mountTestApp, registerAppMountHooks } from "./test-helpers/app-mount.ts";
-import "./app.ts";
 import type { OpenClawApp } from "./app.ts";
+import "./app.ts";
+import { mountApp as mountTestApp, registerAppMountHooks } from "./test-helpers/app-mount.ts";
+import type { GatewaySessionRow, SessionsListResult } from "./types.ts";
 
 registerAppMountHooks();
 
@@ -11,6 +12,22 @@ function mountConnectedEmployeeApp(pathname = "/employee/chat") {
   const app = mountTestApp(pathname);
   app.employeeMode = true;
   return app;
+}
+
+function createSessionsResult(rows: GatewaySessionRow[]): SessionsListResult {
+  return {
+    ts: Date.now(),
+    path: "",
+    count: rows.length,
+    defaults: { modelProvider: "openai", model: "gpt-5", contextTokens: null },
+    sessions: rows,
+  };
+}
+
+async function flushEmployeeApp(app: OpenClawApp) {
+  await Promise.resolve();
+  app.requestUpdate();
+  await app.updateComplete;
 }
 
 describe("employee mode", () => {
@@ -74,7 +91,7 @@ describe("employee mode", () => {
     expect(app.textContent).toContain("로그아웃");
   });
 
-  it("shows employee tabs and the chat model selector in the connected workspace", async () => {
+  it("shows employee tabs, sidebar sessions, and the compact chat model selector", async () => {
     const app = mountConnectedEmployeeApp();
     app.employeeProfile = {
       employeeId: "eon",
@@ -82,6 +99,11 @@ describe("employee mode", () => {
       department: "Ops",
       agentId: "eon",
     };
+    app.sessionKey = "agent:eon:main";
+    app.sessionsResult = createSessionsResult([
+      { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+      { key: "agent:minji:main", kind: "direct", label: "Other employee", updatedAt: Date.now() },
+    ]);
     app.chatModelCatalog = [{ id: "gpt-5", name: "GPT-5", provider: "openai" }];
     app.connected = true;
     app.requestUpdate();
@@ -92,6 +114,110 @@ describe("employee mode", () => {
     expect(app.textContent).toContain("Heartbeat");
     expect(app.textContent).toContain("Skill Hub");
     expect(app.querySelector("[data-chat-model-select='true']")).not.toBeNull();
+    expect(app.querySelector(".content-header optgroup")).toBeNull();
+    expect(app.querySelector(".employee-chat-sessions")).not.toBeNull();
+    const sidebarSessions = app.querySelector(".employee-chat-sessions");
+    expect(sidebarSessions?.textContent).toContain("Main");
+    expect(sidebarSessions?.textContent).not.toContain("Other employee");
+  });
+
+  it("filters the employee chat session list without exposing raw session keys", async () => {
+    const app = mountConnectedEmployeeApp();
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.sessionKey = "agent:eon:main";
+    app.sessionsResult = createSessionsResult([
+      { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+      {
+        key: "agent:eon:dashboard:alpha",
+        kind: "direct",
+        label: "Alpha Plan",
+        updatedAt: Date.now(),
+      },
+      {
+        key: "agent:eon:dashboard:beta",
+        kind: "direct",
+        label: "Beta Notes",
+        updatedAt: Date.now(),
+      },
+      { key: "agent:eon:dashboard:gamma", kind: "direct", label: "Gamma", updatedAt: Date.now() },
+    ]);
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const list = app.querySelector<HTMLElement>(".employee-chat-sessions__list");
+    expect(list).not.toBeNull();
+    expect(Array.from(list!.querySelectorAll(".employee-chat-session"))).toHaveLength(4);
+    expect(app.textContent).toContain("4개 세션");
+    expect(app.textContent).toContain("Alpha Plan");
+    expect(app.textContent).not.toContain("agent:eon:dashboard:alpha");
+
+    const search = app.querySelector<HTMLInputElement>(".employee-chat-sessions__search input");
+    expect(search).not.toBeNull();
+    search!.value = "beta";
+    search!.dispatchEvent(new Event("input", { bubbles: true }));
+    await flushEmployeeApp(app);
+
+    const sidebarSessions = app.querySelector(".employee-chat-sessions");
+    expect(sidebarSessions?.textContent).toContain("Beta Notes");
+    expect(sidebarSessions?.textContent).not.toContain("Alpha Plan");
+  });
+
+  it("creates and switches employee chat sessions through sessions.create and chat.history", async () => {
+    const app = mountConnectedEmployeeApp();
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.create") {
+        return { ok: true, key: "agent:eon:dashboard:new-session" };
+      }
+      if (method === "sessions.list") {
+        return createSessionsResult([
+          {
+            key: "agent:eon:dashboard:new-session",
+            kind: "direct",
+            label: "New session",
+            updatedAt: Date.now(),
+          },
+        ]);
+      }
+      if (method === "chat.history") {
+        return { messages: [] };
+      }
+      return {};
+    });
+    app.client = { request, stop: vi.fn() } as never;
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.sessionKey = "agent:eon:main";
+    app.sessionsResult = createSessionsResult([
+      { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+    ]);
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    app.querySelector<HTMLButtonElement>(".employee-chat-sessions__new")?.click();
+    await flushEmployeeApp(app);
+    await flushEmployeeApp(app);
+
+    expect(request).toHaveBeenCalledWith("sessions.create", { agentId: "eon" });
+    expect(request).toHaveBeenCalledWith(
+      "sessions.list",
+      expect.objectContaining({ includeGlobal: false, includeUnknown: false }),
+    );
+    expect(app.sessionKey).toBe("agent:eon:dashboard:new-session");
+    expect(request).toHaveBeenCalledWith(
+      "chat.history",
+      expect.objectContaining({ sessionKey: "agent:eon:dashboard:new-session" }),
+    );
   });
 
   it("shows Groups for all employees and hides Admin without admin access", async () => {
@@ -137,7 +263,7 @@ describe("employee mode", () => {
     ];
     app.groupsDetailGroupId = "group-platform";
     app.groupsDetail = {
-      group: app.groupsEntries[0]!,
+      group: app.groupsEntries[0],
       members: [
         {
           accountId: "eon",

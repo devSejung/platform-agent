@@ -702,6 +702,83 @@ describe("gateway server sessions", () => {
     ws.close();
   });
 
+  test("employee sessions.list and sessions.create are scoped to the employee agent", async () => {
+    await createSessionStoreDir();
+    await writeSessionStore({
+      entries: {
+        "agent:eon:main": {
+          sessionId: "sess-eon",
+          updatedAt: Date.now(),
+        },
+        "agent:minji:main": {
+          sessionId: "sess-minji",
+          updatedAt: Date.now(),
+        },
+      },
+    });
+
+    const sessionsHandlers = await getSessionsHandlers();
+    const employeeClient = {
+      connect: { role: "employee" },
+      internal: { employee: { agentId: "eon" } },
+    } as never;
+    const context = {
+      broadcastToConnIds: vi.fn(),
+      getSessionEventSubscriberConnIds: () => new Set<string>(),
+      loadGatewayModelCatalog: async () => [],
+    } as never;
+
+    const respondList = vi.fn();
+    sessionsHandlers["sessions.list"]({
+      req: {} as never,
+      params: {},
+      respond: respondList,
+      context,
+      client: employeeClient,
+      isWebchatConnect: () => false,
+    });
+    expect(respondList).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        count: 1,
+        sessions: [expect.objectContaining({ key: "agent:eon:main" })],
+      }),
+      undefined,
+    );
+
+    const respondCreate = vi.fn();
+    await sessionsHandlers["sessions.create"]({
+      req: {} as never,
+      params: {},
+      respond: respondCreate,
+      context,
+      client: employeeClient,
+      isWebchatConnect: () => false,
+    });
+    expect(respondCreate).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ ok: true, key: expect.stringMatching(/^agent:eon:dashboard:/) }),
+      undefined,
+    );
+
+    const respondDenied = vi.fn();
+    await sessionsHandlers["sessions.create"]({
+      req: {} as never,
+      params: { agentId: "minji" },
+      respond: respondDenied,
+      context,
+      client: employeeClient,
+      isWebchatConnect: () => false,
+    });
+    expect(respondDenied).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({
+        message: expect.stringMatching(/employee access denied for session create/i),
+      }),
+    );
+  });
+
   test("sessions.list surfaces transcript usage and model fallbacks from the transcript", async () => {
     const { dir } = await createSessionStoreDir();
     testState.agentConfig = {

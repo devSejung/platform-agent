@@ -915,8 +915,16 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const p = params;
     const cfg = loadConfig();
     const requestedKey = normalizeOptionalString(p.key);
+    const employeeAgentId = getEmployeeAgentId(client);
+    const requestedAgentId = normalizeOptionalString(p.agentId);
+    if (
+      requestedAgentId &&
+      !enforceEmployeeAgent(client, requestedAgentId, respond, "session create")
+    ) {
+      return;
+    }
     const agentId = normalizeAgentId(
-      normalizeOptionalString(p.agentId) ?? resolveDefaultAgentId(cfg),
+      employeeAgentId ?? requestedAgentId ?? resolveDefaultAgentId(cfg),
     );
     if (!enforceEmployeeAgent(client, agentId, respond, "session create")) {
       return;

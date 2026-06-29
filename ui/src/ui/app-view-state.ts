@@ -270,6 +270,7 @@ export type AppViewState = {
   sessionsIncludeUnknown: boolean;
   sessionsHideCron: boolean;
   sessionsSearchQuery: string;
+  employeeChatSessionSearch: string;
   sessionsSortColumn: "key" | "kind" | "updated" | "tokens";
   sessionsSortDir: "asc" | "desc";
   sessionsPage: number;

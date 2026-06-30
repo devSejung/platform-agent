@@ -147,8 +147,12 @@ function sessionKeyFromTarget(target: CronQuickCreateDraft["sessionTarget"]): st
   return target.startsWith("session:") ? target.slice("session:".length).trim() : "";
 }
 
-export function draftToCronFormPatch(draft: CronQuickCreateDraft): Partial<CronFormState> {
+export function draftToCronFormPatch(
+  draft: CronQuickCreateDraft,
+  options?: { currentSessionKey?: string },
+): Partial<CronFormState> {
   const explicitSessionKey = sessionKeyFromTarget(draft.sessionTarget);
+  const currentSessionKey = options?.currentSessionKey?.trim() ?? "";
   const sessionTarget: CronFormState["sessionTarget"] = explicitSessionKey
     ? `session:${explicitSessionKey}`
     : draft.sessionTarget === "current"
@@ -162,7 +166,7 @@ export function draftToCronFormPatch(draft: CronQuickCreateDraft): Partial<CronF
     payloadText: draft.prompt,
     enabled: true,
     sessionTarget,
-    sessionKey: explicitSessionKey,
+    sessionKey: explicitSessionKey || (sessionTarget === "current" ? currentSessionKey : ""),
   };
 
   switch (draft.schedulePreset) {
@@ -204,6 +208,7 @@ export function draftToCronFormPatch(draft: CronQuickCreateDraft): Partial<CronF
       patch.deliveryMode = "none";
       patch.wakeMode = "now";
       patch.sessionTarget = explicitSessionKey ? `session:${explicitSessionKey}` : "current";
+      patch.sessionKey = explicitSessionKey || currentSessionKey;
       break;
     case "isolated":
       patch.deliveryMode = "none";

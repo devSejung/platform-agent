@@ -4,6 +4,7 @@ import type { OpenClawApp } from "./app.ts";
 import "./app.ts";
 import { mountApp as mountTestApp, registerAppMountHooks } from "./test-helpers/app-mount.ts";
 import type { GatewaySessionRow, SessionsListResult } from "./types.ts";
+import { createDefaultDraft } from "./views/cron-quick-create.ts";
 
 registerAppMountHooks();
 
@@ -340,6 +341,49 @@ describe("employee mode", () => {
       "chat.history",
       expect.objectContaining({ sessionKey: "agent:eon:dashboard:new-session" }),
     );
+  });
+
+  it("scopes cron quick-create session choices to the employee agent", async () => {
+    const app = mountConnectedEmployeeApp("/employee/cron");
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.tab = "cron";
+    app.sessionKey = "agent:eon:main";
+    app.sessionsResult = createSessionsResult([
+      { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+      {
+        key: "agent:eon:dashboard:alpha",
+        kind: "direct",
+        label: "Alpha Plan",
+        updatedAt: Date.now(),
+      },
+      {
+        key: "agent:minji:dashboard:beta",
+        kind: "direct",
+        label: "Other employee",
+        updatedAt: Date.now(),
+      },
+    ]);
+    app.cronQuickCreateOpen = true;
+    app.cronQuickCreateStep = "how";
+    app.cronQuickCreateDraft = {
+      ...createDefaultDraft(),
+      prompt: "Run scoped job",
+    };
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const options = Array.from(
+      app.querySelectorAll<HTMLOptionElement>(".cqc-container option"),
+    ).map((option) => option.textContent?.trim());
+    expect(options).toContain("Main");
+    expect(options).toContain("Alpha Plan");
+    expect(options).not.toContain("Other employee");
   });
 
   it("shows Groups for all employees and hides Admin without admin access", async () => {

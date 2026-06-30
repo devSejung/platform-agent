@@ -1186,6 +1186,19 @@ export function renderApp(state: AppViewState) {
     agentId: employeeAgentId,
     clearAgent: false,
   });
+  const cronQuickCreateSessions =
+    state.employeeMode && state.sessionsResult
+      ? (() => {
+          const sessions = state.sessionsResult.sessions.filter((row) =>
+            isEmployeeChatSessionRowVisible(state, row),
+          );
+          return {
+            ...state.sessionsResult,
+            count: sessions.length,
+            sessions,
+          };
+        })()
+      : state.sessionsResult;
 
   const chatView =
     state.tab === "chat"
@@ -1486,7 +1499,7 @@ export function renderApp(state: AppViewState) {
           draft: state.cronQuickCreateDraft ?? createDefaultDraft(),
           employeeMode: state.employeeMode,
           currentSessionKey: state.sessionKey,
-          sessions: state.sessionsResult ?? null,
+          sessions: cronQuickCreateSessions ?? null,
           onDraftChange: (patch) => {
             state.cronQuickCreateDraft = {
               ...(state.cronQuickCreateDraft ?? createDefaultDraft()),
@@ -1500,7 +1513,7 @@ export function renderApp(state: AppViewState) {
           },
           onCreate: () => {
             const draft = state.cronQuickCreateDraft ?? createDefaultDraft();
-            const formPatch = draftToCronFormPatch(draft);
+            const formPatch = draftToCronFormPatch(draft, { currentSessionKey: state.sessionKey });
             const nextForm = normalizeCronFormState({
               ...DEFAULT_CRON_FORM,
               ...formPatch,
@@ -1523,7 +1536,7 @@ export function renderApp(state: AppViewState) {
           },
           onAdvancedCreate: () => {
             const draft = state.cronQuickCreateDraft ?? createDefaultDraft();
-            const formPatch = draftToCronFormPatch(draft);
+            const formPatch = draftToCronFormPatch(draft, { currentSessionKey: state.sessionKey });
             const nextForm = normalizeCronFormState({
               ...DEFAULT_CRON_FORM,
               ...formPatch,

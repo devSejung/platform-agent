@@ -67,7 +67,7 @@ describe("cron quick create", () => {
     expect(onStepChange).toHaveBeenCalledWith("when");
   });
 
-  it("lists only caller-provided scoped sessions in employee mode", async () => {
+  it("lists caller-provided scoped sessions in employee mode", async () => {
     await i18n.setLocale("en");
     const onDraftChange = vi.fn();
     const sessions = {
@@ -131,6 +131,26 @@ describe("cron quick create", () => {
       cronExpr: "0 9 * * 1-5",
       deliveryMode: "announce",
       sessionTarget: "session:agent:eon:main",
+      sessionKey: "agent:eon:main",
+    });
+  });
+
+  it("keeps current session selection tied to the active session key", async () => {
+    await i18n.setLocale("en");
+    const patch = draftToCronFormPatch(
+      {
+        ...createDefaultDraft(),
+        prompt: "Keep current context warm",
+        deliveryPreset: "silent",
+        sessionTarget: "current",
+      },
+      { currentSessionKey: "agent:eon:main" },
+    );
+
+    expect(patch).toMatchObject({
+      payloadKind: "systemEvent",
+      deliveryMode: "none",
+      sessionTarget: "current",
       sessionKey: "agent:eon:main",
     });
   });

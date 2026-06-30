@@ -127,6 +127,31 @@ describe("employee mode", () => {
     expect(sidebarSessions?.textContent).not.toContain("Other employee");
   });
 
+  it("opens Skill Hub from the employee topbar shortcut", async () => {
+    const app = mountConnectedEmployeeApp();
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const shortcut = app.querySelector<HTMLAnchorElement>(".topbar-skillhub-link");
+    expect(shortcut).not.toBeNull();
+    shortcut?.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }),
+    );
+    await Promise.resolve();
+    await app.updateComplete;
+
+    expect(app.tab).toBe("skillHub");
+    expect(window.location.pathname).toBe("/employee/skill-hub");
+    expect(app.querySelector(".topbar-skillhub-link--active")).not.toBeNull();
+  });
+
   it("collapses employee sidebar sections independently", async () => {
     const app = mountConnectedEmployeeApp();
     app.employeeProfile = {

@@ -1065,9 +1065,11 @@ export function renderApp(state: AppViewState) {
     ),
   }));
   const allowedTabs = new Set<Tab>(visibleTabGroups.flatMap((group) => [...group.tabs]));
-  // Dashboard is intentionally entered from the topbar instead of the sidebar,
-  // so it must stay routable even when it is omitted from the visible tab groups.
+  // Dashboard and Skill Hub are intentionally entered from the topbar instead of
+  // the employee sidebar, so they must stay routable even when omitted from the
+  // visible tab groups.
   allowedTabs.add("dashboard");
+  allowedTabs.add("skillHub");
   if (!allowedTabs.has(state.tab)) {
     queueMicrotask(() => state.setTab("chat"));
   }

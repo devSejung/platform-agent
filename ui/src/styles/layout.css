@@ -293,6 +293,8 @@
     color-mix(in srgb, var(--bg-elevated) 92%, transparent),
     color-mix(in srgb, #0f7c72 5%, var(--bg-elevated))
   );
+  overflow: hidden;
+  animation: topbar-skillhub-arrived 4.8s ease-in-out 0.4s 3;
 }
 
 .topbar-skillhub-link::after {
@@ -306,6 +308,24 @@
   transition: opacity var(--duration-fast) ease;
 }
 
+.topbar-skillhub-link::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    110deg,
+    transparent 0%,
+    transparent 34%,
+    color-mix(in srgb, #0f7c72 18%, transparent) 48%,
+    transparent 62%,
+    transparent 100%
+  );
+  transform: translateX(-130%);
+  opacity: 0;
+  animation: topbar-skillhub-sheen 4.8s ease-in-out 0.4s 3;
+}
+
 .topbar-skillhub-link:hover,
 .topbar-skillhub-link--active {
   border-color: color-mix(in srgb, #0f7c72 46%, var(--border) 54%);
@@ -316,6 +336,44 @@
 .topbar-skillhub-link:hover::after,
 .topbar-skillhub-link--active::after {
   opacity: 1;
+}
+
+@keyframes topbar-skillhub-arrived {
+  0%,
+  68%,
+  100% {
+    border-color: color-mix(in srgb, #0f7c72 22%, var(--border) 78%);
+    box-shadow: none;
+    transform: translateY(0);
+  }
+  12% {
+    border-color: color-mix(in srgb, #0f7c72 48%, var(--border) 52%);
+    box-shadow: 0 0 0 3px color-mix(in srgb, #0f7c72 12%, transparent);
+    transform: translateY(-1px);
+  }
+}
+
+@keyframes topbar-skillhub-sheen {
+  0%,
+  18%,
+  100% {
+    transform: translateX(-130%);
+    opacity: 0;
+  }
+  36% {
+    opacity: 0.75;
+  }
+  58% {
+    transform: translateX(130%);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-skillhub-link,
+  .topbar-skillhub-link::before {
+    animation: none;
+  }
 }
 
 .topbar-dashboard-link__icon {

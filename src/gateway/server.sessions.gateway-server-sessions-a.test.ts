@@ -492,14 +492,20 @@ describe("gateway server sessions", () => {
 
     expect(created.ok).toBe(true);
     expect(created.payload?.key).toMatch(/^agent:ops:dashboard:/);
-    expect(sessionHookMocks.triggerInternalHook).toHaveBeenCalledTimes(1);
+    expect(
+      sessionHookMocks.triggerInternalHook.mock.calls.some(([event]) => {
+        return (
+          isInternalHookEvent(event) &&
+          event.type === "command" &&
+          event.action === "new" &&
+          event.sessionKey === "agent:main:main" &&
+          (event.context as { commandSource?: unknown }).commandSource === "webchat"
+        );
+      }),
+    ).toBe(true);
     expect(sessionHookMocks.triggerInternalHook).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "command",
-        action: "new",
-        sessionKey: "agent:main:main",
         context: expect.objectContaining({
-          commandSource: "webchat",
           previousSessionEntry: expect.objectContaining({ sessionId: "sess-parent" }),
         }),
       }),
@@ -550,6 +556,91 @@ describe("gateway server sessions", () => {
     );
 
     ws.close();
+  });
+
+  test("sessions.create resets the parent main session in place for webchat /new in main dmScope", async () => {
+    const { dir } = await createSessionStoreDir();
+    const parentTranscriptPath = path.join(dir, "sess-parent-dms.jsonl");
+    await fs.writeFile(
+      parentTranscriptPath,
+      `${JSON.stringify({
+        type: "message",
+        id: "m-parent-dms",
+        message: { role: "user", content: "hello before /new" },
+      })}\n`,
+      "utf-8",
+    );
+
+    testState.sessionConfig = { dmScope: "main" };
+    try {
+      beforeResetHookState.hasBeforeResetHook = true;
+      await writeSessionStore({
+        entries: {
+          main: {
+            sessionId: "sess-parent-dms",
+            sessionFile: parentTranscriptPath,
+            updatedAt: Date.now(),
+          },
+        },
+      });
+
+      const { ws } = await openClient();
+      const created = await rpcReq<{
+        key?: string;
+        sessionId?: string;
+        runStarted?: boolean;
+      }>(ws, "sessions.create", {
+        parentSessionKey: "main",
+        emitCommandHooks: true,
+      });
+
+      expect(created.ok).toBe(true);
+      expect(created.payload?.key).toBe("agent:main:main");
+      expect(created.payload?.runStarted).toBe(false);
+      expect(created.payload?.sessionId).not.toBe("sess-parent-dms");
+      expect(created.payload?.sessionId).toBeTruthy();
+
+      expect(sessionHookMocks.triggerInternalHook).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "command",
+          action: "new",
+          sessionKey: "agent:main:main",
+          context: expect.objectContaining({
+            commandSource: "webchat",
+            previousSessionEntry: expect.objectContaining({ sessionId: "sess-parent-dms" }),
+          }),
+        }),
+      );
+      expect(beforeResetHookMocks.runBeforeReset).toHaveBeenCalledTimes(1);
+      expect(sessionLifecycleHookMocks.runSessionEnd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionKey: "agent:main:main",
+          sessionId: "sess-parent-dms",
+          reason: "new",
+        }),
+        expect.objectContaining({
+          sessionKey: "agent:main:main",
+          sessionId: "sess-parent-dms",
+          agentId: "main",
+        }),
+      );
+      expect(sessionLifecycleHookMocks.runSessionStart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionKey: "agent:main:main",
+          sessionId: created.payload?.sessionId,
+          resumedFrom: "sess-parent-dms",
+        }),
+        expect.objectContaining({
+          sessionKey: "agent:main:main",
+          sessionId: created.payload?.sessionId,
+          agentId: "main",
+        }),
+      );
+
+      ws.close();
+    } finally {
+      testState.sessionConfig = undefined;
+    }
   });
 
   test("sessions.create accepts an explicit key for persistent dashboard sessions", async () => {

@@ -636,6 +636,10 @@ function canRenameEmployeeChatSession(row: GatewaySessionRow): boolean {
   return parseAgentSessionKey(row.key)?.rest !== "main";
 }
 
+function canMutateEmployeeChatSession(row: GatewaySessionRow): boolean {
+  return canRenameEmployeeChatSession(row);
+}
+
 async function createEmployeeChatSession(state: AppViewState) {
   if (!state.client || !state.connected) {
     return;
@@ -689,6 +693,8 @@ function startEmployeeChatSessionRename(state: AppViewState, row: GatewaySession
     cancelEmployeeChatSessionRename(state);
     return;
   }
+  state.employeeChatSessionActionMenuKey = null;
+  state.employeeChatSessionDeleteError = null;
   state.employeeChatSessionRenameKey = row.key;
   state.employeeChatSessionRenameValue =
     typeof row.label === "string" && row.label.trim()
@@ -702,6 +708,78 @@ function cancelEmployeeChatSessionRename(state: AppViewState) {
   state.employeeChatSessionRenameValue = "";
   state.employeeChatSessionRenameBusy = false;
   state.employeeChatSessionRenameError = null;
+}
+
+function closeEmployeeChatSessionActionMenu(state: AppViewState) {
+  state.employeeChatSessionActionMenuKey = null;
+}
+
+function toggleEmployeeChatSessionActionMenu(state: AppViewState, row: GatewaySessionRow) {
+  if (!canMutateEmployeeChatSession(row)) {
+    closeEmployeeChatSessionActionMenu(state);
+    return;
+  }
+  state.employeeChatSessionRenameError = null;
+  state.employeeChatSessionDeleteError = null;
+  state.employeeChatSessionActionMenuKey =
+    state.employeeChatSessionActionMenuKey === row.key ? null : row.key;
+}
+
+async function deleteEmployeeChatSession(state: AppViewState, row: GatewaySessionRow) {
+  if (
+    !state.client ||
+    !state.connected ||
+    state.employeeChatSessionDeleteBusyKey ||
+    !canMutateEmployeeChatSession(row)
+  ) {
+    return;
+  }
+  const english = state.settings.locale === "en";
+  const title = formatEmployeeSessionTitle(row);
+  const confirmed = window.confirm(
+    english
+      ? `Delete "${title}"?\n\nThis archives the transcript and removes the session from this employee agent.`
+      : `"${title}" 세션을 삭제할까요?\n\n대화 기록은 보관되고 이 직원 에이전트의 세션 목록에서 제거됩니다.`,
+  );
+  if (!confirmed) {
+    closeEmployeeChatSessionActionMenu(state);
+    return;
+  }
+
+  const deletingActiveSession = row.key === state.sessionKey;
+  const nextMainSessionKey =
+    buildAgentMainSessionKey({
+      agentId:
+        resolveAgentIdFromSessionKey(row.key) ||
+        state.employeeProfile?.agentId?.trim() ||
+        resolveAgentIdFromSessionKey(state.sessionKey) ||
+        "main",
+    }) || "main";
+
+  state.employeeChatSessionDeleteBusyKey = row.key;
+  state.employeeChatSessionDeleteError = null;
+  closeEmployeeChatSessionActionMenu(state);
+  try {
+    await state.client.request("sessions.delete", { key: row.key, deleteTranscript: true });
+    await loadSessions(state, {
+      activeMinutes: 0,
+      limit: 0,
+      includeGlobal: false,
+      includeUnknown: false,
+    });
+    if (deletingActiveSession) {
+      if (await switchChatSession(state, nextMainSessionKey)) {
+        state.setTab("chat");
+        void refreshChatAvatar(state);
+      }
+    }
+  } catch (err) {
+    state.employeeChatSessionDeleteError = String(err);
+  } finally {
+    if (state.employeeChatSessionDeleteBusyKey === row.key) {
+      state.employeeChatSessionDeleteBusyKey = null;
+    }
+  }
 }
 
 async function saveEmployeeChatSessionRename(state: AppViewState, row: GatewaySessionRow) {
@@ -767,6 +845,8 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
   const count = rows.length;
   const english = state.settings.locale === "en";
   const renameLabel = english ? "Rename" : "이름 변경";
+  const deleteLabel = english ? "Delete" : "삭제";
+  const menuLabel = english ? "Session actions" : "세션 작업";
   const saveLabel = english ? "Save" : "저장";
   const cancelLabel = english ? "Cancel" : "취소";
   return html`
@@ -805,18 +885,22 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
               const label = formatEmployeeSessionTitle(row);
               const meta = formatEmployeeSessionMeta(row, state.sessionsResult?.defaults);
               const renaming = state.employeeChatSessionRenameKey === row.key;
-              const renameable = canRenameEmployeeChatSession(row);
+              const mutable = canMutateEmployeeChatSession(row);
+              const menuOpen = state.employeeChatSessionActionMenuKey === row.key;
+              const deleting = state.employeeChatSessionDeleteBusyKey === row.key;
               return html`
                 <div
                   role="listitem"
-                  class="employee-chat-session ${selected ? "employee-chat-session--active" : ""}"
+                  class="employee-chat-session ${selected
+                    ? "employee-chat-session--active"
+                    : ""} ${menuOpen ? "employee-chat-session--menu-open" : ""}"
                   title=${row.key}
                   @contextmenu=${(event: MouseEvent) => {
-                    if (!renameable) {
+                    if (!mutable) {
                       return;
                     }
                     event.preventDefault();
-                    startEmployeeChatSessionRename(state, row);
+                    toggleEmployeeChatSessionActionMenu(state, row);
                   }}
                 >
                   <span class="employee-chat-session__dot" aria-hidden="true"></span>
@@ -888,6 +972,7 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                           class="employee-chat-session__select"
                           ?disabled=${selected}
                           @click=${async () => {
+                            closeEmployeeChatSessionActionMenu(state);
                             if (await switchChatSession(state, row.key)) {
                               state.setTab("chat");
                               void refreshChatAvatar(state);
@@ -899,20 +984,25 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                             <span class="employee-chat-session__meta">${meta}</span>
                           </span>
                         </button>
-                        ${renameable
+                        ${mutable
                           ? html`
-                              <button
-                                type="button"
-                                class="employee-chat-session__text-action employee-chat-session__rename"
-                                title=${renameLabel}
-                                aria-label=${renameLabel}
-                                @click=${(event: MouseEvent) => {
-                                  event.stopPropagation();
-                                  startEmployeeChatSessionRename(state, row);
-                                }}
-                              >
-                                ...
-                              </button>
+                              <span class="employee-chat-session__actions">
+                                <button
+                                  type="button"
+                                  class="employee-chat-session__text-action employee-chat-session__menu-trigger"
+                                  title=${menuLabel}
+                                  aria-label=${menuLabel}
+                                  aria-haspopup="menu"
+                                  aria-expanded=${menuOpen ? "true" : "false"}
+                                  ?disabled=${deleting}
+                                  @click=${(event: MouseEvent) => {
+                                    event.stopPropagation();
+                                    toggleEmployeeChatSessionActionMenu(state, row);
+                                  }}
+                                >
+                                  ...
+                                </button>
+                              </span>
                             `
                           : html`<span aria-hidden="true"></span>`}
                         ${row.hasActiveRun
@@ -922,6 +1012,38 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                                 title="진행 중"
                                 aria-label="진행 중"
                               ></span>
+                            `
+                          : nothing}
+                        ${menuOpen
+                          ? html`
+                              <span
+                                class="employee-chat-session__menu"
+                                role="menu"
+                                @click=${(event: MouseEvent) => event.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  @click=${(event: MouseEvent) => {
+                                    event.stopPropagation();
+                                    startEmployeeChatSessionRename(state, row);
+                                  }}
+                                >
+                                  ${renameLabel}
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  class="employee-chat-session__menu-danger"
+                                  ?disabled=${deleting}
+                                  @click=${(event: MouseEvent) => {
+                                    event.stopPropagation();
+                                    void deleteEmployeeChatSession(state, row);
+                                  }}
+                                >
+                                  ${deleting ? (english ? "Deleting" : "삭제 중") : deleteLabel}
+                                </button>
+                              </span>
                             `
                           : nothing}
                       `}
@@ -941,6 +1063,11 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
       ${state.employeeChatSessionRenameError
         ? html`<div class="employee-chat-sessions__footer employee-chat-sessions__footer--error">
             ${state.employeeChatSessionRenameError}
+          </div>`
+        : nothing}
+      ${state.employeeChatSessionDeleteError
+        ? html`<div class="employee-chat-sessions__footer employee-chat-sessions__footer--error">
+            ${state.employeeChatSessionDeleteError}
           </div>`
         : nothing}
     </div>

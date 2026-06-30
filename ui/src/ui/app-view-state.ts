@@ -276,6 +276,9 @@ export type AppViewState = {
   employeeChatSessionRenameValue: string;
   employeeChatSessionRenameBusy: boolean;
   employeeChatSessionRenameError: string | null;
+  employeeChatSessionActionMenuKey: string | null;
+  employeeChatSessionDeleteBusyKey: string | null;
+  employeeChatSessionDeleteError: string | null;
   employeeChatSessionsCollapsed: boolean;
   sessionsSortColumn: "key" | "kind" | "updated" | "tokens";
   sessionsSortDir: "asc" | "desc";

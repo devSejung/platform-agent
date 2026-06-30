@@ -397,9 +397,13 @@ describe("employee mode", () => {
       (row) => row.textContent?.includes("Alpha Plan"),
     );
     expect(alphaRow).not.toBeNull();
-    alphaRow?.dispatchEvent(
-      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }),
-    );
+    alphaRow
+      ?.querySelector<HTMLButtonElement>(".employee-chat-session__menu-trigger")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await flushEmployeeApp(app);
+    alphaRow
+      ?.querySelector<HTMLButtonElement>("[role='menuitem']")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     await flushEmployeeApp(app);
 
     const input = app.querySelector<HTMLInputElement>(".employee-chat-session__rename-input");
@@ -421,7 +425,7 @@ describe("employee mode", () => {
     expect(app.querySelector(".employee-chat-sessions")?.textContent).toContain("Alpha Renamed");
   });
 
-  it("does not offer inline rename for the employee main session", async () => {
+  it("does not offer session actions for the employee main session", async () => {
     const app = mountConnectedEmployeeApp("/employee/chat");
     const request = vi.fn();
     app.client = { request, stop: vi.fn() } as never;
@@ -449,8 +453,8 @@ describe("employee mode", () => {
     const rows = Array.from(app.querySelectorAll<HTMLElement>(".employee-chat-session"));
     const mainRow = rows.find((row) => row.textContent?.includes("Main"));
     const alphaRow = rows.find((row) => row.textContent?.includes("Alpha Plan"));
-    expect(mainRow?.querySelector(".employee-chat-session__rename")).toBeNull();
-    expect(alphaRow?.querySelector(".employee-chat-session__rename")).not.toBeNull();
+    expect(mainRow?.querySelector(".employee-chat-session__menu-trigger")).toBeNull();
+    expect(alphaRow?.querySelector(".employee-chat-session__menu-trigger")).not.toBeNull();
 
     mainRow?.dispatchEvent(
       new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }),
@@ -458,7 +462,122 @@ describe("employee mode", () => {
     await flushEmployeeApp(app);
 
     expect(app.querySelector(".employee-chat-session__rename-input")).toBeNull();
+    expect(app.querySelector(".employee-chat-session__menu")).toBeNull();
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("deletes the exact employee chat session row through sessions.delete", async () => {
+    const app = mountConnectedEmployeeApp("/employee/chat");
+    const request = vi.fn(async (method: string, payload?: unknown) => {
+      if (method === "sessions.delete") {
+        return { ok: true, deleted: true };
+      }
+      if (method === "sessions.list") {
+        return createSessionsResult([
+          { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+        ]);
+      }
+      throw new Error(`unexpected method: ${method} ${JSON.stringify(payload)}`);
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    app.client = { request, stop: vi.fn() } as never;
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.tab = "chat";
+    app.sessionKey = "agent:eon:main";
+    app.sessionsResult = createSessionsResult([
+      { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+      {
+        key: "agent:eon:dashboard:alpha",
+        kind: "direct",
+        label: "Alpha Plan",
+        updatedAt: Date.now(),
+      },
+    ]);
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const alphaRow = Array.from(app.querySelectorAll<HTMLElement>(".employee-chat-session")).find(
+      (row) => row.textContent?.includes("Alpha Plan"),
+    );
+    alphaRow?.querySelector<HTMLButtonElement>(".employee-chat-session__menu-trigger")?.click();
+    await flushEmployeeApp(app);
+    Array.from(alphaRow!.querySelectorAll<HTMLButtonElement>("[role='menuitem']"))
+      .find((button) => button.textContent?.includes("삭제"))
+      ?.click();
+    await flushEmployeeApp(app);
+    await flushEmployeeApp(app);
+
+    expect(request).toHaveBeenCalledWith("sessions.delete", {
+      key: "agent:eon:dashboard:alpha",
+      deleteTranscript: true,
+    });
+    expect(request).toHaveBeenCalledWith(
+      "sessions.list",
+      expect.objectContaining({ includeGlobal: false, includeUnknown: false }),
+    );
+  });
+
+  it("switches to the employee main session after deleting the active sidebar session", async () => {
+    const app = mountConnectedEmployeeApp("/employee/chat");
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.delete") {
+        return { ok: true, deleted: true };
+      }
+      if (method === "sessions.list") {
+        return createSessionsResult([
+          { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+        ]);
+      }
+      if (method === "chat.history") {
+        return { messages: [] };
+      }
+      return {};
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    app.client = { request, stop: vi.fn() } as never;
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.tab = "chat";
+    app.sessionKey = "agent:eon:dashboard:alpha";
+    app.sessionsResult = createSessionsResult([
+      { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+      {
+        key: "agent:eon:dashboard:alpha",
+        kind: "direct",
+        label: "Alpha Plan",
+        updatedAt: Date.now(),
+      },
+    ]);
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const alphaRow = Array.from(app.querySelectorAll<HTMLElement>(".employee-chat-session")).find(
+      (row) => row.textContent?.includes("Alpha Plan"),
+    );
+    alphaRow?.querySelector<HTMLButtonElement>(".employee-chat-session__menu-trigger")?.click();
+    await flushEmployeeApp(app);
+    Array.from(alphaRow!.querySelectorAll<HTMLButtonElement>("[role='menuitem']"))
+      .find((button) => button.textContent?.includes("삭제"))
+      ?.click();
+    await flushEmployeeApp(app);
+    await flushEmployeeApp(app);
+
+    expect(app.sessionKey).toBe("agent:eon:main");
+    expect(request).toHaveBeenCalledWith(
+      "chat.history",
+      expect.objectContaining({ sessionKey: "agent:eon:main" }),
+    );
   });
 
   it("creates and switches employee chat sessions through sessions.create and chat.history", async () => {

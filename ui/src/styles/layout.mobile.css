@@ -740,6 +740,19 @@
     border-radius: var(--radius-sm);
   }
 
+  .session-compaction-col {
+    width: 96px;
+    min-width: 86px;
+  }
+
+  .session-compaction-trigger {
+    padding: 6px 7px;
+  }
+
+  .session-details-panel {
+    padding: 12px;
+  }
+
   .session-key-cell {
     max-width: 200px;
   }

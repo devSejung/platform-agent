@@ -174,6 +174,7 @@ const METHOD_SCOPE_GROUPS: Record<OperatorScope, readonly string[]> = {
     "skills.delete",
     "skillhub.publish",
     "skillhub.upload",
+    "skillhub.icons.gc",
     "skillhub.hide",
     "groups.create",
     "groups.part.create",

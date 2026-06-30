@@ -1,7 +1,8 @@
 /* @vitest-environment jsdom */
 
 import { render } from "lit";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { i18n } from "../../i18n/index.ts";
 import { renderDreaming, setDreamSubTab, type DreamingProps } from "./dreaming.ts";
 
 function buildProps(overrides?: Partial<DreamingProps>): DreamingProps {
@@ -90,6 +91,11 @@ function renderInto(props: DreamingProps): HTMLDivElement {
 }
 
 describe("dreaming view", () => {
+  beforeEach(async () => {
+    await i18n.setLocale("en");
+    setDreamSubTab("scene");
+  });
+
   it("renders the sleeping lobster SVG", () => {
     const container = renderInto(buildProps());
     const svg = container.querySelector(".dreams__lobster svg");

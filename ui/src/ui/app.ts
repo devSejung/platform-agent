@@ -142,6 +142,7 @@ import {
 } from "./ui-types.ts";
 import { generateUUID } from "./uuid.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
+import type { CronQuickCreateDraft, CronQuickCreateStep } from "./views/cron-quick-create.ts";
 
 declare global {
   interface Window {
@@ -522,6 +523,9 @@ export class OpenClawApp extends LitElement {
   @state() cronError: string | null = null;
   @state() cronForm: CronFormState = { ...DEFAULT_CRON_FORM };
   @state() cronFormCollapsed = true;
+  @state() cronQuickCreateOpen = false;
+  @state() cronQuickCreateStep: CronQuickCreateStep = "what";
+  @state() cronQuickCreateDraft: CronQuickCreateDraft | null = null;
   @state() cronFieldErrors: import("./controllers/cron.js").CronFieldErrors = {};
   @state() cronEditingJobId: string | null = null;
   @state() cronRunsJobId: string | null = null;

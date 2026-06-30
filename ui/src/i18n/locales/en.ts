@@ -19,6 +19,10 @@ export const en: TranslationMap = {
     call: "Call",
     confirm: "Confirm",
     cancel: "Cancel",
+    back: "Back",
+    next: "Next",
+    create: "Create",
+    dismiss: "Dismiss",
     unselect: "Unselect",
     enabled: "Enabled",
     disabled: "Disabled",
@@ -1105,6 +1109,71 @@ export const en: TranslationMap = {
       saveChanges: "Save changes",
       addJob: "Add job",
       cancel: "Cancel",
+    },
+    quickCreate: {
+      title: "New Automation",
+      defaultName: "Scheduled automation",
+      advanced: "Advanced",
+      steps: {
+        what: "Job",
+        when: "Timing",
+        how: "Mode",
+      },
+      whatHeading: "What should it do?",
+      whatHint: "Describe the task in natural language. The agent will run this prompt each time.",
+      promptPlaceholder: "Example: Check urgent emails in the inbox and summarize them...",
+      nameOptional: "Name (optional)",
+      namePlaceholder: "Example: Morning inbox check",
+      whenHeading: "When should it run?",
+      whenHint: "Choose a common schedule. Advanced fields can be adjusted later.",
+      howHeading: "How should it run?",
+      howHint: "Choose the session and delivery behavior for this automation.",
+      sessionLabel: "Session",
+      sessionIsolated: "New isolated session",
+      sessionCurrent: "Current session",
+      sessionHint: "Use an isolated session by default, or target an existing session.",
+      sessionEmployeeHint:
+        "Only sessions visible to the current employee and agent are shown. Agent and workspace are fixed by policy.",
+      schedules: {
+        everyMorning: {
+          label: "Every morning",
+          description: "Daily at 8:00 AM",
+        },
+        everyEvening: {
+          label: "Every evening",
+          description: "Daily at 6:00 PM",
+        },
+        hourly: {
+          label: "Hourly",
+          description: "Every hour",
+        },
+        weekdays: {
+          label: "Weekdays",
+          description: "Mon-Fri at 9:00 AM",
+        },
+        weekly: {
+          label: "Weekly",
+          description: "Mondays at 9:00 AM",
+        },
+        once: {
+          label: "Once",
+          description: "One hour from now",
+        },
+      },
+      delivery: {
+        notify: {
+          label: "Notify me",
+          description: "Run and announce a summary",
+        },
+        silent: {
+          label: "Silent",
+          description: "Record a system event without a summary",
+        },
+        isolated: {
+          label: "Run only",
+          description: "Execute without delivery",
+        },
+      },
     },
     jobList: {
       allJobs: "all jobs",

@@ -20,6 +20,10 @@ export const ko: TranslationMap = {
     call: "호출",
     confirm: "확인",
     cancel: "취소",
+    back: "이전",
+    next: "다음",
+    create: "생성",
+    dismiss: "닫기",
     unselect: "선택 해제",
     enabled: "사용",
     disabled: "사용 안 함",
@@ -1104,6 +1108,71 @@ export const ko: TranslationMap = {
       saveChanges: "변경 사항 저장",
       addJob: "작업 추가",
       cancel: "취소",
+    },
+    quickCreate: {
+      title: "새 자동화",
+      defaultName: "예약 자동화",
+      advanced: "고급",
+      steps: {
+        what: "작업",
+        when: "시기",
+        how: "방식",
+      },
+      whatHeading: "무엇을 해야 하나요?",
+      whatHint: "작업을 자연어로 설명하세요. 에이전트가 매번 이 프롬프트를 실행합니다.",
+      promptPlaceholder: "예: 받은편지함에서 긴급한 이메일을 확인하고 요약하기...",
+      nameOptional: "이름(선택 사항)",
+      namePlaceholder: "예: 아침 받은편지함 확인",
+      whenHeading: "언제 실행할까요?",
+      whenHint: "자주 쓰는 일정을 선택하세요. 고급 필드는 나중에 조정할 수 있습니다.",
+      howHeading: "어떻게 실행할까요?",
+      howHint: "이 자동화가 사용할 세션과 전달 방식을 선택하세요.",
+      sessionLabel: "세션",
+      sessionIsolated: "새 격리 세션",
+      sessionCurrent: "현재 세션",
+      sessionHint: "기본적으로 격리 세션을 사용하거나 기존 세션을 대상으로 지정할 수 있습니다.",
+      sessionEmployeeHint:
+        "현재 employee와 agent에 보이는 세션만 표시됩니다. Agent와 workspace는 정책으로 고정됩니다.",
+      schedules: {
+        everyMorning: {
+          label: "매일 아침",
+          description: "매일 오전 8:00",
+        },
+        everyEvening: {
+          label: "매일 저녁",
+          description: "매일 오후 6:00",
+        },
+        hourly: {
+          label: "매시간",
+          description: "1시간마다",
+        },
+        weekdays: {
+          label: "평일",
+          description: "월-금 오전 9:00",
+        },
+        weekly: {
+          label: "매주",
+          description: "월요일 오전 9:00",
+        },
+        once: {
+          label: "한 번",
+          description: "지금부터 1시간 뒤",
+        },
+      },
+      delivery: {
+        notify: {
+          label: "알림",
+          description: "실행 후 요약을 전달",
+        },
+        silent: {
+          label: "조용히",
+          description: "요약 없이 시스템 이벤트 기록",
+        },
+        isolated: {
+          label: "실행만",
+          description: "전달 없이 실행",
+        },
+      },
     },
     jobList: {
       allJobs: "모든 작업",

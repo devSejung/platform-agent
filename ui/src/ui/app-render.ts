@@ -4,6 +4,7 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { i18n, t, type Locale } from "../i18n/index.ts";
 import { getSafeLocalStorage } from "../local-storage.ts";
 import { hasAbortableSessionRun, refreshChatAvatar } from "./app-chat.ts";
+import { DEFAULT_CRON_FORM } from "./app-defaults.ts";
 import { renderUsageTab } from "./app-render-usage-tab.ts";
 import {
   renderChatControls,
@@ -177,6 +178,11 @@ import {
 import { renderChat } from "./views/chat.ts";
 import { renderCommandPalette } from "./views/command-palette.ts";
 import { renderConfig } from "./views/config.ts";
+import {
+  createDefaultDraft,
+  draftToCronFormPatch,
+  renderCronQuickCreate,
+} from "./views/cron-quick-create.ts";
 import { renderDreaming } from "./views/dreaming.ts";
 import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
@@ -1419,7 +1425,9 @@ export function renderApp(state: AppViewState) {
             },
             onQuickCreate: () => {
               cancelCronEdit(state);
-              state.cronFormCollapsed = false;
+              state.cronQuickCreateOpen = true;
+              state.cronQuickCreateStep = "what";
+              state.cronQuickCreateDraft = createDefaultDraft();
               requestHostUpdate?.();
             },
             onToggle: (job, enabled) => toggleCronJob(state, job, enabled),
@@ -1470,7 +1478,77 @@ export function renderApp(state: AppViewState) {
         )
       : nothing;
 
+  const cronQuickCreateModal =
+    state.tab === "cron"
+      ? renderCronQuickCreate({
+          open: state.cronQuickCreateOpen,
+          step: state.cronQuickCreateStep,
+          draft: state.cronQuickCreateDraft ?? createDefaultDraft(),
+          employeeMode: state.employeeMode,
+          currentSessionKey: state.sessionKey,
+          sessions: state.sessionsResult ?? null,
+          onDraftChange: (patch) => {
+            state.cronQuickCreateDraft = {
+              ...(state.cronQuickCreateDraft ?? createDefaultDraft()),
+              ...patch,
+            };
+            requestHostUpdate?.();
+          },
+          onStepChange: (step) => {
+            state.cronQuickCreateStep = step;
+            requestHostUpdate?.();
+          },
+          onCreate: () => {
+            const draft = state.cronQuickCreateDraft ?? createDefaultDraft();
+            const formPatch = draftToCronFormPatch(draft);
+            const nextForm = normalizeCronFormState({
+              ...DEFAULT_CRON_FORM,
+              ...formPatch,
+              ...(state.employeeMode ? { agentId: employeeAgentId, clearAgent: false } : {}),
+            });
+            state.cronEditingJobId = null;
+            state.cronForm = nextForm;
+            state.cronFieldErrors = validateCronForm(nextForm);
+            requestHostUpdate?.();
+            void (async () => {
+              await addCronJob(state);
+              if (!hasCronFormErrors(state.cronFieldErrors) && !state.cronError) {
+                state.cronQuickCreateOpen = false;
+                state.cronQuickCreateStep = "what";
+                state.cronQuickCreateDraft = null;
+                state.cronFormCollapsed = true;
+              }
+              requestHostUpdate?.();
+            })();
+          },
+          onAdvancedCreate: () => {
+            const draft = state.cronQuickCreateDraft ?? createDefaultDraft();
+            const formPatch = draftToCronFormPatch(draft);
+            const nextForm = normalizeCronFormState({
+              ...DEFAULT_CRON_FORM,
+              ...formPatch,
+              ...(state.employeeMode ? { agentId: employeeAgentId, clearAgent: false } : {}),
+            });
+            state.cronEditingJobId = null;
+            state.cronForm = nextForm;
+            state.cronFieldErrors = validateCronForm(nextForm);
+            state.cronQuickCreateOpen = false;
+            state.cronQuickCreateStep = "what";
+            state.cronQuickCreateDraft = null;
+            state.cronFormCollapsed = false;
+            requestHostUpdate?.();
+          },
+          onCancel: () => {
+            state.cronQuickCreateOpen = false;
+            state.cronQuickCreateStep = "what";
+            state.cronQuickCreateDraft = null;
+            requestHostUpdate?.();
+          },
+        })
+      : nothing;
+
   return html`
+    ${cronQuickCreateModal}
     ${renderCommandPalette({
       open: state.paletteOpen,
       query: state.paletteQuery,

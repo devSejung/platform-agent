@@ -51,6 +51,7 @@ import type {
 } from "./types.ts";
 import type { ChatAttachment, ChatQueueItem, ChatSendDraft, ChatSendFailure } from "./ui-types.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
+import type { CronQuickCreateDraft, CronQuickCreateStep } from "./views/cron-quick-create.ts";
 import type { SessionLogEntry } from "./views/usage.ts";
 
 export type AppViewState = {
@@ -360,6 +361,9 @@ export type AppViewState = {
   | "cronBusy"
 > &
   Pick<CronModelSuggestionsState, "cronModelSuggestions"> & {
+    cronQuickCreateOpen: boolean;
+    cronQuickCreateStep: CronQuickCreateStep;
+    cronQuickCreateDraft: CronQuickCreateDraft | null;
     skillsLoading: boolean;
     skillsReport: SkillStatusReport | null;
     skillsError: string | null;

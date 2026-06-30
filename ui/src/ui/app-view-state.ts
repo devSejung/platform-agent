@@ -272,6 +272,10 @@ export type AppViewState = {
   sessionsHideCron: boolean;
   sessionsSearchQuery: string;
   employeeChatSessionSearch: string;
+  employeeChatSessionRenameKey: string | null;
+  employeeChatSessionRenameValue: string;
+  employeeChatSessionRenameBusy: boolean;
+  employeeChatSessionRenameError: string | null;
   employeeChatSessionsCollapsed: boolean;
   sessionsSortColumn: "key" | "kind" | "updated" | "tokens";
   sessionsSortDir: "asc" | "desc";

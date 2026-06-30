@@ -654,6 +654,78 @@ async function createEmployeeChatSession(state: AppViewState) {
   }
 }
 
+function patchEmployeeSessionLabel(
+  state: AppViewState,
+  sessionKey: string,
+  label: string | undefined,
+) {
+  const current = state.sessionsResult;
+  if (!current) {
+    return;
+  }
+  state.sessionsResult = {
+    ...current,
+    sessions: current.sessions.map((row) =>
+      row.key === sessionKey
+        ? {
+            ...row,
+            label,
+          }
+        : row,
+    ),
+  };
+}
+
+function startEmployeeChatSessionRename(state: AppViewState, row: GatewaySessionRow) {
+  state.employeeChatSessionRenameKey = row.key;
+  state.employeeChatSessionRenameValue =
+    typeof row.label === "string" && row.label.trim()
+      ? row.label.trim()
+      : formatEmployeeSessionTitle(row);
+  state.employeeChatSessionRenameError = null;
+}
+
+function cancelEmployeeChatSessionRename(state: AppViewState) {
+  state.employeeChatSessionRenameKey = null;
+  state.employeeChatSessionRenameValue = "";
+  state.employeeChatSessionRenameBusy = false;
+  state.employeeChatSessionRenameError = null;
+}
+
+async function saveEmployeeChatSessionRename(state: AppViewState, row: GatewaySessionRow) {
+  if (!state.client || !state.connected || state.employeeChatSessionRenameBusy) {
+    return;
+  }
+  const nextLabel = state.employeeChatSessionRenameValue.trim();
+  const previousLabel =
+    typeof row.label === "string" && row.label.trim() ? row.label.trim() : undefined;
+  if ((previousLabel ?? "") === nextLabel) {
+    cancelEmployeeChatSessionRename(state);
+    return;
+  }
+
+  state.employeeChatSessionRenameBusy = true;
+  state.employeeChatSessionRenameError = null;
+  patchEmployeeSessionLabel(state, row.key, nextLabel || undefined);
+  try {
+    await state.client.request("sessions.patch", {
+      key: row.key,
+      label: nextLabel || null,
+    });
+    await loadSessions(state, {
+      activeMinutes: 0,
+      limit: 0,
+      includeGlobal: false,
+      includeUnknown: false,
+    });
+    cancelEmployeeChatSessionRename(state);
+  } catch (err) {
+    patchEmployeeSessionLabel(state, row.key, previousLabel);
+    state.employeeChatSessionRenameBusy = false;
+    state.employeeChatSessionRenameError = String(err);
+  }
+}
+
 function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollapsed: boolean) {
   if (
     !state.employeeMode ||
@@ -711,35 +783,120 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
               const selected = row.key === state.sessionKey;
               const label = formatEmployeeSessionTitle(row);
               const meta = formatEmployeeSessionMeta(row, state.sessionsResult?.defaults);
+              const renaming = state.employeeChatSessionRenameKey === row.key;
               return html`
-                <button
-                  type="button"
+                <div
                   role="listitem"
                   class="employee-chat-session ${selected ? "employee-chat-session--active" : ""}"
                   title=${row.key}
-                  ?disabled=${selected}
-                  @click=${async () => {
-                    if (await switchChatSession(state, row.key)) {
-                      state.setTab("chat");
-                      void refreshChatAvatar(state);
-                    }
+                  @contextmenu=${(event: MouseEvent) => {
+                    event.preventDefault();
+                    startEmployeeChatSessionRename(state, row);
                   }}
                 >
                   <span class="employee-chat-session__dot" aria-hidden="true"></span>
-                  <span class="employee-chat-session__body">
-                    <span class="employee-chat-session__title">${label}</span>
-                    <span class="employee-chat-session__meta">${meta}</span>
-                  </span>
-                  ${row.hasActiveRun
+                  ${renaming
                     ? html`
-                        <span
-                          class="employee-chat-session__live"
-                          title="진행 중"
-                          aria-label="진행 중"
-                        ></span>
+                        <span class="employee-chat-session__rename-form">
+                          <input
+                            class="employee-chat-session__rename-input"
+                            aria-label="세션 이름"
+                            .value=${state.employeeChatSessionRenameValue}
+                            ?disabled=${state.employeeChatSessionRenameBusy}
+                            ${ref((el) => {
+                              if (el instanceof HTMLInputElement) {
+                                queueMicrotask(() => {
+                                  el.focus();
+                                  el.select();
+                                });
+                              }
+                            })}
+                            @input=${(event: Event) => {
+                              state.employeeChatSessionRenameValue = (
+                                event.target as HTMLInputElement
+                              ).value;
+                            }}
+                            @keydown=${(event: KeyboardEvent) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                void saveEmployeeChatSessionRename(state, row);
+                              }
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                cancelEmployeeChatSessionRename(state);
+                              }
+                            }}
+                          />
+                          <span class="employee-chat-session__rename-actions">
+                            <button
+                              type="button"
+                              class="employee-chat-session__icon-action"
+                              title="저장"
+                              aria-label="저장"
+                              ?disabled=${state.employeeChatSessionRenameBusy}
+                              @click=${(event: MouseEvent) => {
+                                event.stopPropagation();
+                                void saveEmployeeChatSessionRename(state, row);
+                              }}
+                            >
+                              ${icons.check}
+                            </button>
+                            <button
+                              type="button"
+                              class="employee-chat-session__icon-action"
+                              title="취소"
+                              aria-label="취소"
+                              ?disabled=${state.employeeChatSessionRenameBusy}
+                              @click=${(event: MouseEvent) => {
+                                event.stopPropagation();
+                                cancelEmployeeChatSessionRename(state);
+                              }}
+                            >
+                              ${icons.x}
+                            </button>
+                          </span>
+                        </span>
                       `
-                    : nothing}
-                </button>
+                    : html`
+                        <button
+                          type="button"
+                          class="employee-chat-session__select"
+                          ?disabled=${selected}
+                          @click=${async () => {
+                            if (await switchChatSession(state, row.key)) {
+                              state.setTab("chat");
+                              void refreshChatAvatar(state);
+                            }
+                          }}
+                        >
+                          <span class="employee-chat-session__body">
+                            <span class="employee-chat-session__title">${label}</span>
+                            <span class="employee-chat-session__meta">${meta}</span>
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          class="employee-chat-session__icon-action employee-chat-session__rename"
+                          title="이름 변경"
+                          aria-label="이름 변경"
+                          @click=${(event: MouseEvent) => {
+                            event.stopPropagation();
+                            startEmployeeChatSessionRename(state, row);
+                          }}
+                        >
+                          ${icons.edit}
+                        </button>
+                        ${row.hasActiveRun
+                          ? html`
+                              <span
+                                class="employee-chat-session__live"
+                                title="진행 중"
+                                aria-label="진행 중"
+                              ></span>
+                            `
+                          : nothing}
+                      `}
+                </div>
               `;
             })
           : html`<div class="employee-chat-sessions__empty">표시할 세션이 없습니다.</div>`}
@@ -751,6 +908,11 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
               ${state.sessionsError ? html`<span>${state.sessionsError}</span>` : nothing}
             </div>
           `
+        : nothing}
+      ${state.employeeChatSessionRenameError
+        ? html`<div class="employee-chat-sessions__footer employee-chat-sessions__footer--error">
+            ${state.employeeChatSessionRenameError}
+          </div>`
         : nothing}
     </div>
   `;

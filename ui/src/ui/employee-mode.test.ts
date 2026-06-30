@@ -340,7 +340,7 @@ describe("employee mode", () => {
     await app.updateComplete;
 
     const alpha = Array.from(
-      app.querySelectorAll<HTMLButtonElement>(".employee-chat-session"),
+      app.querySelectorAll<HTMLButtonElement>(".employee-chat-session__select"),
     ).find((button) => button.textContent?.includes("Alpha Plan"));
     alpha?.click();
     await flushEmployeeApp(app);
@@ -350,6 +350,75 @@ describe("employee mode", () => {
       "chat.history",
       expect.objectContaining({ sessionKey: "agent:eon:dashboard:alpha" }),
     );
+  });
+
+  it("renames the exact employee chat session row through sessions.patch", async () => {
+    const app = mountConnectedEmployeeApp("/employee/chat");
+    const request = vi.fn(async (method: string, payload?: unknown) => {
+      if (method === "sessions.patch") {
+        return { ok: true, key: "agent:eon:dashboard:alpha", entry: { label: "Alpha Renamed" } };
+      }
+      if (method === "sessions.list") {
+        return createSessionsResult([
+          { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+          {
+            key: "agent:eon:dashboard:alpha",
+            kind: "direct",
+            label: "Alpha Renamed",
+            updatedAt: Date.now(),
+          },
+        ]);
+      }
+      throw new Error(`unexpected method: ${method} ${JSON.stringify(payload)}`);
+    });
+    app.client = { request, stop: vi.fn() } as never;
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.tab = "chat";
+    app.sessionKey = "agent:eon:main";
+    app.sessionsResult = createSessionsResult([
+      { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+      {
+        key: "agent:eon:dashboard:alpha",
+        kind: "direct",
+        label: "Alpha Plan",
+        updatedAt: Date.now(),
+      },
+    ]);
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const alphaRow = Array.from(app.querySelectorAll<HTMLElement>(".employee-chat-session")).find(
+      (row) => row.textContent?.includes("Alpha Plan"),
+    );
+    expect(alphaRow).not.toBeNull();
+    alphaRow?.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }),
+    );
+    await flushEmployeeApp(app);
+
+    const input = app.querySelector<HTMLInputElement>(".employee-chat-session__rename-input");
+    expect(input).not.toBeNull();
+    input!.value = "Alpha Renamed";
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+    input!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flushEmployeeApp(app);
+    await flushEmployeeApp(app);
+
+    expect(request).toHaveBeenCalledWith("sessions.patch", {
+      key: "agent:eon:dashboard:alpha",
+      label: "Alpha Renamed",
+    });
+    expect(request).toHaveBeenCalledWith(
+      "sessions.list",
+      expect.objectContaining({ includeGlobal: false, includeUnknown: false }),
+    );
+    expect(app.querySelector(".employee-chat-sessions")?.textContent).toContain("Alpha Renamed");
   });
 
   it("creates and switches employee chat sessions through sessions.create and chat.history", async () => {

@@ -142,6 +142,8 @@ export const en: TranslationMap = {
   },
   nav: {
     chat: "Chat",
+    workspace: "Workspace",
+    automation: "Automation",
     control: "Control",
     agent: "Agent",
     settings: "Settings",

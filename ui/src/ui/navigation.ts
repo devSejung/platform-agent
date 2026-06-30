@@ -27,7 +27,19 @@ export const TAB_GROUPS = [
 export const EMPLOYEE_TAB_GROUPS = [
   {
     label: "chat",
-    tabs: ["chat", "files", "cron", "heartbeat", "skills", "skillHub", "groups", "admin"],
+    tabs: ["chat"],
+  },
+  {
+    label: "workspace",
+    tabs: ["files", "skills"],
+  },
+  {
+    label: "automation",
+    tabs: ["cron", "heartbeat"],
+  },
+  {
+    label: "control",
+    tabs: ["groups", "admin"],
   },
 ] as const;
 

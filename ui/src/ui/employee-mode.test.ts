@@ -110,16 +110,52 @@ describe("employee mode", () => {
     app.requestUpdate();
     await app.updateComplete;
 
-    expect(app.textContent).toContain("Chat");
-    expect(app.textContent).toContain("Cron Jobs");
-    expect(app.textContent).toContain("Heartbeat");
-    expect(app.textContent).toContain("Skill Hub");
+    const sidebarNav = app.querySelector(".sidebar-nav");
+    expect(sidebarNav?.textContent).toContain("Chat");
+    expect(sidebarNav?.textContent).toMatch(/Workspace|워크스페이스/);
+    expect(sidebarNav?.textContent).toMatch(/Automation|자동화/);
+    expect(sidebarNav?.textContent).toContain("Control");
+    expect(sidebarNav?.textContent).toContain("Cron Jobs");
+    expect(sidebarNav?.textContent).toContain("Heartbeat");
+    expect(sidebarNav?.textContent).not.toContain("Skill Hub");
+    expect(app.querySelector(".topbar-skillhub-link")?.textContent).toContain("Skill Hub");
     expect(app.querySelector("[data-chat-model-select='true']")).not.toBeNull();
     expect(app.querySelector(".content-header optgroup")).toBeNull();
     expect(app.querySelector(".employee-chat-sessions")).not.toBeNull();
     const sidebarSessions = app.querySelector(".employee-chat-sessions");
     expect(sidebarSessions?.textContent).toContain("Main");
     expect(sidebarSessions?.textContent).not.toContain("Other employee");
+  });
+
+  it("collapses employee sidebar sections independently", async () => {
+    const app = mountConnectedEmployeeApp();
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const workspaceSection = Array.from(app.querySelectorAll<HTMLElement>(".nav-section")).find(
+      (section) =>
+        /Workspace|워크스페이스/.test(
+          section.querySelector(".nav-section__label")?.textContent ?? "",
+        ),
+    );
+    expect(workspaceSection).not.toBeUndefined();
+    expect(workspaceSection?.textContent).toContain("Files");
+    expect(workspaceSection?.textContent).toContain("Skills");
+
+    workspaceSection
+      ?.querySelector<HTMLButtonElement>(".nav-section__label")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    await flushEmployeeApp(app);
+
+    expect(workspaceSection?.classList.contains("nav-section--collapsed")).toBe(true);
+    expect(app.settings.navGroupsCollapsed.workspace).toBe(true);
   });
 
   it("filters the employee chat session list without exposing raw session keys", async () => {

@@ -143,6 +143,8 @@ export const ko: TranslationMap = {
   },
   nav: {
     chat: "채팅",
+    workspace: "워크스페이스",
+    automation: "자동화",
     control: "Control",
     agent: "에이전트",
     settings: "설정",

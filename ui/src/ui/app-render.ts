@@ -1113,6 +1113,7 @@ export function renderApp(state: AppViewState) {
   };
   const basePath = normalizeBasePath(state.basePath ?? "");
   const dashboardHref = pathForTab("dashboard", basePath);
+  const skillHubHref = pathForTab("skillHub", basePath);
   const resolvedAgentId =
     state.agentsSelectedId ??
     state.agentsList?.defaultId ??
@@ -1651,6 +1652,31 @@ export function renderApp(state: AppViewState) {
             >
               <span class="topbar-dashboard-link__icon" aria-hidden="true">${icons.barChart}</span>
               <span class="topbar-dashboard-link__label">Dashboard</span>
+            </a>
+            <a
+              href=${skillHubHref}
+              class="topbar-dashboard-link topbar-skillhub-link ${state.tab === "skillHub"
+                ? "topbar-dashboard-link--active topbar-skillhub-link--active"
+                : ""}"
+              @click=${(event: MouseEvent) => {
+                if (
+                  event.defaultPrevented ||
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                ) {
+                  return;
+                }
+                event.preventDefault();
+                state.setTab("skillHub");
+              }}
+              title="Open Skill Hub"
+              aria-current=${state.tab === "skillHub" ? "page" : "false"}
+            >
+              <span class="topbar-dashboard-link__icon" aria-hidden="true">${icons.package}</span>
+              <span class="topbar-dashboard-link__label">Skill Hub</span>
             </a>
             <div class="topbar-status">
               ${isChat ? renderChatMobileToggle(state) : nothing}

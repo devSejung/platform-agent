@@ -748,6 +748,10 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
       return name.includes(query) || meta.includes(query);
     });
   const count = rows.length;
+  const english = state.settings.locale === "en";
+  const renameLabel = english ? "Rename" : "이름 변경";
+  const saveLabel = english ? "Save" : "저장";
+  const cancelLabel = english ? "Cancel" : "취소";
   return html`
     <div class="employee-chat-sessions" aria-label="Chat sessions">
       <div class="employee-chat-sessions__header">
@@ -831,28 +835,28 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                             <button
                               type="button"
                               class="employee-chat-session__text-action employee-chat-session__text-action--primary"
-                              title="저장"
-                              aria-label="저장"
+                              title=${saveLabel}
+                              aria-label=${saveLabel}
                               ?disabled=${state.employeeChatSessionRenameBusy}
                               @click=${(event: MouseEvent) => {
                                 event.stopPropagation();
                                 void saveEmployeeChatSessionRename(state, row);
                               }}
                             >
-                              저장
+                              ${saveLabel}
                             </button>
                             <button
                               type="button"
                               class="employee-chat-session__text-action"
-                              title="취소"
-                              aria-label="취소"
+                              title=${cancelLabel}
+                              aria-label=${cancelLabel}
                               ?disabled=${state.employeeChatSessionRenameBusy}
                               @click=${(event: MouseEvent) => {
                                 event.stopPropagation();
                                 cancelEmployeeChatSessionRename(state);
                               }}
                             >
-                              취소
+                              ${cancelLabel}
                             </button>
                           </span>
                         </span>
@@ -877,14 +881,14 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                         <button
                           type="button"
                           class="employee-chat-session__text-action employee-chat-session__rename"
-                          title="이름 변경"
-                          aria-label="이름 변경"
+                          title=${renameLabel}
+                          aria-label=${renameLabel}
                           @click=${(event: MouseEvent) => {
                             event.stopPropagation();
                             startEmployeeChatSessionRename(state, row);
                           }}
                         >
-                          이름
+                          ...
                         </button>
                         ${row.hasActiveRun
                           ? html`

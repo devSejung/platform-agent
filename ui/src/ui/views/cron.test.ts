@@ -264,7 +264,7 @@ describe("cron view", () => {
     expect(runHistoryCard).not.toBeUndefined();
 
     const summaries = Array.from(
-      runHistoryCard?.querySelectorAll(".list-item .list-sub") ?? [],
+      runHistoryCard?.querySelectorAll(".cron-run-entry__body") ?? [],
     ).map((el) => (el.textContent ?? "").trim());
     expect(summaries[0]).toBe("newer run");
     expect(summaries[1]).toBe("older run");
@@ -328,7 +328,7 @@ describe("cron view", () => {
     );
 
     expect(container.querySelector(".cron-job-detail-value strong")?.textContent).toBe("ship");
-    expect(container.querySelector(".cron-run-entry__summary strong")?.textContent).toBe("done");
+    expect(container.querySelector(".cron-run-entry__body strong")?.textContent).toBe("done");
   });
 
   it("labels past nextRunAtMs as due instead of next", () => {

@@ -80,6 +80,61 @@ describe("message-normalizer", () => {
       });
     });
 
+    it("normalizes persisted input_text and output_text blocks as text", () => {
+      const assistant = normalizeMessage({
+        role: "assistant",
+        content: [
+          { type: "output_text", text: "Visible assistant answer" },
+          { type: "input_text", text: "Visible assistant continuation" },
+        ],
+      });
+      const user = normalizeMessage({
+        role: "user",
+        content: [{ type: "input_text", text: "Visible user prompt" }],
+      });
+
+      expect(assistant.content).toEqual([
+        {
+          type: "text",
+          text: "Visible assistant answer",
+          name: undefined,
+          args: undefined,
+          attachmentType: undefined,
+          fileName: undefined,
+          workspacePath: undefined,
+          mimeType: undefined,
+          sizeBytes: undefined,
+          caption: undefined,
+        },
+        {
+          type: "text",
+          text: "Visible assistant continuation",
+          name: undefined,
+          args: undefined,
+          attachmentType: undefined,
+          fileName: undefined,
+          workspacePath: undefined,
+          mimeType: undefined,
+          sizeBytes: undefined,
+          caption: undefined,
+        },
+      ]);
+      expect(user.content).toEqual([
+        {
+          type: "text",
+          text: "Visible user prompt",
+          name: undefined,
+          args: undefined,
+          attachmentType: undefined,
+          fileName: undefined,
+          workspacePath: undefined,
+          mimeType: undefined,
+          sizeBytes: undefined,
+          caption: undefined,
+        },
+      ]);
+    });
+
     it("normalizes message with text field (alternative format)", () => {
       const result = normalizeMessage({
         role: "user",

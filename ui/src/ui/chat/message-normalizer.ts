@@ -47,24 +47,27 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
   if (typeof m.content === "string") {
     content = [{ type: "text", text: m.content }];
   } else if (Array.isArray(m.content)) {
-    content = toChatMessageContentBlocks(m.content).map((item) => ({
-      ...item,
-      type:
-        typeof item.type === "string"
-          ? item.type
-          : isTextLikeContentBlock(item)
+    content = toChatMessageContentBlocks(m.content).map((item) => {
+      const textLike = isTextLikeContentBlock(item);
+      return {
+        ...item,
+        type:
+          textLike || item.type === "input_text" || item.type === "output_text"
             ? "text"
-            : "unknown",
-      text: typeof item.text === "string" ? item.text : undefined,
-      name: typeof item.name === "string" ? item.name : undefined,
-      args: resolveToolBlockArgs(item),
-      attachmentType: typeof item.attachmentType === "string" ? item.attachmentType : undefined,
-      fileName: typeof item.fileName === "string" ? item.fileName : undefined,
-      workspacePath: typeof item.workspacePath === "string" ? item.workspacePath : undefined,
-      mimeType: typeof item.mimeType === "string" ? item.mimeType : undefined,
-      sizeBytes: typeof item.sizeBytes === "number" ? item.sizeBytes : undefined,
-      caption: typeof item.caption === "string" ? item.caption : undefined,
-    }));
+            : typeof item.type === "string"
+              ? item.type
+              : "unknown",
+        text: typeof item.text === "string" ? item.text : undefined,
+        name: typeof item.name === "string" ? item.name : undefined,
+        args: resolveToolBlockArgs(item),
+        attachmentType: typeof item.attachmentType === "string" ? item.attachmentType : undefined,
+        fileName: typeof item.fileName === "string" ? item.fileName : undefined,
+        workspacePath: typeof item.workspacePath === "string" ? item.workspacePath : undefined,
+        mimeType: typeof item.mimeType === "string" ? item.mimeType : undefined,
+        sizeBytes: typeof item.sizeBytes === "number" ? item.sizeBytes : undefined,
+        caption: typeof item.caption === "string" ? item.caption : undefined,
+      };
+    });
   } else if (typeof m.text === "string") {
     content = [{ type: "text", text: m.text }];
   }

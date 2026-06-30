@@ -63,6 +63,27 @@ describe("extractTextCached", () => {
     expect(extractTextCached(message)).toBe("Actual final answer");
   });
 
+  it("renders persisted assistant output_text blocks", () => {
+    const message = {
+      role: "assistant",
+      content: [
+        { type: "output_text", text: "Persisted final answer" },
+        { type: "input_text", text: "continued" },
+      ],
+    };
+
+    expect(extractText(message)).toBe("Persisted final answer\ncontinued");
+  });
+
+  it("renders persisted user input_text blocks", () => {
+    const message = {
+      role: "user",
+      content: [{ type: "input_text", text: "Persisted user input" }],
+    };
+
+    expect(extractText(message)).toBe("Persisted user input");
+  });
+
   it("does not render commentary-only assistant text", () => {
     const message = {
       role: "assistant",

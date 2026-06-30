@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatRelativeTimestamp, formatUnknownText, stripThinkingTags } from "./format.ts";
+import {
+  formatRelativeTimestamp,
+  formatTokens,
+  formatUnknownText,
+  stripThinkingTags,
+} from "./format.ts";
 
 describe("formatAgo", () => {
   it("returns 'in <1m' for timestamps less than 60s in the future", () => {
@@ -113,5 +118,17 @@ describe("formatUnknownText", () => {
 
   it("formats symbols without relying on object coercion", () => {
     expect(formatUnknownText(Symbol("agent"))).toBe("Symbol(agent)");
+  });
+});
+
+describe("formatTokens", () => {
+  it("rolls values that round to 1000k over into M", () => {
+    expect(formatTokens(999_500)).toBe("1.0M");
+    expect(formatTokens(999_999)).toBe("1.0M");
+    expect(formatTokens(999_499)).toBe("999k");
+    expect(formatTokens(1_000_000)).toBe("1.0M");
+    expect(formatTokens(12_345)).toBe("12k");
+    expect(formatTokens(5_500)).toBe("5.5k");
+    expect(formatTokens(null)).toBe("0");
   });
 });

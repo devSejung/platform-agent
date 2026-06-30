@@ -109,7 +109,13 @@ export function formatTokens(tokens: number | null | undefined, fallback = "0"):
   }
   if (tokens < 1_000_000) {
     const k = tokens / 1000;
-    return k < 10 ? `${k.toFixed(1)}k` : `${Math.round(k)}k`;
+    if (k < 10) {
+      return `${k.toFixed(1)}k`;
+    }
+    const rounded = Math.round(k);
+    if (rounded < 1000) {
+      return `${rounded}k`;
+    }
   }
   const m = tokens / 1_000_000;
   return m < 10 ? `${m.toFixed(1)}M` : `${Math.round(m)}M`;

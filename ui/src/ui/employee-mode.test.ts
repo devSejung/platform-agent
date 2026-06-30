@@ -421,6 +421,46 @@ describe("employee mode", () => {
     expect(app.querySelector(".employee-chat-sessions")?.textContent).toContain("Alpha Renamed");
   });
 
+  it("does not offer inline rename for the employee main session", async () => {
+    const app = mountConnectedEmployeeApp("/employee/chat");
+    const request = vi.fn();
+    app.client = { request, stop: vi.fn() } as never;
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.tab = "chat";
+    app.sessionKey = "agent:eon:main";
+    app.sessionsResult = createSessionsResult([
+      { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+      {
+        key: "agent:eon:dashboard:alpha",
+        kind: "direct",
+        label: "Alpha Plan",
+        updatedAt: Date.now(),
+      },
+    ]);
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const rows = Array.from(app.querySelectorAll<HTMLElement>(".employee-chat-session"));
+    const mainRow = rows.find((row) => row.textContent?.includes("Main"));
+    const alphaRow = rows.find((row) => row.textContent?.includes("Alpha Plan"));
+    expect(mainRow?.querySelector(".employee-chat-session__rename")).toBeNull();
+    expect(alphaRow?.querySelector(".employee-chat-session__rename")).not.toBeNull();
+
+    mainRow?.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }),
+    );
+    await flushEmployeeApp(app);
+
+    expect(app.querySelector(".employee-chat-session__rename-input")).toBeNull();
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("creates and switches employee chat sessions through sessions.create and chat.history", async () => {
     const app = mountConnectedEmployeeApp();
     const request = vi.fn(async (method: string) => {

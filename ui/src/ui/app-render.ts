@@ -628,6 +628,14 @@ function formatEmployeeSessionTitle(row: GatewaySessionRow): string {
   return displayName || row.key;
 }
 
+function canRenameEmployeeChatSession(row: GatewaySessionRow): boolean {
+  const key = row.key.trim().toLowerCase();
+  if (key === "main") {
+    return false;
+  }
+  return parseAgentSessionKey(row.key)?.rest !== "main";
+}
+
 async function createEmployeeChatSession(state: AppViewState) {
   if (!state.client || !state.connected) {
     return;
@@ -677,6 +685,10 @@ function patchEmployeeSessionLabel(
 }
 
 function startEmployeeChatSessionRename(state: AppViewState, row: GatewaySessionRow) {
+  if (!canRenameEmployeeChatSession(row)) {
+    cancelEmployeeChatSessionRename(state);
+    return;
+  }
   state.employeeChatSessionRenameKey = row.key;
   state.employeeChatSessionRenameValue =
     typeof row.label === "string" && row.label.trim()
@@ -693,7 +705,12 @@ function cancelEmployeeChatSessionRename(state: AppViewState) {
 }
 
 async function saveEmployeeChatSessionRename(state: AppViewState, row: GatewaySessionRow) {
-  if (!state.client || !state.connected || state.employeeChatSessionRenameBusy) {
+  if (
+    !state.client ||
+    !state.connected ||
+    state.employeeChatSessionRenameBusy ||
+    !canRenameEmployeeChatSession(row)
+  ) {
     return;
   }
   const nextLabel = state.employeeChatSessionRenameValue.trim();
@@ -788,12 +805,16 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
               const label = formatEmployeeSessionTitle(row);
               const meta = formatEmployeeSessionMeta(row, state.sessionsResult?.defaults);
               const renaming = state.employeeChatSessionRenameKey === row.key;
+              const renameable = canRenameEmployeeChatSession(row);
               return html`
                 <div
                   role="listitem"
                   class="employee-chat-session ${selected ? "employee-chat-session--active" : ""}"
                   title=${row.key}
                   @contextmenu=${(event: MouseEvent) => {
+                    if (!renameable) {
+                      return;
+                    }
                     event.preventDefault();
                     startEmployeeChatSessionRename(state, row);
                   }}
@@ -878,18 +899,22 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                             <span class="employee-chat-session__meta">${meta}</span>
                           </span>
                         </button>
-                        <button
-                          type="button"
-                          class="employee-chat-session__text-action employee-chat-session__rename"
-                          title=${renameLabel}
-                          aria-label=${renameLabel}
-                          @click=${(event: MouseEvent) => {
-                            event.stopPropagation();
-                            startEmployeeChatSessionRename(state, row);
-                          }}
-                        >
-                          ...
-                        </button>
+                        ${renameable
+                          ? html`
+                              <button
+                                type="button"
+                                class="employee-chat-session__text-action employee-chat-session__rename"
+                                title=${renameLabel}
+                                aria-label=${renameLabel}
+                                @click=${(event: MouseEvent) => {
+                                  event.stopPropagation();
+                                  startEmployeeChatSessionRename(state, row);
+                                }}
+                              >
+                                ...
+                              </button>
+                            `
+                          : html`<span aria-hidden="true"></span>`}
                         ${row.hasActiveRun
                           ? html`
                               <span

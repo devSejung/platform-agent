@@ -830,7 +830,7 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                           <span class="employee-chat-session__rename-actions">
                             <button
                               type="button"
-                              class="employee-chat-session__icon-action"
+                              class="employee-chat-session__text-action employee-chat-session__text-action--primary"
                               title="저장"
                               aria-label="저장"
                               ?disabled=${state.employeeChatSessionRenameBusy}
@@ -839,11 +839,11 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                                 void saveEmployeeChatSessionRename(state, row);
                               }}
                             >
-                              ${icons.check}
+                              저장
                             </button>
                             <button
                               type="button"
-                              class="employee-chat-session__icon-action"
+                              class="employee-chat-session__text-action"
                               title="취소"
                               aria-label="취소"
                               ?disabled=${state.employeeChatSessionRenameBusy}
@@ -852,7 +852,7 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                                 cancelEmployeeChatSessionRename(state);
                               }}
                             >
-                              ${icons.x}
+                              취소
                             </button>
                           </span>
                         </span>
@@ -876,7 +876,7 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                         </button>
                         <button
                           type="button"
-                          class="employee-chat-session__icon-action employee-chat-session__rename"
+                          class="employee-chat-session__text-action employee-chat-session__rename"
                           title="이름 변경"
                           aria-label="이름 변경"
                           @click=${(event: MouseEvent) => {
@@ -884,7 +884,7 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                             startEmployeeChatSessionRename(state, row);
                           }}
                         >
-                          ${icons.edit}
+                          이름
                         </button>
                         ${row.hasActiveRun
                           ? html`

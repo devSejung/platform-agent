@@ -132,4 +132,64 @@ describe("channelsHandlers channels.status", () => {
       undefined,
     );
   });
+
+  it("returns partial status when a channel probe times out", async () => {
+    vi.useFakeTimers();
+    try {
+      const probeAccount = vi.fn(() => new Promise<unknown>(() => {}));
+      mocks.applyPluginAutoEnable.mockReturnValue({
+        config: { autoEnabled: true },
+        changes: [],
+      });
+      mocks.listChannelPlugins.mockReturnValue([
+        {
+          id: "whatsapp",
+          config: {
+            listAccountIds: () => ["default"],
+            resolveAccount: () => ({}),
+            isEnabled: () => true,
+            isConfigured: async () => true,
+          },
+          status: {
+            probeAccount,
+          },
+        },
+      ]);
+      const respond = vi.fn();
+      const opts = createOptions(
+        { probe: true, timeoutMs: 1000 },
+        {
+          respond,
+        },
+      );
+
+      const pending = channelsHandlers["channels.status"](opts);
+      await vi.advanceTimersByTimeAsync(1000);
+      await pending;
+
+      expect(probeAccount).toHaveBeenCalledWith({
+        account: {},
+        timeoutMs: 1000,
+        cfg: { autoEnabled: true },
+      });
+      expect(mocks.buildChannelAccountSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          probe: expect.objectContaining({
+            ok: false,
+            timedOut: true,
+          }),
+        }),
+      );
+      expect(respond).toHaveBeenCalledWith(
+        true,
+        expect.objectContaining({
+          partial: true,
+          warnings: [expect.stringContaining("whatsapp:default probe timed out")],
+        }),
+        undefined,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

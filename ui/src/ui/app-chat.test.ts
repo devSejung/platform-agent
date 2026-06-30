@@ -14,6 +14,7 @@ vi.mock("./app-settings.ts", () => ({
 let handleSendChat: typeof import("./app-chat.ts").handleSendChat;
 let handleAbortChat: typeof import("./app-chat.ts").handleAbortChat;
 let hasAbortableSessionRun: typeof import("./app-chat.ts").hasAbortableSessionRun;
+let refreshChat: typeof import("./app-chat.ts").refreshChat;
 let refreshChatAvatar: typeof import("./app-chat.ts").refreshChatAvatar;
 let clearPendingQueueItemsForRun: typeof import("./app-chat.ts").clearPendingQueueItemsForRun;
 let retryFailedChatMessage: typeof import("./app-chat.ts").retryFailedChatMessage;
@@ -27,6 +28,7 @@ async function loadChatHelpers(params?: { reload?: boolean }): Promise<void> {
     handleSendChat,
     handleAbortChat,
     hasAbortableSessionRun,
+    refreshChat,
     refreshChatAvatar,
     clearPendingQueueItemsForRun,
     retryFailedChatMessage,
@@ -159,6 +161,47 @@ describe("refreshChatAvatar", () => {
       "avatar/ops?meta=1",
       expect.objectContaining({ method: "GET" }),
     );
+  });
+});
+
+describe("refreshChat", () => {
+  beforeAll(async () => {
+    await loadChatHelpers();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("waits for chat history without blocking on slow surrounding refreshes", async () => {
+    const request = vi.fn((method: string) => {
+      if (method === "chat.history") {
+        return Promise.resolve({
+          messages: [{ role: "assistant", content: [{ type: "text", text: "loaded" }] }],
+          thinkingLevel: null,
+        });
+      }
+      if (method === "sessions.list" || method === "models.list") {
+        return new Promise<unknown>(() => {});
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<unknown>(() => {})) as unknown as typeof fetch);
+    const host = makeHost({
+      client: { request } as unknown as ChatHost["client"],
+      sessionKey: "agent:main:main",
+      sessionsCheckpointItemsByKey: {},
+    } as Partial<ChatHost>);
+
+    await refreshChat(host, { scheduleScroll: false });
+
+    expect(request).toHaveBeenCalledWith("chat.history", {
+      sessionKey: "agent:main:main",
+      limit: 200,
+    });
+    expect(host.chatMessages).toEqual([
+      { role: "assistant", content: [{ type: "text", text: "loaded" }] },
+    ]);
   });
 });
 

@@ -1795,7 +1795,7 @@
 }
 
 .cron-workspace--form-collapsed {
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .cron-workspace-main {
@@ -1813,6 +1813,25 @@
 
 .cron-workspace-form--collapsed {
   overflow: hidden;
+}
+
+.cron-form-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: start center;
+  padding: 56px 24px 24px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: blur(3px);
+  overflow-y: auto;
+}
+
+.cron-form-modal {
+  width: min(920px, calc(100vw - 48px));
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  box-shadow: var(--shadow-card);
 }
 
 .cron-form-header {
@@ -2038,8 +2057,55 @@
   min-width: 160px;
 }
 
-.cron-run-filters {
+.cron-filter-panel {
   margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.cron-filter-panel__summary {
+  min-height: 40px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cron-filter-panel__body {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.cron-empty-state {
+  margin-top: 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-elevated) 72%, var(--bg) 28%);
+  padding: 18px 20px;
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.cron-empty-state__title {
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.cron-empty-state__copy {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cron-run-filters {
   display: grid;
   gap: 12px;
 }
@@ -2217,6 +2283,15 @@
     max-width: none;
     position: static;
     margin-top: 8px;
+  }
+
+  .cron-form-modal-backdrop {
+    padding: 16px 12px;
+  }
+
+  .cron-form-modal {
+    width: 100%;
+    max-height: calc(100vh - 32px);
   }
 
   .cron-run-entry__meta {

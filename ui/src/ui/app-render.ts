@@ -1378,7 +1378,13 @@ export function renderApp(state: AppViewState) {
                 state.cronForm = employeeCronForm;
                 state.cronFieldErrors = validateCronForm(employeeCronForm);
               }
-              return addCronJob(state);
+              void (async () => {
+                await addCronJob(state);
+                if (!hasCronFormErrors(state.cronFieldErrors) && !state.cronError) {
+                  state.cronFormCollapsed = true;
+                }
+                requestHostUpdate?.();
+              })();
             },
             onEdit: (job) => {
               state.cronFormCollapsed = false;
@@ -1402,9 +1408,19 @@ export function renderApp(state: AppViewState) {
                 });
               }
             },
-            onCancelEdit: () => cancelCronEdit(state),
+            onCancelEdit: () => {
+              cancelCronEdit(state);
+              state.cronFormCollapsed = true;
+              requestHostUpdate?.();
+            },
             onToggleFormCollapsed: (collapsed) => {
               state.cronFormCollapsed = collapsed;
+              requestHostUpdate?.();
+            },
+            onQuickCreate: () => {
+              cancelCronEdit(state);
+              state.cronFormCollapsed = false;
+              requestHostUpdate?.();
             },
             onToggle: (job, enabled) => toggleCronJob(state, job, enabled),
             onRun: (job, mode) => runCronJob(state, job, mode ?? "force"),

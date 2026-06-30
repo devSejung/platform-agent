@@ -973,6 +973,8 @@ export const en: TranslationMap = {
       descending: "Descending",
       reset: "Reset",
       noMatching: "No matching jobs.",
+      emptyHint: "Create one from a plain-language prompt; advanced fields can wait.",
+      emptyFilteredHint: "Clear the filters to see all scheduled jobs.",
       loading: "Loading...",
       loadMore: "Load more jobs",
     },

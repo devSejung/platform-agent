@@ -975,6 +975,8 @@ export const ko: TranslationMap = {
       descending: "내림차순",
       reset: "재설정",
       noMatching: "일치하는 작업이 없습니다.",
+      emptyHint: "일반 언어 프롬프트로 작업을 만들고, 고급 필드는 나중에 조정할 수 있습니다.",
+      emptyFilteredHint: "필터를 지우면 전체 작업을 볼 수 있습니다.",
       loading: "로딩 중...",
       loadMore: "작업 더 불러오기",
     },

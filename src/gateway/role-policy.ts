@@ -57,6 +57,7 @@ const EMPLOYEE_ROLE_METHODS = new Set([
   "sessions.resolve",
   "sessions.create",
   "sessions.patch",
+  "sessions.delete",
   "sessions.compact",
   "sessions.send",
   "sessions.steer",

@@ -810,7 +810,15 @@ describe("gateway server sessions", () => {
 
     const sessionsHandlers = await getSessionsHandlers();
     const employeeClient = {
-      connect: { role: "employee" },
+      connect: {
+        role: "employee",
+        client: {
+          id: GATEWAY_CLIENT_IDS.WEBCHAT_UI,
+          version: "1.0.0",
+          platform: "test",
+          mode: GATEWAY_CLIENT_MODES.WEBCHAT,
+        },
+      },
       internal: { employee: { agentId: "eon" } },
     } as never;
     const context = {
@@ -826,7 +834,7 @@ describe("gateway server sessions", () => {
       respond: respondList,
       context,
       client: employeeClient,
-      isWebchatConnect: () => false,
+      isWebchatConnect: () => true,
     });
     expect(respondList).toHaveBeenCalledWith(
       true,
@@ -1233,6 +1241,56 @@ describe("gateway server sessions", () => {
         message: expect.stringMatching(/employee access denied for session patch/i),
       }),
     );
+  });
+
+  test("employee sessions.delete removes only the employee agent session", async () => {
+    const { storePath } = await createSessionStoreDir();
+    await writeSessionStore({
+      entries: {
+        "agent:eon:dashboard:alpha": {
+          sessionId: "sess-eon-alpha",
+          updatedAt: Date.now(),
+        },
+        "agent:minji:dashboard:alpha": {
+          sessionId: "sess-minji-alpha",
+          updatedAt: Date.now(),
+        },
+      },
+    });
+
+    const sessionsHandlers = await getSessionsHandlers();
+    const employeeClient = {
+      connect: { role: "employee" },
+      internal: { employee: { agentId: "eon" } },
+    } as never;
+    const context = {
+      broadcastToConnIds: vi.fn(),
+      getSessionEventSubscriberConnIds: () => new Set<string>(),
+      loadGatewayModelCatalog: async () => ({ providers: [] }),
+    } as never;
+
+    const respondAllowed = vi.fn();
+    await sessionsHandlers["sessions.delete"]({
+      req: {} as never,
+      params: { key: "agent:eon:dashboard:alpha" },
+      respond: respondAllowed,
+      context,
+      client: employeeClient,
+      isWebchatConnect: () => false,
+    });
+    expect(respondAllowed).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        ok: true,
+        key: "agent:eon:dashboard:alpha",
+        deleted: true,
+      }),
+      undefined,
+    );
+
+    const store = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<string, unknown>;
+    expect(store["agent:eon:dashboard:alpha"]).toBeUndefined();
+    expect(store["agent:minji:dashboard:alpha"]).toBeDefined();
   });
 
   test("employee sessions.compact and sessions.steer are limited to the employee session", async () => {

@@ -28,6 +28,7 @@ describe("gateway role policy", () => {
     expect(isRoleAuthorizedForMethod("operator", "node.event")).toBe(false);
     expect(isRoleAuthorizedForMethod("employee", "models.list")).toBe(true);
     expect(isRoleAuthorizedForMethod("employee", "sessions.patch")).toBe(true);
+    expect(isRoleAuthorizedForMethod("employee", "sessions.delete")).toBe(true);
     expect(isRoleAuthorizedForMethod("employee", "sessions.compact")).toBe(true);
     expect(isRoleAuthorizedForMethod("employee", "sessions.steer")).toBe(true);
     expect(isRoleAuthorizedForMethod("employee", "agents.list")).toBe(false);

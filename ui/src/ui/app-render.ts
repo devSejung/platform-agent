@@ -679,10 +679,10 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
   return html`
     <div class="employee-chat-sessions" aria-label="Chat sessions">
       <div class="employee-chat-sessions__header">
-        <span>최근</span>
-        <span>${count}개</span>
-      </div>
-      <div class="employee-chat-sessions__tools">
+        <span class="employee-chat-sessions__heading">
+          <span>최근</span>
+          <span class="employee-chat-sessions__count">${count}개</span>
+        </span>
         <button
           type="button"
           class="employee-chat-sessions__new"
@@ -692,6 +692,8 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
           <span aria-hidden="true">${icons.plus}</span>
           <span>새 대화</span>
         </button>
+      </div>
+      <div class="employee-chat-sessions__tools">
         <label class="employee-chat-sessions__search">
           <input
             type="search"

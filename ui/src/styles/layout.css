@@ -865,51 +865,67 @@
 
 .employee-chat-sessions {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   margin: 8px 0 14px;
-  padding: 2px 0 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
+  padding: 9px 8px 8px;
+  border: 1px solid color-mix(in srgb, #e6dfd8 78%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, #faf9f5 82%, #efe9de 18%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 55%, transparent);
 }
 
 .employee-chat-sessions__header {
-  min-height: 20px;
+  min-height: 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 0 8px;
-  color: #6c6a64;
+  padding: 0 1px 1px;
+}
+
+.employee-chat-sessions__heading {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  color: #3d3d3a;
   font-size: 12px;
   font-weight: 600;
+}
+
+.employee-chat-sessions__count {
+  color: #8e8b82;
+  font-size: 11px;
+  font-weight: 550;
 }
 
 .employee-chat-sessions__tools {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
+  gap: 0;
 }
 
 .employee-chat-sessions__new {
-  width: 100%;
-  min-height: 34px;
+  flex: 0 0 auto;
+  min-height: 27px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
+  padding: 0 9px;
   border: 1px solid #e6dfd8;
-  border-radius: var(--radius-md);
-  background: #faf9f5;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, #faf9f5 90%, #efe9de 10%);
   color: #252523;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 650;
+  line-height: 1;
   cursor: pointer;
   box-shadow: none;
 }
 
 .employee-chat-sessions__new:hover:not(:disabled) {
-  border-color: color-mix(in srgb, #0f7c72 38%, #e6dfd8 62%);
+  border-color: color-mix(in srgb, #0f7c72 42%, #e6dfd8 58%);
   background: #f5f0e8;
   color: #141413;
 }
@@ -920,19 +936,24 @@
 }
 
 .employee-chat-sessions__new svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 
 .employee-chat-sessions__search {
-  min-height: 32px;
+  min-height: 31px;
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  padding: 0 9px;
   border: 1px solid #e6dfd8;
   border-radius: var(--radius-md);
-  background: #faf9f5;
+  background: color-mix(in srgb, #faf9f5 92%, white 8%);
   color: #6c6a64;
+}
+
+.employee-chat-sessions__search:focus-within {
+  border-color: color-mix(in srgb, #0f7c72 36%, #e6dfd8 64%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #0f7c72 10%, transparent);
 }
 
 .employee-chat-sessions__search input {
@@ -946,24 +967,26 @@
 }
 
 .employee-chat-sessions__list {
-  max-height: 170px;
+  max-height: 168px;
   display: grid;
-  gap: 6px;
+  gap: 4px;
   overflow-y: auto;
-  padding: 0 4px 0 0;
+  padding: 1px 3px 1px 0;
   scrollbar-width: thin;
-  scrollbar-color: #cfc7ba transparent;
+  scrollbar-color: #c9c0b3 color-mix(in srgb, #efe9de 45%, transparent);
 }
 
 .employee-chat-sessions__list::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 
 .employee-chat-sessions__list::-webkit-scrollbar-track {
-  background: transparent;
+  background: color-mix(in srgb, #efe9de 42%, transparent);
+  border-radius: var(--radius-full);
 }
 
 .employee-chat-sessions__list::-webkit-scrollbar-thumb {
+  border: 2px solid color-mix(in srgb, #faf9f5 84%, #efe9de 16%);
   border-radius: var(--radius-full);
   background: #cfc7ba;
 }
@@ -974,12 +997,12 @@
 
 .employee-chat-session {
   width: 100%;
-  min-height: 52px;
+  min-height: 50px;
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) 10px;
   align-items: center;
   gap: 8px;
-  padding: 8px 9px;
+  padding: 7px 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
@@ -990,7 +1013,7 @@
 }
 
 .employee-chat-session:hover:not(:disabled) {
-  background: #f5f0e8;
+  background: color-mix(in srgb, #f5f0e8 78%, white 22%);
   border-color: #ebe6df;
 }
 
@@ -1000,6 +1023,7 @@
   border-color: #e6dfd8;
   color: #141413;
   cursor: default;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 42%, transparent);
 }
 
 .employee-chat-session__dot {

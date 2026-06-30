@@ -195,6 +195,12 @@ export type CompactEmbeddedPiSessionParams = {
   extraSystemPrompt?: string;
   ownerNumbers?: string[];
   abortSignal?: AbortSignal;
+  onCompactionHookMessages?: (payload: {
+    phase: "before" | "after";
+    messages: string[];
+    sessionId: string;
+    sessionKey: string;
+  }) => void | Promise<void>;
   /** Allow runtime plugins for this compaction to late-bind the gateway subagent. */
   allowGatewaySubagentBinding?: boolean;
 };
@@ -972,6 +978,7 @@ export async function compactEmbeddedPiSessionDirect(
             workspaceDir: effectiveWorkspace,
             messageProvider: resolvedMessageProvider,
             metrics: beforeHookMetrics,
+            onHookMessages: params.onCompactionHookMessages,
           });
           const { messageCountOriginal } = beforeHookMetrics;
           const diagEnabled = log.isEnabled("debug");
@@ -1125,6 +1132,7 @@ export async function compactEmbeddedPiSessionDirect(
             summaryLength: typeof result.summary === "string" ? result.summary.length : undefined,
             tokensBefore: result.tokensBefore,
             firstKeptEntryId: effectiveFirstKeptEntryId,
+            onHookMessages: params.onCompactionHookMessages,
           });
           // Truncate session file to remove compacted entries (#39953)
           if (params.config?.agents?.defaults?.compaction?.truncateAfterCompaction) {

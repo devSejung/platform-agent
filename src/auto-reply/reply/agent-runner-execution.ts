@@ -775,6 +775,32 @@ export async function runAgentTurnWithFallback(params: {
           })
         : undefined;
       const onToolResult = params.opts?.onToolResult;
+      const readCompactionHookMessages = (value: unknown): string[] => {
+        if (!Array.isArray(value)) {
+          return [];
+        }
+        return value
+          .filter((entry): entry is string => typeof entry === "string")
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0);
+      };
+      const sendCompactionHookMessages = async (messages: string[]) => {
+        if (!params.opts?.onBlockReply || messages.length === 0) {
+          return;
+        }
+        const currentMessageId = params.sessionCtx.MessageSidFull ?? params.sessionCtx.MessageSid;
+        const noticePayload = params.applyReplyToMode({
+          text: messages.join("\n\n"),
+          replyToId: currentMessageId,
+          replyToCurrent: true,
+          isCompactionNotice: true,
+        });
+        try {
+          await params.opts.onBlockReply(noticePayload);
+        } catch (err) {
+          logVerbose(`compaction hook notice delivery failed (non-fatal): ${String(err)}`);
+        }
+      };
       const fallbackResult = await runWithModelFallback({
         ...resolveModelFallbackOptions(params.followupRun.run),
         runId,
@@ -1096,6 +1122,7 @@ export async function runAgentTurnWithFallback(params: {
                   // Track auto-compaction and notify higher layers.
                   if (evt.stream === "compaction") {
                     const phase = readStringValue(evt.data.phase) ?? "";
+                    const hookMessages = readCompactionHookMessages(evt.data.messages);
                     if (phase === "start") {
                       // Keep custom compaction callbacks active, but gate the
                       // fallback user-facing notice behind explicit opt-in.
@@ -1103,7 +1130,14 @@ export async function runAgentTurnWithFallback(params: {
                         runtimeConfig?.agents?.defaults?.compaction?.notifyUser === true;
                       if (params.opts?.onCompactionStart) {
                         await params.opts.onCompactionStart();
-                      } else if (notifyUser && params.opts?.onBlockReply) {
+                      }
+                      if (hookMessages.length > 0) {
+                        await sendCompactionHookMessages(hookMessages);
+                      } else if (
+                        !params.opts?.onCompactionStart &&
+                        notifyUser &&
+                        params.opts?.onBlockReply
+                      ) {
                         // Send directly via opts.onBlockReply (bypassing the
                         // pipeline) so the notice does not cause final payloads
                         // to be discarded on non-streaming model paths.
@@ -1130,6 +1164,11 @@ export async function runAgentTurnWithFallback(params: {
                     if (phase === "end" && completed) {
                       attemptCompactionCount += 1;
                       await params.opts?.onCompactionEnd?.();
+                      if (hookMessages.length > 0) {
+                        await sendCompactionHookMessages(hookMessages);
+                      }
+                    } else if (hookMessages.length > 0) {
+                      await sendCompactionHookMessages(hookMessages);
                     }
                   }
                 },

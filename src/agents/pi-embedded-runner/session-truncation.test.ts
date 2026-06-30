@@ -26,6 +26,24 @@ function makeAssistant(text: string, timestamp: number) {
   });
 }
 
+function readUserTexts(entries: ReturnType<SessionManager["getEntries"]>): string[] {
+  return entries
+    .filter((entry) => {
+      const message = (entry as { message?: { role?: unknown } }).message;
+      return entry.type === "message" && message?.role === "user";
+    })
+    .map((entry) => {
+      const content = (entry as { message: { content?: unknown } }).message.content;
+      if (typeof content === "string") {
+        return content;
+      }
+      if (Array.isArray(content)) {
+        return content.map((block) => (block as { text?: string }).text ?? "").join("");
+      }
+      return "";
+    });
+}
+
 function createSessionWithCompaction(sessionDir: string): string {
   const sm = SessionManager.create(sessionDir, sessionDir);
   // Add messages before compaction
@@ -309,6 +327,32 @@ describe("truncateSessionAfterCompaction", () => {
     // buildSessionContext should include the unsummarized tail
     const ctx = smAfter.buildSessionContext();
     expect(ctx.messages.length).toBeGreaterThan(2);
+  });
+
+  it("keeps a repeated kept-tail prompt whose earlier copy was summarized away", async () => {
+    const dir = await createTmpDir();
+    const sm = SessionManager.create(dir, dir);
+    const prompt = "Please refactor the authentication module right now";
+
+    sm.appendMessage({ role: "user", content: prompt, timestamp: 1000 });
+    sm.appendMessage(makeAssistant("Working on it.", 1001));
+    const firstKeptId = sm.appendMessage({
+      role: "user",
+      content: "go on",
+      timestamp: 1002,
+    });
+    sm.appendMessage(makeAssistant("Continuing.", 1003));
+    sm.appendCompaction("Summary of earlier turns.", firstKeptId, 5000);
+    sm.appendMessage({ role: "user", content: prompt, timestamp: 40000 });
+    sm.appendMessage(makeAssistant("On it again.", 40001));
+
+    const sessionFile = sm.getSessionFile()!;
+    const result = await truncateSessionAfterCompaction({ sessionFile });
+
+    expect(result.truncated).toBe(true);
+    const smAfter = SessionManager.open(sessionFile);
+    const userTexts = readUserTexts(smAfter.getEntries());
+    expect(userTexts.some((text) => text.includes(prompt))).toBe(true);
   });
 
   it("preserves unsummarized sibling branches during truncation", async () => {

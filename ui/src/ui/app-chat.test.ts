@@ -365,6 +365,23 @@ describe("handleSendChat", () => {
           thinkingLevel: null,
         };
       }
+      if (method === "sessions.list") {
+        return {
+          path: "",
+          count: 1,
+          defaults: { modelProvider: "openai", model: "gpt-5", contextTokens: 200_000 },
+          sessions: [
+            {
+              key: "agent:main:main",
+              title: "main",
+              updatedAt: Date.now(),
+              totalTokens: 12_345,
+              totalTokensFresh: true,
+              contextTokens: 200_000,
+            },
+          ],
+        };
+      }
       throw new Error(`Unexpected request: ${method}`);
     });
     const host = makeHost({
@@ -383,6 +400,11 @@ describe("handleSendChat", () => {
     expect(request).toHaveBeenCalledWith("chat.history", {
       sessionKey: "agent:main:main",
       limit: 200,
+    });
+    expect(request).toHaveBeenCalledWith("sessions.list", {
+      includeGlobal: undefined,
+      includeUnknown: undefined,
+      activeMinutes: 120,
     });
     expect(host.chatMessages).toEqual([
       { role: "assistant", content: [{ type: "text", text: "done" }] },

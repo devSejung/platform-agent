@@ -16,6 +16,7 @@ export type SessionsState = {
   client: GatewayBrowserClient | null;
   connected: boolean;
   sessionsLoading: boolean;
+  sessionsPendingLoad?: SessionsLoadOverrides | null;
   sessionsResult: SessionsListResult | null;
   sessionsError: string | null;
   sessionsFilterActive: string;
@@ -27,6 +28,14 @@ export type SessionsState = {
   sessionsCheckpointLoadingKey: string | null;
   sessionsCheckpointBusyKey: string | null;
   sessionsCheckpointErrorByKey: Record<string, string>;
+};
+
+type SessionsLoadOverrides = {
+  activeMinutes?: number;
+  limit?: number;
+  includeGlobal?: boolean;
+  includeUnknown?: boolean;
+  rerunIfLoading?: boolean;
 };
 
 function checkpointSignature(
@@ -103,17 +112,16 @@ export async function subscribeSessions(state: SessionsState) {
 
 export async function loadSessions(
   state: SessionsState,
-  overrides?: {
-    activeMinutes?: number;
-    limit?: number;
-    includeGlobal?: boolean;
-    includeUnknown?: boolean;
-  },
+  overrides?: SessionsLoadOverrides,
 ) {
   if (!state.client || !state.connected) {
     return;
   }
   if (state.sessionsLoading) {
+    if (overrides?.rerunIfLoading) {
+      const { rerunIfLoading: _rerunIfLoading, ...pending } = overrides;
+      state.sessionsPendingLoad = pending;
+    }
     return;
   }
   state.sessionsLoading = true;
@@ -173,6 +181,11 @@ export async function loadSessions(
     }
   } finally {
     state.sessionsLoading = false;
+    const pending = state.sessionsPendingLoad;
+    if (pending && state.client && state.connected) {
+      state.sessionsPendingLoad = null;
+      void loadSessions(state, pending);
+    }
   }
 }
 

@@ -229,6 +229,10 @@ async function refreshChatHistoryWhenRunTerminal(
       return;
     }
     await loadChatHistory(host as unknown as OpenClawApp);
+    await loadSessions(host as unknown as OpenClawApp, {
+      activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
+      rerunIfLoading: true,
+    });
     if (host.sessionKey === sessionKey && host.chatRunId === runId) {
       host.chatRunId = null;
       host.chatStream = null;

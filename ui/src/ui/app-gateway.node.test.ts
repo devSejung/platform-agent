@@ -585,6 +585,31 @@ describe("connectGateway", () => {
     expect(loadChatHistoryMock).not.toHaveBeenCalled();
   });
 
+  it("refreshes session usage metadata after terminal chat final events", async () => {
+    const { host, client } = connectHostGateway();
+    client.emitHello();
+    host.chatRunId = "run-usage";
+
+    client.emitEvent({
+      event: "chat",
+      payload: {
+        state: "final",
+        runId: "run-usage",
+        sessionKey: "main",
+        message: { role: "assistant", content: [{ type: "text", text: "done" }] },
+      },
+    });
+    for (let i = 0; i < 5; i += 1) {
+      await Promise.resolve();
+    }
+
+    expect(client.request).toHaveBeenCalledWith("sessions.list", {
+      includeGlobal: undefined,
+      includeUnknown: undefined,
+      activeMinutes: 120,
+    });
+  });
+
   it("routes plugin.approval.requested into execApprovalQueue with kind plugin", () => {
     const host = createHost();
 

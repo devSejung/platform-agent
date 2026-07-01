@@ -380,13 +380,22 @@ function handleTerminalChatEvent(
   );
   void flushChatQueueForEvent(host as unknown as Parameters<typeof flushChatQueueForEvent>[0]);
   const runId = payload?.runId;
+  let sessionsRefreshed = false;
   if (runId && host.refreshSessionsAfterChat.has(runId)) {
     host.refreshSessionsAfterChat.delete(runId);
     if (state === "final") {
       void loadSessions(host as unknown as OpenClawApp, {
         activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
+        rerunIfLoading: true,
       });
+      sessionsRefreshed = true;
     }
+  }
+  if (state === "final" && !sessionsRefreshed) {
+    void loadSessions(host as unknown as OpenClawApp, {
+      activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
+      rerunIfLoading: true,
+    });
   }
   // Reload history when tools were used so the persisted tool results
   // replace the now-cleared streaming state.

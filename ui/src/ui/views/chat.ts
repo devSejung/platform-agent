@@ -554,6 +554,8 @@ function deriveLiveRunViewState(props: ChatProps): LiveRunViewState {
   const elapsedMs = resolveElapsedMs(startedAt);
   const elapsed = formatElapsedMs(elapsedMs);
   const queueDepth = props.queue.length;
+  const shouldPrioritizeActiveCompaction =
+    compactionActive && elapsedMs < COMPACTION_TOAST_DURATION_MS;
 
   if (!props.connected && (props.canAbort || props.stream !== null || props.sending)) {
     return {
@@ -605,6 +607,57 @@ function deriveLiveRunViewState(props: ChatProps): LiveRunViewState {
       meta: tokenDelta ?? `${elapsed} elapsed`,
       icon: icons.check,
       mascotPhase: "retrying",
+      startedAt,
+      elapsedMs,
+      queueDepth,
+    };
+  }
+
+  if (runPhase) {
+    const tokenDelta = formatTokenDeltaCompact(compaction?.tokensBefore, compaction?.tokensAfter);
+    if (runPhase.phase === "preflight_compacting") {
+      const copy = compactionCopy({ elapsedMs, localizedKo, subtype: "preflight" });
+      return {
+        kind: "compacting",
+        tone: "compaction",
+        title: copy.title,
+        body: copy.body,
+        meta: tokenDelta ?? `${elapsed} elapsed`,
+        icon: icons.loader,
+        mascotPhase: "compacting",
+        startedAt,
+        elapsedMs,
+        queueDepth,
+      };
+    }
+    if (runPhase.phase === "memory_flushing") {
+      const copy = compactionCopy({ elapsedMs, localizedKo, subtype: "memory_flush" });
+      return {
+        kind: "compacting",
+        tone: "compaction",
+        title: copy.title,
+        body: copy.body,
+        meta: `${elapsed} elapsed`,
+        icon: icons.brain,
+        mascotPhase: "compacting",
+        startedAt,
+        elapsedMs,
+        queueDepth,
+      };
+    }
+  }
+
+  if (shouldPrioritizeActiveCompaction) {
+    const tokenDelta = formatTokenDeltaCompact(compaction?.tokensBefore, compaction?.tokensAfter);
+    const copy = compactionCopy({ elapsedMs, localizedKo, subtype: "runtime" });
+    return {
+      kind: "compacting",
+      tone: "compaction",
+      title: copy.title,
+      body: copy.body,
+      meta: tokenDelta ?? `${elapsed} elapsed`,
+      icon: icons.loader,
+      mascotPhase: "compacting",
       startedAt,
       elapsedMs,
       queueDepth,
@@ -664,37 +717,6 @@ function deriveLiveRunViewState(props: ChatProps): LiveRunViewState {
   }
 
   if (runPhase) {
-    const tokenDelta = formatTokenDeltaCompact(compaction?.tokensBefore, compaction?.tokensAfter);
-    if (runPhase.phase === "preflight_compacting") {
-      const copy = compactionCopy({ elapsedMs, localizedKo, subtype: "preflight" });
-      return {
-        kind: "compacting",
-        tone: "compaction",
-        title: copy.title,
-        body: copy.body,
-        meta: tokenDelta ?? `${elapsed} elapsed`,
-        icon: icons.loader,
-        mascotPhase: "compacting",
-        startedAt,
-        elapsedMs,
-        queueDepth,
-      };
-    }
-    if (runPhase.phase === "memory_flushing") {
-      const copy = compactionCopy({ elapsedMs, localizedKo, subtype: "memory_flush" });
-      return {
-        kind: "compacting",
-        tone: "compaction",
-        title: copy.title,
-        body: copy.body,
-        meta: `${elapsed} elapsed`,
-        icon: icons.brain,
-        mascotPhase: "compacting",
-        startedAt,
-        elapsedMs,
-        queueDepth,
-      };
-    }
     if (runPhase.phase === "queued" && queueDepth > 0) {
       return {
         kind: "queued",

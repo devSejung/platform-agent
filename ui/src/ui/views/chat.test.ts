@@ -1021,6 +1021,33 @@ describe("chat view", () => {
     nowSpy.mockRestore();
   });
 
+  it("prioritizes active compaction over stale stream and tool status", () => {
+    const container = document.createElement("div");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(12_000);
+    render(
+      renderChat(
+        createProps({
+          compactionStatus: {
+            phase: "active",
+            runId: "run-1",
+            startedAt: 9_000,
+            completedAt: null,
+          },
+          stream: "partial assistant output",
+          toolMessages: [{ role: "tool", content: "tool output" }],
+        }),
+      ),
+      container,
+    );
+
+    const status = expectLiveRunStatusAndMascotPhase(container, "compacting");
+    expect(status?.className).toContain("live-run-status--compaction");
+    expect(status?.textContent).toContain("Compacting context");
+    expect(status?.textContent).not.toContain("Writing response");
+    expect(status?.textContent).not.toContain("Running tools");
+    nowSpy.mockRestore();
+  });
+
   it("renders incomplete compaction as informational compaction status", () => {
     withDocumentLang("ko-KR", () => {
       const container = document.createElement("div");

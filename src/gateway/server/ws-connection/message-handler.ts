@@ -824,8 +824,7 @@ export function attachGatewayWsMessageHandler(params: {
           trustedProxyAuthOk,
           resolvedAuth.mode,
         );
-        const skipPairing = skipLocalBackendSelfPairing || skipControlUiPairingForDevice;
-        if (role !== "employee" && device && devicePublicKey && !skipPairing) {
+        if (role !== "employee" && device && devicePublicKey) {
           const formatAuditList = (items: string[] | undefined): string => {
             if (!items || items.length === 0) {
               return "<none>";

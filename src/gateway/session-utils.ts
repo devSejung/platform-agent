@@ -1316,7 +1316,6 @@ export function buildGatewaySessionRow(params: {
   lightweightListRow?: boolean;
 }): GatewaySessionRow {
   const { cfg, storePath, store, key, entry } = params;
-  const lightweight = params.lightweightListRow === true;
   const skipTranscriptUsage = params.skipTranscriptUsageFallback === true;
   const now = params.now ?? Date.now();
   const updatedAt = entry?.updatedAt ?? null;
@@ -1422,27 +1421,25 @@ export function buildGatewaySessionRow(params: {
   const latestCompactionCheckpoint = buildCompactionCheckpointPreview(
     resolveLatestCompactionCheckpoint(entry),
   );
-  const estimatedCostUsd = lightweight
-    ? resolveNonNegativeNumber(entry?.estimatedCostUsd)
-    : (resolveEstimatedSessionCostUsd({
+  const estimatedCostUsd =
+    resolveEstimatedSessionCostUsd({
+      cfg,
+      provider: modelProvider,
+      model,
+      entry,
+    }) ?? resolveNonNegativeNumber(transcriptUsage?.estimatedCostUsd);
+  const contextTokens =
+    resolvePositiveNumber(entry?.contextTokens) ??
+    resolvePositiveNumber(transcriptUsage?.contextTokens) ??
+    resolvePositiveNumber(
+      resolveContextTokensForModel({
         cfg,
         provider: modelProvider,
         model,
-        entry,
-      }) ?? resolveNonNegativeNumber(transcriptUsage?.estimatedCostUsd));
-  const contextTokens = lightweight
-    ? resolvePositiveNumber(entry?.contextTokens)
-    : (resolvePositiveNumber(entry?.contextTokens) ??
-      resolvePositiveNumber(transcriptUsage?.contextTokens) ??
-      resolvePositiveNumber(
-        resolveContextTokensForModel({
-          cfg,
-          provider: modelProvider,
-          model,
-          // Gateway/session listing is read-only; don't start async model discovery.
-          allowAsyncLoad: false,
-        }),
-      ));
+        // Gateway/session listing is read-only; don't start async model discovery.
+        allowAsyncLoad: false,
+      }),
+    );
 
   let derivedTitle: string | undefined;
   let lastMessagePreview: string | undefined;
@@ -1635,7 +1632,6 @@ export function listSessionsFromStore(params: {
       includeDerivedTitles,
       includeLastMessage,
       rowContext: getRowContext(),
-      skipTranscriptUsageFallback: true,
       lightweightListRow: true,
     }),
   );

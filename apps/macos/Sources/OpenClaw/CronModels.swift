@@ -47,6 +47,7 @@ enum CronWakeMode: String, CaseIterable, Identifiable, Codable {
 
 enum CronDeliveryMode: String, CaseIterable, Identifiable, Codable {
     case none
+    case origin
     case announce
     case webhook
 

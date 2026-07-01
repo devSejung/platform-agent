@@ -1,6 +1,6 @@
 import { resolveSendableOutboundReplyParts } from "openclaw/plugin-sdk/reply-payload";
-import { isParentOwnedBackgroundAcpSession } from "../../acp/session-interaction-mode.js";
 import { resolveAccountTimezone } from "../../accounts/account-store.js";
+import { isParentOwnedBackgroundAcpSession } from "../../acp/session-interaction-mode.js";
 import { resolveAgentConfig, resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { DEFAULT_PLATFORMCLAW_TIMEZONE } from "../../agents/date-time.js";
 import {
@@ -74,18 +74,22 @@ let getReplyFromConfigRuntimePromise: Promise<
 function buildTimezoneConfigOverride(
   configOverride: OpenClawConfig | undefined,
   senderId: string | undefined,
-): OpenClawConfig {
-  const existingTimezone = configOverride?.agents?.defaults?.userTimezone?.trim();
-  const resolvedTimezone =
-    (senderId ? resolveAccountTimezone(senderId) : null) ??
-    (existingTimezone || undefined) ??
-    DEFAULT_PLATFORMCLAW_TIMEZONE;
+): OpenClawConfig | undefined {
+  if (!configOverride) {
+    return undefined;
+  }
+  const existingTimezone = configOverride.agents?.defaults?.userTimezone?.trim();
+  const accountTimezone = senderId ? resolveAccountTimezone(senderId) : null;
+  if (!accountTimezone && existingTimezone) {
+    return configOverride;
+  }
+  const resolvedTimezone = accountTimezone ?? existingTimezone ?? DEFAULT_PLATFORMCLAW_TIMEZONE;
   return {
-    ...(configOverride ?? {}),
+    ...configOverride,
     agents: {
-      ...(configOverride?.agents ?? {}),
+      ...configOverride.agents,
       defaults: {
-        ...(configOverride?.agents?.defaults ?? {}),
+        ...configOverride.agents?.defaults,
         userTimezone: resolvedTimezone,
       },
     },

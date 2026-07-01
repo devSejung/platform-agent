@@ -1,5 +1,5 @@
 export const CHAT_ATTACHMENT_ACCEPT = "*/*";
 
-export function isSupportedChatAttachmentMimeType(mimeType: string | null | undefined): boolean {
-  return typeof mimeType === "string" ? true : true;
+export function isSupportedChatAttachmentMimeType(_mimeType: string | null | undefined): boolean {
+  return true;
 }

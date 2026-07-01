@@ -1,13 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
-import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { resolveStateDir } from "../../../src/config/paths.js";
-import type { OpenClawConfig } from "../../../src/config/types.js";
-import { createSubsystemLogger } from "../../../src/logging/subsystem.js";
-import { loadOutboundMediaFromUrl } from "../../../src/plugin-sdk/outbound-media.js";
-import { normalizeOptionalString } from "../../../src/shared/string-coerce.js";
+import path from "node:path";
+import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
+import { loadOutboundMediaFromUrl } from "openclaw/plugin-sdk/outbound-media";
+import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
+import { normalizeOptionalString } from "openclaw/plugin-sdk/text-runtime";
+import type { CoreConfig } from "./types.js";
 
 const KNOX_FILE_LINKS_MARKER = "[KNOX_FILE_LINKS]";
 const KNOX_FILE_LINKS_ROUTE_PREFIX = "/api/v1/knox/file-links";
@@ -89,7 +89,10 @@ function resolveArtifactBlobPath(artifactId: string) {
 
 function sanitizeDownloadFileName(value: string | undefined, fallback = "attachment") {
   const trimmed = normalizeOptionalString(value) ?? fallback;
-  const base = path.basename(trimmed).replace(/[\u0000-\u001f\u007f]+/g, "").trim();
+  const base = path
+    .basename(trimmed)
+    .replace(/\p{Cc}+/gu, "")
+    .trim();
   return base || fallback;
 }
 
@@ -127,10 +130,7 @@ function truncateKnoxIntro(text: string | undefined) {
   return `${intro.slice(0, KNOX_FILE_LINKS_MAX_INTRO_CHARS).trimEnd()}\n... (truncated)`;
 }
 
-function resolveKnoxFileLinksBaseUrl(params: {
-  cfg: OpenClawConfig;
-  baseUrl?: string;
-}) {
+function resolveKnoxFileLinksBaseUrl(params: { cfg: CoreConfig; baseUrl?: string }) {
   const configured = params.baseUrl?.trim();
   if (configured) {
     return configured.replace(/\/+$/u, "");
@@ -142,7 +142,7 @@ function resolveKnoxFileLinksBaseUrl(params: {
   return KNOX_FILE_LINKS_DEFAULT_BASE_URL;
 }
 
-function buildDownloadUrl(params: { cfg: OpenClawConfig; artifactId: string; baseUrl?: string }) {
+function buildDownloadUrl(params: { cfg: CoreConfig; artifactId: string; baseUrl?: string }) {
   return `${resolveKnoxFileLinksBaseUrl({
     cfg: params.cfg,
     baseUrl: params.baseUrl,
@@ -231,7 +231,7 @@ async function ensureKnoxFileLinksRoot() {
 
 async function writeArtifact(params: {
   mediaUrl: string;
-  cfg: OpenClawConfig;
+  cfg: CoreConfig;
   baseUrl?: string;
   mediaAccess?: {
     localRoots?: readonly string[];
@@ -269,7 +269,9 @@ async function writeArtifact(params: {
     checksumSha256,
     createdAt: new Date().toISOString(),
     expiresAt: params.expiresAt,
-    deleteAfterAt: new Date(Date.parse(params.expiresAt) + KNOX_FILE_LINKS_DELETE_GRACE_MS).toISOString(),
+    deleteAfterAt: new Date(
+      Date.parse(params.expiresAt) + KNOX_FILE_LINKS_DELETE_GRACE_MS,
+    ).toISOString(),
   };
   await fsPromises.mkdir(artifactDir, { recursive: true, mode: KNOX_FILE_LINKS_DIR_MODE });
   await fsPromises.writeFile(resolveArtifactBlobPath(id), loaded.buffer, {
@@ -318,7 +320,9 @@ async function cleanupExpiredArtifacts(nowMs = Date.now()) {
           await removeArtifact(entry.name);
           return;
         }
-        const deleteAfterAt = Date.parse(meta.deleteAfterAt ?? meta.expiresAt) + (meta.deleteAfterAt ? 0 : KNOX_FILE_LINKS_DELETE_GRACE_MS);
+        const deleteAfterAt =
+          Date.parse(meta.deleteAfterAt ?? meta.expiresAt) +
+          (meta.deleteAfterAt ? 0 : KNOX_FILE_LINKS_DELETE_GRACE_MS);
         if (deleteAfterAt <= nowMs) {
           await removeArtifact(entry.name);
         }
@@ -382,7 +386,7 @@ function renderKnoxFileLinksMessage(params: {
 }
 
 export async function buildKnoxFileLinksText(params: {
-  cfg: OpenClawConfig;
+  cfg: CoreConfig;
   mediaUrls: string[];
   text?: string;
   baseUrl?: string;
@@ -454,8 +458,11 @@ export async function buildKnoxFileLinksText(params: {
 }
 
 function resolveDownloadHeaders(meta: KnoxFileLinkMeta) {
-  const encoded = encodeURIComponent(meta.fileName).replace(/['()]/gu, escape).replace(/\*/gu, "%2A");
-  const isPreviewable = meta.contentType === "application/pdf" || meta.contentType.startsWith("image/");
+  const encoded = encodeURIComponent(meta.fileName)
+    .replace(/['()]/gu, escape)
+    .replace(/\*/gu, "%2A");
+  const isPreviewable =
+    meta.contentType === "application/pdf" || meta.contentType.startsWith("image/");
   return {
     "Content-Type": meta.contentType,
     "Content-Length": String(meta.sizeBytes),

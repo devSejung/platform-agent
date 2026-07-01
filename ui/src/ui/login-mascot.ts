@@ -106,7 +106,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function prefersReducedMotion(): boolean {
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
 
 function setMascotVars(

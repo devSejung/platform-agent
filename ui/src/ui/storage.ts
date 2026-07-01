@@ -14,6 +14,9 @@ function resolveUiStorageMode(): UiStorageMode {
       : typeof window !== "undefined" && typeof window.location?.pathname === "string"
         ? window.location.pathname
         : "";
+  if (typeof window !== "undefined" && window.__OPENCLAW_UI_MODE__ === "control") {
+    return "control";
+  }
   if (
     typeof window !== "undefined" &&
     (window.__OPENCLAW_UI_MODE__ === "employee" ||

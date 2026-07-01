@@ -404,13 +404,14 @@ function renderSkillsDiagnostics(
 
       ${issuePreview.length
         ? html`
-              <div class="skills-issue-panel">
+            <div class="skills-issue-panel">
               <div class="skills-issue-panel__title">${t("skills.diagnostics.needsAttention")}</div>
               <div class="skills-issue-panel__items">
                 ${issuePreview.map((skill) => {
                   const missing = computeSkillMissing(skill);
                   const reasons = computeSkillReasons(skill);
-                  const detail = [...reasons, ...missing].join(", ") || t("skills.diagnostics.notEligible");
+                  const detail =
+                    [...reasons, ...missing].join(", ") || t("skills.diagnostics.notEligible");
                   return html`
                     <button
                       class="skills-issue-pill"
@@ -476,9 +477,7 @@ export function renderSkills(props: SkillsProps) {
         <div>
           <div class="card-title">Skills</div>
           <div class="card-sub">
-            ${readOnly
-              ? t("skills.readOnlySubtitle")
-              : t("skills.subtitle")}
+            ${readOnly ? t("skills.readOnlySubtitle") : t("skills.subtitle")}
           </div>
         </div>
         <button
@@ -532,7 +531,9 @@ export function renderSkills(props: SkillsProps) {
       ${renderSkillsDiagnostics(props.report, skills, props.onDetailOpen)}
 
       <div class="callout info" style="margin-top: 16px;">
-        ${t("skills.skillHubCalloutPrefix")} <strong>Skill Hub</strong> ${t("skills.skillHubCalloutSuffix")}
+        ${t("skills.skillHubCalloutPrefix")} <strong>Skill Hub</strong> ${t(
+          "skills.skillHubCalloutSuffix",
+        )}
       </div>
 
       ${props.error
@@ -587,50 +588,6 @@ export function renderSkills(props: SkillsProps) {
   `;
 }
 
-function renderClawHubResults(props: SkillsProps) {
-  const results = props.clawhubResults;
-  if (!results) {
-    return nothing;
-  }
-  if (results.length === 0) {
-    return html`<div class="muted" style="margin-top: 8px;">${t("skills.clawhub.empty")}</div>`;
-  }
-  return html`
-    <div class="list" style="margin-top: 8px;">
-      ${results.map(
-        (r) => html`
-          <div
-            class="list-item list-item-clickable"
-            @click=${() => props.onClawHubDetailOpen(r.slug)}
-          >
-            <div class="list-main">
-              <div class="list-title">${r.displayName}</div>
-              <div class="list-sub">${r.summary ? clampText(r.summary, 120) : r.slug}</div>
-            </div>
-            <div class="list-meta" style="display: flex; align-items: center; gap: 8px;">
-              ${r.version
-                ? html`<span class="muted" style="font-size: 12px;">v${r.version}</span>`
-                : nothing}
-              <button
-                class="btn btn--sm"
-                ?disabled=${props.clawhubInstallSlug !== null}
-                @click=${(e: Event) => {
-                  e.stopPropagation();
-                  props.onClawHubInstall(r.slug);
-                }}
-              >
-                ${props.clawhubInstallSlug === r.slug
-                  ? t("skillHub.actions.installing")
-                  : t("skillHub.actions.install")}
-              </button>
-            </div>
-          </div>
-        `,
-      )}
-    </div>
-  `;
-}
-
 function renderClawHubDetailDialog(props: SkillsProps) {
   const detail = props.clawhubDetail;
   const ensureModalOpen = (el?: Element) => {
@@ -669,7 +626,9 @@ function renderClawHubDetailDialog(props: SkillsProps) {
         <div class="md-preview-dialog__body" style="display: grid; gap: 16px;">
           ${props.clawhubInstallMessage
             ? html`<div
-                class="callout ${props.clawhubInstallMessage.kind === "error" ? "danger" : "success"}"
+                class="callout ${props.clawhubInstallMessage.kind === "error"
+                  ? "danger"
+                  : "success"}"
               >
                 ${props.clawhubInstallMessage.text}
               </div>`
@@ -750,7 +709,9 @@ function renderSkill(
           ${skill.source === "openclaw-workspace" && !skill.hubSlug
             ? html`<span class="chip">${t("skills.badges.workspaceLocal")}</span>`
             : nothing}
-          ${skill.hubSlug ? html`<span class="chip">${t("skills.badges.hubInstalled")}</span>` : nothing}
+          ${skill.hubSlug
+            ? html`<span class="chip">${t("skills.badges.hubInstalled")}</span>`
+            : nothing}
           ${skill.updateAvailable
             ? html`<span class="chip">${t("skillHub.badges.updateAvailable")}</span>`
             : nothing}
@@ -855,7 +816,9 @@ function renderSkillDetail(
               ${skill.source === "openclaw-workspace" && !skill.hubSlug
                 ? html`<span class="chip">${t("skills.badges.workspaceLocal")}</span>`
                 : nothing}
-              ${skill.hubSlug ? html`<span class="chip">${t("skills.badges.hubInstalled")}</span>` : nothing}
+              ${skill.hubSlug
+                ? html`<span class="chip">${t("skills.badges.hubInstalled")}</span>`
+                : nothing}
             </div>
             ${renderSkillStatusChips({ skill, showBundledBadge })}
           </div>
@@ -881,14 +844,18 @@ function renderSkillDetail(
                   class="callout"
                   style="border-color: var(--warn-subtle); background: var(--warn-subtle); color: var(--warn);"
                 >
-                  <div style="font-weight: 600; margin-bottom: 4px;">${t("skills.detail.missingRequirements")}</div>
+                  <div style="font-weight: 600; margin-bottom: 4px;">
+                    ${t("skills.detail.missingRequirements")}
+                  </div>
                   <div>${missing.join(", ")}</div>
                 </div>
               `
             : nothing}
           ${reasons.length > 0
             ? html`
-                <div class="muted" style="font-size: 13px;">${t("skills.detail.reasonPrefix")} ${reasons.join(", ")}</div>
+                <div class="muted" style="font-size: 13px;">
+                  ${t("skills.detail.reasonPrefix")} ${reasons.join(", ")}
+                </div>
               `
             : nothing}
 
@@ -918,7 +885,9 @@ function renderSkillDetail(
                       >
                         ${busy
                           ? t("skillHub.actions.updating")
-                          : t("skills.detail.updateToVersion", { version: skill.latestVersion ?? "" })}
+                          : t("skills.detail.updateToVersion", {
+                              version: skill.latestVersion ?? "",
+                            })}
                       </button>`
                     : nothing}
                   ${canInstall
@@ -932,7 +901,11 @@ function renderSkillDetail(
                       </button>`
                     : nothing}
                   ${allowWorkspaceActions && skill.canDelete
-                    ? html`<button class="btn" ?disabled=${busy} @click=${() => props.onDelete(skill.skillKey, skill.hubSlug)}>
+                    ? html`<button
+                        class="btn"
+                        ?disabled=${busy}
+                        @click=${() => props.onDelete(skill.skillKey, skill.hubSlug)}
+                      >
                         ${t("skills.detail.deleteFromWorkspace")}
                       </button>`
                     : nothing}

@@ -1038,6 +1038,7 @@ export function renderCron(props: CronProps) {
                         ${supportsAnnounce
                           ? html`
                               <option value="announce">${t("cron.form.announceDefault")}</option>
+                              <option value="origin">Origin session</option>
                             `
                           : nothing}
                         <option value="webhook">${t("cron.form.webhookPost")}</option>
@@ -1045,7 +1046,7 @@ export function renderCron(props: CronProps) {
                       </select>
                       <div class="cron-help">${t("cron.form.deliveryHelp")}</div>
                     </label>
-                    ${selectedDeliveryMode !== "none"
+                    ${selectedDeliveryMode !== "none" && selectedDeliveryMode !== "origin"
                       ? html`
                           <label
                             class="field ${selectedDeliveryMode === "webhook" ? "cron-span-2" : ""}"

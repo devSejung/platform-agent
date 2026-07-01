@@ -8,7 +8,7 @@ import {
 import { createServer as createHttpsServer } from "node:https";
 import type { TlsOptions } from "node:tls";
 import type { WebSocketServer } from "ws";
-import { handleKnoxFileLinksHttpRequest } from "../../extensions/knox/src/file-links.js";
+import { handleKnoxFileLinksHttpRequest } from "../../extensions/knox/api.js";
 import { resolveAgentAvatar } from "../agents/identity-avatar.js";
 import { CANVAS_WS_PATH, handleA2uiHttpRequest } from "../canvas-host/a2ui.js";
 import type { CanvasHostHandler } from "../canvas-host/server.js";

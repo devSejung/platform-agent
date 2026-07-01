@@ -42,10 +42,18 @@ function isLocalProviderBaseUrl(baseUrl: string): boolean {
     host === "127.0.0.1" ||
     host === "::1" ||
     host.endsWith(".local") ||
-    /^10\./.test(host) ||
-    /^192\.168\./.test(host) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+    host.startsWith("10.") ||
+    host.startsWith("192.168.") ||
+    isPrivate172Host(host)
   );
+}
+
+function isPrivate172Host(host: string): boolean {
+  if (!host.startsWith("172.")) {
+    return false;
+  }
+  const secondOctet = Number(host.split(".")[1] ?? "");
+  return Number.isInteger(secondOctet) && secondOctet >= 16 && secondOctet <= 31;
 }
 
 function isExplicitLocalHostnameBaseUrl(baseUrl: string): boolean {

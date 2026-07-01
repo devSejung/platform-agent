@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import { isTruthyEnvValue, logAcceptedEnvOption } from "./env.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { isTruthyEnvValue, logAcceptedEnvOption } from "./env.js";
 
 const log = createSubsystemLogger("image-payload-debug");
 const DATA_URL_RE = /^data:([^;,]+)(?:;[^,]*)?,(.*)$/i;
@@ -87,7 +87,6 @@ export function summarizeImagePayload(value: unknown): ImagePayloadSummary {
   const dataUrl = DATA_URL_RE.exec(trimmed);
   if (dataUrl) {
     const mimeType = dataUrl[1]?.trim().toLowerCase() || undefined;
-    const payload = dataUrl[2] ?? "";
     const lower = trimmed.toLowerCase();
     return {
       kind: lower.includes(";base64,") ? "data-url-base64" : "data-url-non-base64",

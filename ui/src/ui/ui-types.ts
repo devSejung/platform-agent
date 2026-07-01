@@ -82,7 +82,7 @@ export type CronFormState = {
   payloadModel: string;
   payloadThinking: string;
   payloadLightContext: boolean;
-  deliveryMode: "none" | "announce" | "webhook";
+  deliveryMode: "none" | "origin" | "announce" | "webhook";
   deliveryChannel: string;
   deliveryTo: string;
   deliveryAccountId: string;

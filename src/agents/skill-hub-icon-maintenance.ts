@@ -61,7 +61,8 @@ export async function auditSkillHubIconAssets(params: {
   const referencedAssetIds = rawReferencedAssetIds.filter(isSkillHubIconAssetId).toSorted();
   const invalidReferencedAssetIds = rawReferencedAssetIds
     .filter((assetId) => !isSkillHubIconAssetId(assetId))
-    .toSorted();
+    .map((assetId) => String(assetId))
+    .toSorted((left, right) => left.localeCompare(right));
   const existingAssetIds = new Set<string>();
   const orphanAssets: SkillHubIconOrphan[] = [];
   const issues: SkillHubIconAssetIssue[] = [];

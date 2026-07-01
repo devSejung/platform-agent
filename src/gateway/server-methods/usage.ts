@@ -35,7 +35,6 @@ import type {
   DashboardRange,
   DashboardSortBy,
   DashboardSortDir,
-  DashboardSummaryParams,
   DashboardSummaryResult,
   DashboardTimePoint,
 } from "../../shared/dashboard-types.js";
@@ -934,11 +933,10 @@ export const usageHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const dashboardParams = params as DashboardSummaryParams;
     const canSort = resolveDashboardCanSort(client);
-    const result = cloneDashboardSummary(await loadDashboardSummaryCached(dashboardParams.range));
+    const result = cloneDashboardSummary(await loadDashboardSummaryCached(params.range));
     if (canSort) {
-      sortDashboardAgentUsage(result.agentUsage, dashboardParams.sortBy, dashboardParams.sortDir);
+      sortDashboardAgentUsage(result.agentUsage, params.sortBy, params.sortDir);
     }
     result.canSort = canSort;
     respond(true, result, undefined);

@@ -106,15 +106,14 @@ export function execDockerRaw(
       if (signal) {
         signal.removeEventListener("abort", handleAbort);
       }
-      if (
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        (error as NodeJS.ErrnoException).code === "ENOENT"
-      ) {
+      const spawnErrorCode =
+        error && typeof error === "object" && "code" in error
+          ? (error as NodeJS.ErrnoException).code
+          : undefined;
+      if (spawnErrorCode === "ENOENT" || spawnErrorCode === "EACCES") {
         const friendly = Object.assign(
           new Error(
-            'Sandbox mode requires Docker, but the "docker" command was not found in PATH. Install Docker (and ensure "docker" is available), or set `agents.defaults.sandbox.mode=off` to disable sandboxing.',
+            'Sandbox mode requires Docker, but the "docker" command is not available or executable. Install Docker (and ensure "docker" is available in PATH), or set `agents.defaults.sandbox.mode=off` to disable sandboxing.',
           ),
           { code: "INVALID_CONFIG", cause: error },
         );

@@ -1572,7 +1572,7 @@ async function recalculateInstallerCount(slug: string): Promise<number> {
       if (entry.name !== WORKSPACE_INSTALL_STATE_FILE) {
         continue;
       }
-      const state = await readJsonFile<SkillHubInstallState>(fullPath, { skills: {} });
+      const state: SkillHubInstallState = await readJsonFile(fullPath, { skills: {} });
       if (state.skills[slug]) {
         count += 1;
       }
@@ -1599,7 +1599,7 @@ async function detachHubInstallReferences(slug: string): Promise<void> {
       if (entry.name !== WORKSPACE_INSTALL_STATE_FILE) {
         continue;
       }
-      const state = await readJsonFile<SkillHubInstallState>(fullPath, { skills: {} });
+      const state: SkillHubInstallState = await readJsonFile(fullPath, { skills: {} });
       if (!state.skills[slug]) {
         continue;
       }

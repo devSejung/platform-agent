@@ -346,6 +346,7 @@ export function buildGatewayCronService(params: {
         channel,
         to,
         accountId,
+        sessionKey: job.sessionKey,
       });
       if (!target.ok) {
         throw target.error;

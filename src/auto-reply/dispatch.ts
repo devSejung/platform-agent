@@ -77,7 +77,7 @@ function parseSkillHubCommand(commandText: string): ParsedSkillHubCommand | null
     parts.length === 3 &&
     SKILL_HUB_SLUG_RE.test(parts[2] ?? "")
   ) {
-    return { action, slug: parts[2]!.toLowerCase() };
+    return { action, slug: parts[2].toLowerCase() };
   }
   return null;
 }

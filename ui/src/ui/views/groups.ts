@@ -63,7 +63,12 @@ export type GroupsViewProps = {
   onSelectMemberAccount: (accountId: string) => void;
   onMemberRoleChange: (value: "member" | "leader") => void;
   onSubmitAddMember: () => void;
-  onRemoveMember: (scopeType: "group" | "part", scopeId: string, accountId: string, label: string) => void;
+  onRemoveMember: (
+    scopeType: "group" | "part",
+    scopeId: string,
+    accountId: string,
+    label: string,
+  ) => void;
   onPromoteMember: (scopeType: "group" | "part", scopeId: string, accountId: string) => void;
   onDemoteMember: (scopeType: "group" | "part", scopeId: string, accountId: string) => void;
   onArchiveScope: (scopeId: string, label: string) => void;
@@ -107,14 +112,18 @@ function renderMemberRows(
         (member) => html`
           <div class="list-item">
             <div class="list-main">
-                <div class="list-title">
+              <div class="list-title">
                 ${member.displayName}
-                <span class="chip ${member.groupRole === "leader" ? "groups-role-badge groups-role-badge--leader" : ""}">
+                <span
+                  class="chip ${member.groupRole === "leader"
+                    ? "groups-role-badge groups-role-badge--leader"
+                    : ""}"
+                >
                   ${member.groupRole === "leader" ? "✦ Leader" : "Member"}
                 </span>
               </div>
               <div class="list-sub">
-                ${member.email ? `${member.email}` : ""}
+                ${member.email ? member.email : ""}
                 ${member.department ? `· ${member.department}` : ""}
               </div>
             </div>
@@ -124,7 +133,12 @@ function renderMemberRows(
                     <button
                       class="btn btn--sm"
                       @click=${() =>
-                        props.onRemoveMember(scopeType, scopeId, member.accountId, member.displayName)}
+                        props.onRemoveMember(
+                          scopeType,
+                          scopeId,
+                          member.accountId,
+                          member.displayName,
+                        )}
                     >
                       ${t("groups.actions.removeMember")}
                     </button>
@@ -160,21 +174,30 @@ function renderScopePanel(
   opts: { showCreatePart?: boolean; nested?: boolean; scopeLabel?: string } = {},
 ) {
   return html`
-    <section class="card ${opts.nested ? "groups-part-card" : "groups-scope-card"}" style="display:grid; gap:14px;">
+    <section
+      class="card ${opts.nested ? "groups-part-card" : "groups-scope-card"}"
+      style="display:grid; gap:14px;"
+    >
       <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
         <div>
-          ${opts.scopeLabel ? html`<div class="groups-scope-eyebrow">${opts.scopeLabel}</div>` : nothing}
+          ${opts.scopeLabel
+            ? html`<div class="groups-scope-eyebrow">${opts.scopeLabel}</div>`
+            : nothing}
           <div class="card-title">${entry.name}</div>
           <div class="card-sub">${entry.description ?? t("groups.noDescription")}</div>
           <div class="muted" style="margin-top:8px;">
-            ${entry.partCount > 0 ? `${entry.partCount} parts · ` : ""}${entry.memberCount} members · ✦ ${entry.leaderCount} leaders
+            ${entry.partCount > 0 ? `${entry.partCount} parts · ` : ""}${entry.memberCount} members
+            · ✦ ${entry.leaderCount} leaders
             ${entry.archivedAt ? `· Archived ${formatDate(entry.archivedAt)}` : ""}
           </div>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           ${entry.canEditMetadata
             ? html`
-                <button class="btn btn--sm" @click=${() => props.onOpenEdit(entry.scopeType, entry)}>
+                <button
+                  class="btn btn--sm"
+                  @click=${() => props.onOpenEdit(entry.scopeType, entry)}
+                >
                   ${t("groups.actions.edit")}
                 </button>
               `
@@ -183,8 +206,7 @@ function renderScopePanel(
             ? html`
                 <button
                   class="btn btn--sm primary"
-                  @click=${() =>
-                    props.onOpenAddMember(entry.scopeType, entry.id, entry.name)}
+                  @click=${() => props.onOpenAddMember(entry.scopeType, entry.id, entry.name)}
                 >
                   ${t("groups.actions.addMember")}
                 </button>
@@ -199,7 +221,10 @@ function renderScopePanel(
             : nothing}
           ${entry.canArchive && !entry.archivedAt
             ? html`
-                <button class="btn btn--sm" @click=${() => props.onArchiveScope(entry.id, entry.name)}>
+                <button
+                  class="btn btn--sm"
+                  @click=${() => props.onArchiveScope(entry.id, entry.name)}
+                >
                   ${t("groups.actions.archive")}
                 </button>
               `
@@ -229,7 +254,8 @@ function renderSelectedGroupDetail(props: GroupsViewProps) {
             ${detail.group.description ?? t("groups.noDescription")}
           </div>
           <div class="muted groups-selected-meta">
-            ${detail.group.partCount} parts · ${detail.group.memberCount} members · ✦ ${detail.group.leaderCount} leaders
+            ${detail.group.partCount} parts · ${detail.group.memberCount} members · ✦
+            ${detail.group.leaderCount} leaders
             ${detail.group.archivedAt ? `· Archived ${formatDate(detail.group.archivedAt)}` : ""}
           </div>
         </div>
@@ -245,7 +271,12 @@ function renderSelectedGroupDetail(props: GroupsViewProps) {
             ? html`
                 <button
                   class="btn btn--sm primary"
-                  @click=${() => props.onOpenAddMember(detail.group.scopeType, detail.group.id, detail.group.name)}
+                  @click=${() =>
+                    props.onOpenAddMember(
+                      detail.group.scopeType,
+                      detail.group.id,
+                      detail.group.name,
+                    )}
                 >
                   ${t("groups.actions.addMember")}
                 </button>
@@ -260,7 +291,10 @@ function renderSelectedGroupDetail(props: GroupsViewProps) {
             : nothing}
           ${detail.group.canArchive && !detail.group.archivedAt
             ? html`
-                <button class="btn btn--sm" @click=${() => props.onArchiveScope(detail.group.id, detail.group.name)}>
+                <button
+                  class="btn btn--sm"
+                  @click=${() => props.onArchiveScope(detail.group.id, detail.group.name)}
+                >
                   ${t("groups.actions.archive")}
                 </button>
               `
@@ -272,14 +306,22 @@ function renderSelectedGroupDetail(props: GroupsViewProps) {
         <div class="groups-section-block__header">
           <div class="groups-scope-eyebrow">${t("groups.membersSection")}</div>
         </div>
-        ${renderMemberRows(detail.group.scopeType, detail.group.id, detail.members, detail.group.canManageMembers, props)}
+        ${renderMemberRows(
+          detail.group.scopeType,
+          detail.group.id,
+          detail.members,
+          detail.group.canManageMembers,
+          props,
+        )}
       </section>
 
       <section class="groups-section-block groups-section-block--parts">
         <div class="groups-section-block__header">
           <div>
             <div class="groups-scope-eyebrow">${t("groups.scope.part")}</div>
-            <div class="card-title">${t("groups.partsTitle", { groupName: detail.group.name })}</div>
+            <div class="card-title">
+              ${t("groups.partsTitle", { groupName: detail.group.name })}
+            </div>
           </div>
         </div>
         <div class="groups-parts-grid">
@@ -314,17 +356,33 @@ function renderCreateGroupDialog(props: GroupsViewProps) {
         <div class="md-preview-dialog__body" style="display:grid; gap:12px;">
           <label class="field">
             <span class="field__label">${t("groups.fields.name")}</span>
-            <input class="input" .value=${props.createName} @input=${(e: Event) => props.onCreateNameChange((e.target as HTMLInputElement).value)} />
+            <input
+              class="input"
+              .value=${props.createName}
+              @input=${(e: Event) => props.onCreateNameChange((e.target as HTMLInputElement).value)}
+            />
           </label>
           <label class="field">
             <span class="field__label">${t("groups.fields.description")}</span>
-            <textarea class="input" rows="4" .value=${props.createDescription} @input=${(e: Event) => props.onCreateDescriptionChange((e.target as HTMLTextAreaElement).value)}></textarea>
+            <textarea
+              class="input"
+              rows="4"
+              .value=${props.createDescription}
+              @input=${(e: Event) =>
+                props.onCreateDescriptionChange((e.target as HTMLTextAreaElement).value)}
+            ></textarea>
           </label>
         </div>
         <div class="md-preview-dialog__footer">
           <button class="btn" @click=${props.onCloseCreate}>${t("common.cancel")}</button>
-          <button class="btn primary" ?disabled=${props.createSubmitting || !props.createName.trim()} @click=${props.onSubmitCreate}>
-            ${props.createSubmitting ? t("groups.actions.creating") : t("groups.actions.createGroup")}
+          <button
+            class="btn primary"
+            ?disabled=${props.createSubmitting || !props.createName.trim()}
+            @click=${props.onSubmitCreate}
+          >
+            ${props.createSubmitting
+              ? t("groups.actions.creating")
+              : t("groups.actions.createGroup")}
           </button>
         </div>
       </div>
@@ -344,22 +402,40 @@ function renderCreatePartDialog(props: GroupsViewProps) {
             <div class="md-preview-dialog__title">${t("groups.partCreate.title")}</div>
             <div class="md-preview-dialog__subtitle">${t("groups.partCreate.subtitle")}</div>
           </div>
-          <button class="btn btn--sm" @click=${props.onCloseCreatePart}>${t("common.close")}</button>
+          <button class="btn btn--sm" @click=${props.onCloseCreatePart}>
+            ${t("common.close")}
+          </button>
         </div>
         <div class="md-preview-dialog__body" style="display:grid; gap:12px;">
           <label class="field">
             <span class="field__label">${t("groups.fields.name")}</span>
-            <input class="input" .value=${props.partCreateName} @input=${(e: Event) => props.onPartNameChange((e.target as HTMLInputElement).value)} />
+            <input
+              class="input"
+              .value=${props.partCreateName}
+              @input=${(e: Event) => props.onPartNameChange((e.target as HTMLInputElement).value)}
+            />
           </label>
           <label class="field">
             <span class="field__label">${t("groups.fields.description")}</span>
-            <textarea class="input" rows="4" .value=${props.partCreateDescription} @input=${(e: Event) => props.onPartDescriptionChange((e.target as HTMLTextAreaElement).value)}></textarea>
+            <textarea
+              class="input"
+              rows="4"
+              .value=${props.partCreateDescription}
+              @input=${(e: Event) =>
+                props.onPartDescriptionChange((e.target as HTMLTextAreaElement).value)}
+            ></textarea>
           </label>
         </div>
         <div class="md-preview-dialog__footer">
           <button class="btn" @click=${props.onCloseCreatePart}>${t("common.cancel")}</button>
-          <button class="btn primary" ?disabled=${props.partCreateSubmitting || !props.partCreateName.trim()} @click=${props.onSubmitCreatePart}>
-            ${props.partCreateSubmitting ? t("groups.actions.creating") : t("groups.actions.createPart")}
+          <button
+            class="btn primary"
+            ?disabled=${props.partCreateSubmitting || !props.partCreateName.trim()}
+            @click=${props.onSubmitCreatePart}
+          >
+            ${props.partCreateSubmitting
+              ? t("groups.actions.creating")
+              : t("groups.actions.createPart")}
           </button>
         </div>
       </div>
@@ -377,7 +453,9 @@ function renderEditScopeDialog(props: GroupsViewProps) {
         <div class="md-preview-dialog__header">
           <div>
             <div class="md-preview-dialog__title">
-              ${props.editScopeType === "group" ? t("groups.edit.groupTitle") : t("groups.edit.partTitle")}
+              ${props.editScopeType === "group"
+                ? t("groups.edit.groupTitle")
+                : t("groups.edit.partTitle")}
             </div>
             <div class="md-preview-dialog__subtitle">${props.editTitle ?? ""}</div>
           </div>
@@ -386,16 +464,30 @@ function renderEditScopeDialog(props: GroupsViewProps) {
         <div class="md-preview-dialog__body" style="display:grid; gap:12px;">
           <label class="field">
             <span class="field__label">${t("groups.fields.name")}</span>
-            <input class="input" .value=${props.editName} @input=${(e: Event) => props.onEditNameChange((e.target as HTMLInputElement).value)} />
+            <input
+              class="input"
+              .value=${props.editName}
+              @input=${(e: Event) => props.onEditNameChange((e.target as HTMLInputElement).value)}
+            />
           </label>
           <label class="field">
             <span class="field__label">${t("groups.fields.description")}</span>
-            <textarea class="input" rows="4" .value=${props.editDescription} @input=${(e: Event) => props.onEditDescriptionChange((e.target as HTMLTextAreaElement).value)}></textarea>
+            <textarea
+              class="input"
+              rows="4"
+              .value=${props.editDescription}
+              @input=${(e: Event) =>
+                props.onEditDescriptionChange((e.target as HTMLTextAreaElement).value)}
+            ></textarea>
           </label>
         </div>
         <div class="md-preview-dialog__footer">
           <button class="btn" @click=${props.onCloseEdit}>${t("common.cancel")}</button>
-          <button class="btn primary" ?disabled=${props.editSubmitting || !props.editName.trim()} @click=${props.onSubmitEdit}>
+          <button
+            class="btn primary"
+            ?disabled=${props.editSubmitting || !props.editName.trim()}
+            @click=${props.onSubmitEdit}
+          >
             ${props.editSubmitting ? t("groups.actions.saving") : t("groups.actions.save")}
           </button>
         </div>
@@ -434,7 +526,9 @@ function renderAddMemberDialog(props: GroupsViewProps) {
                       (role) => html`
                         <button
                           type="button"
-                          class="admin-role-option ${props.memberModalRole === role ? "is-selected" : ""}"
+                          class="admin-role-option ${props.memberModalRole === role
+                            ? "is-selected"
+                            : ""}"
                           aria-pressed=${props.memberModalRole === role}
                           @click=${() => props.onMemberRoleChange(role)}
                         >
@@ -453,20 +547,25 @@ function renderAddMemberDialog(props: GroupsViewProps) {
                 </div>
               `
             : nothing}
-          ${props.memberModalError ? html`<div class="notice notice--error">${props.memberModalError}</div>` : nothing}
+          ${props.memberModalError
+            ? html`<div class="notice notice--error">${props.memberModalError}</div>`
+            : nothing}
           <div class="list">
             ${props.memberModalResults.map(
               (entry) => html`
                 <button
                   class="list-item"
                   @click=${() => props.onSelectMemberAccount(entry.accountId)}
-                  style="text-align:left; width:100%; ${props.memberModalSelectedAccountId === entry.accountId
+                  style="text-align:left; width:100%; ${props.memberModalSelectedAccountId ===
+                  entry.accountId
                     ? "outline:2px solid var(--accent);"
                     : ""}"
                 >
                   <div class="list-main">
                     <div class="list-title">${entry.displayName}</div>
-                    <div class="list-sub">${entry.employeeId}${entry.email ? ` · ${entry.email}` : ""}</div>
+                    <div class="list-sub">
+                      ${entry.employeeId}${entry.email ? ` · ${entry.email}` : ""}
+                    </div>
                   </div>
                 </button>
               `,
@@ -495,28 +594,41 @@ function renderAddMemberDialog(props: GroupsViewProps) {
 export function renderGroups(props: GroupsViewProps) {
   return html`
     <section class="card" style="display:grid; gap:16px;">
-      <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap;">
+      <div
+        style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap;"
+      >
         <div>
           <div class="card-title">${t("groups.title")}</div>
           <div class="card-sub">${t("groups.subtitle")}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           <label class="muted" style="display:flex; gap:8px; align-items:center;">
-            <input type="checkbox" .checked=${props.includeArchived} @change=${(e: Event) => props.onToggleArchived((e.target as HTMLInputElement).checked)} />
+            <input
+              type="checkbox"
+              .checked=${props.includeArchived}
+              @change=${(e: Event) =>
+                props.onToggleArchived((e.target as HTMLInputElement).checked)}
+            />
             ${t("groups.showArchived")}
           </label>
           <button class="btn btn--sm" @click=${props.onRefresh}>${t("common.refresh")}</button>
-          <button class="btn btn--sm primary" @click=${props.onOpenCreate}>${t("groups.actions.createGroup")}</button>
+          <button class="btn btn--sm primary" @click=${props.onOpenCreate}>
+            ${t("groups.actions.createGroup")}
+          </button>
         </div>
       </div>
-      ${props.message ? html`<div class="notice notice--${props.message.kind}">${props.message.text}</div>` : nothing}
+      ${props.message
+        ? html`<div class="notice notice--${props.message.kind}">${props.message.text}</div>`
+        : nothing}
       ${props.error ? html`<div class="notice notice--error">${props.error}</div>` : nothing}
       <div class="groups-layout">
         <div class="groups-sidebar">
           ${props.entries.map(
             (entry) => html`
               <button
-                class="list-item groups-list-item ${props.detailGroupId === entry.id ? "groups-list-item--selected" : ""}"
+                class="list-item groups-list-item ${props.detailGroupId === entry.id
+                  ? "groups-list-item--selected"
+                  : ""}"
                 @click=${() => props.onSelectGroup(entry.id)}
                 style="text-align:left; width:100%;"
               >
@@ -524,12 +636,14 @@ export function renderGroups(props: GroupsViewProps) {
                   <div class="list-title">
                     ${entry.name}
                     ${props.detailGroupId === entry.id
-                      ? html`<span class="chip groups-selected-chip">${t("groups.selectedBadge")}</span>`
+                      ? html`<span class="chip groups-selected-chip"
+                          >${t("groups.selectedBadge")}</span
+                        >`
                       : nothing}
                   </div>
                   <div class="list-sub">
-                    ${entry.description ?? t("groups.noDescription")} · ${entry.partCount} parts · ${entry.memberCount}
-                    members · ✦ ${entry.leaderCount} leaders
+                    ${entry.description ?? t("groups.noDescription")} · ${entry.partCount} parts ·
+                    ${entry.memberCount} members · ✦ ${entry.leaderCount} leaders
                   </div>
                 </div>
               </button>
@@ -540,8 +654,12 @@ export function renderGroups(props: GroupsViewProps) {
             : nothing}
         </div>
         <div class="groups-detail-column">
-          ${props.detailLoading ? html`<div class="card">${t("groups.loadingDetail")}</div>` : nothing}
-          ${props.detailError ? html`<div class="notice notice--error">${props.detailError}</div>` : nothing}
+          ${props.detailLoading
+            ? html`<div class="card">${t("groups.loadingDetail")}</div>`
+            : nothing}
+          ${props.detailError
+            ? html`<div class="notice notice--error">${props.detailError}</div>`
+            : nothing}
           ${props.detail
             ? renderSelectedGroupDetail(props)
             : !props.detailLoading
@@ -549,10 +667,8 @@ export function renderGroups(props: GroupsViewProps) {
               : nothing}
         </div>
       </div>
-      ${renderCreateGroupDialog(props)}
-      ${renderCreatePartDialog(props)}
-      ${renderEditScopeDialog(props)}
-      ${renderAddMemberDialog(props)}
+      ${renderCreateGroupDialog(props)} ${renderCreatePartDialog(props)}
+      ${renderEditScopeDialog(props)} ${renderAddMemberDialog(props)}
     </section>
   `;
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getAccountById, resolveAccountDisplayName, type AccountDirectoryEntry } from "./account-store.js";
+import { getAccountById } from "./account-store.js";
 import { getPlatformClawDatabase } from "./db.js";
 
 export type GroupScopeType = "group" | "part";
@@ -226,13 +226,13 @@ function listMembersForScope(
           COALESCE(a.display_name, a.employee_id) COLLATE NOCASE ASC`,
     )
     .all(scopeType, scopeId) as Array<{
-      account_id: string;
-      employee_id: string;
-      email: string | null;
-      display_name: string | null;
-      department: string | null;
-      group_role: GroupScopedRole;
-    }>;
+    account_id: string;
+    employee_id: string;
+    email: string | null;
+    display_name: string | null;
+    department: string | null;
+    group_role: GroupScopedRole;
+  }>;
   return rows.map((row) => ({
     accountId: row.account_id,
     displayName: trimOrNull(row.display_name) ?? row.employee_id,
@@ -254,7 +254,11 @@ function countParts(groupId: string, env: NodeJS.ProcessEnv = process.env): numb
   return typeof row?.count === "bigint" ? Number(row.count) : (row?.count ?? 0);
 }
 
-function countMembers(scopeType: GroupScopeType, scopeId: string, env: NodeJS.ProcessEnv = process.env) {
+function countMembers(
+  scopeType: GroupScopeType,
+  scopeId: string,
+  env: NodeJS.ProcessEnv = process.env,
+) {
   const { db } = getPlatformClawDatabase(env);
   const row = db
     .prepare(
@@ -264,7 +268,9 @@ function countMembers(scopeType: GroupScopeType, scopeId: string, env: NodeJS.Pr
         WHERE scope_type = ?
           AND scope_id = ?`,
     )
-    .get(scopeType, scopeId) as { count?: number | bigint; leader_count?: number | bigint } | undefined;
+    .get(scopeType, scopeId) as
+    | { count?: number | bigint; leader_count?: number | bigint }
+    | undefined;
   return {
     count: typeof row?.count === "bigint" ? Number(row.count) : (row?.count ?? 0),
     leaderCount:
@@ -458,12 +464,12 @@ export function listGroupScopeOptions(params: {
         ORDER BY g.group_level ASC, COALESCE(parent.name, g.name) COLLATE NOCASE ASC, g.name COLLATE NOCASE ASC`,
     )
     .all(params.includeArchived ? 1 : 0) as Array<{
-      id: string;
-      name: string;
-      group_level: number;
-      archived_at: string | null;
-      parent_group_name: string | null;
-    }>;
+    id: string;
+    name: string;
+    group_level: number;
+    archived_at: string | null;
+    parent_group_name: string | null;
+  }>;
   return rows.map((row) => ({
     scopeType: row.group_level === 1 ? "group" : "part",
     scopeId: row.id,
@@ -844,7 +850,9 @@ export function resolveManageableGroupSummary(
     )
     .get(accountId) as { group_count?: number | bigint; part_count?: number | bigint } | undefined;
   return {
-    groupCount: typeof row?.group_count === "bigint" ? Number(row.group_count) : (row?.group_count ?? 0),
-    partCount: typeof row?.part_count === "bigint" ? Number(row.part_count) : (row?.part_count ?? 0),
+    groupCount:
+      typeof row?.group_count === "bigint" ? Number(row.group_count) : (row?.group_count ?? 0),
+    partCount:
+      typeof row?.part_count === "bigint" ? Number(row.part_count) : (row?.part_count ?? 0),
   };
 }

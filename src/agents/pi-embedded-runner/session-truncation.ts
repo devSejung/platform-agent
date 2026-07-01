@@ -189,7 +189,6 @@ export async function truncateSessionAfterCompaction(params: {
       assistantEntry.type === "message" &&
       summarizedBranchIds.has(userEntry.id) &&
       summarizedBranchIds.has(assistantEntry.id) &&
-      !removedIds.has(userEntry.id) &&
       !removedIds.has(assistantEntry.id) &&
       isHeartbeatUserMessage(userEntry.message, params.heartbeatPrompt) &&
       isHeartbeatOkResponse(assistantEntry.message, params.ackMaxChars)
@@ -199,6 +198,16 @@ export async function truncateSessionAfterCompaction(params: {
       i++;
     }
   }
+
+  if (preservedAssistantId && removedIds.has(preservedAssistantId)) {
+    for (const id of preservedPreCompactionIds) {
+      if (summarizedBranchIds.has(id)) {
+        removedIds.add(id);
+      }
+    }
+  }
+  const effectivePreservedAssistantId =
+    preservedAssistantId && !removedIds.has(preservedAssistantId) ? preservedAssistantId : undefined;
 
   // Labels bookmark targetId while parentId just records the leaf when the
   // label was changed, so targetId determines whether the label is still valid.
@@ -246,10 +255,10 @@ export async function truncateSessionAfterCompaction(params: {
     if (
       reparented.type === "compaction" &&
       reparented.id === compactionEntry.id &&
-      preservedAssistantId &&
+      effectivePreservedAssistantId &&
       reparented.firstKeptEntryId !== reparented.id
     ) {
-      keptEntries.push({ ...reparented, firstKeptEntryId: preservedAssistantId });
+      keptEntries.push({ ...reparented, firstKeptEntryId: effectivePreservedAssistantId });
     } else {
       keptEntries.push(reparented);
     }

@@ -373,6 +373,37 @@ describe("truncateSessionAfterCompaction", () => {
     expect(JSON.stringify(ctx.messages)).toContain("old assistant");
   });
 
+  it("does not point compaction at a preserved assistant removed as heartbeat", async () => {
+    const dir = await createTmpDir();
+    const sm = SessionManager.create(dir, dir);
+
+    sm.appendMessage({ role: "user", content: "heartbeat ping", timestamp: 1 });
+    const heartbeatAssistantId = sm.appendMessage(makeAssistant("HEARTBEAT_OK", 2));
+    const firstKeptId = sm.appendMessage({ role: "user", content: "kept user", timestamp: 3 });
+    sm.appendMessage(makeAssistant("new assistant", 4));
+    sm.appendCompaction("Summary of the heartbeat.", firstKeptId, 5000);
+    sm.appendMessage({ role: "user", content: "next", timestamp: 5 });
+
+    const sessionFile = sm.getSessionFile()!;
+    const result = await truncateSessionAfterCompaction({
+      sessionFile,
+      heartbeatPrompt: "heartbeat",
+    });
+
+    expect(result.truncated).toBe(true);
+    const smAfter = SessionManager.open(sessionFile);
+    const entries = smAfter.getEntries();
+    const ids = new Set(entries.map((entry) => entry.id));
+    const compaction = entries.find((entry) => entry.type === "compaction");
+    expect(compaction?.type).toBe("compaction");
+    if (compaction?.type === "compaction") {
+      expect(ids.has(compaction.firstKeptEntryId)).toBe(true);
+      expect(compaction.firstKeptEntryId).not.toBe(heartbeatAssistantId);
+    }
+    expect(ids.has(firstKeptId)).toBe(true);
+    expect(readMessageTextsByRole(entries, "assistant")).not.toContain("HEARTBEAT_OK");
+  });
+
   it("preserves paired tool results for the assistant reply kept before compaction", async () => {
     const dir = await createTmpDir();
     const sm = SessionManager.create(dir, dir);

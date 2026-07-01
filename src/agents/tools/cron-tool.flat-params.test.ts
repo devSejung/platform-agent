@@ -5,6 +5,7 @@ const { callGatewayToolMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../agent-scope.js", () => ({
+  resolveDefaultAgentId: () => "main",
   resolveSessionAgentId: () => "agent-123",
 }));
 

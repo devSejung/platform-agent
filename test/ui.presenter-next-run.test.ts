@@ -3,8 +3,8 @@ import { formatNextRun } from "../ui/src/ui/presenter.ts";
 
 describe("formatNextRun", () => {
   it("returns n/a for nullish values", () => {
-    expect(formatNextRun(null)).toBe("n/a");
-    expect(formatNextRun(undefined)).toBe("n/a");
+    expect(formatNextRun(null)).toBe("해당 없음");
+    expect(formatNextRun(undefined)).toBe("해당 없음");
   });
 
   it("includes weekday and relative time", () => {

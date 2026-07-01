@@ -12,10 +12,17 @@ afterEach(() => {
 describe("embedded acpx plugin config", () => {
   it("resolves workspace stateDir and cwd by default", () => {
     const workspaceDir = "/tmp/openclaw-acpx";
-    const resolved = resolveAcpxPluginConfig({
-      rawConfig: undefined,
-      workspaceDir,
-    });
+    const originalPath = process.env.PATH;
+    process.env.PATH = "";
+    let resolved: ReturnType<typeof resolveAcpxPluginConfig>;
+    try {
+      resolved = resolveAcpxPluginConfig({
+        rawConfig: undefined,
+        workspaceDir,
+      });
+    } finally {
+      process.env.PATH = originalPath;
+    }
 
     expect(resolved.cwd).toBe(workspaceDir);
     expect(resolved.stateDir).toBe(path.join(workspaceDir, "state"));

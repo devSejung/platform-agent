@@ -936,7 +936,13 @@ describe("memory cli", () => {
       });
 
       const writeJson = spyRuntimeJson(defaultRuntime);
-      await runMemoryCli(["rem-harness", "--json"]);
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(new Date("2026-04-05T10:00:00.000Z"));
+        await runMemoryCli(["rem-harness", "--json"]);
+      } finally {
+        vi.useRealTimers();
+      }
 
       const payload = firstWrittenJsonArg<{
         rem?: { candidateTruths?: Array<{ snippet?: string }> };
@@ -1505,15 +1511,21 @@ describe("memory cli", () => {
       });
 
       const log = spyRuntimeLogs(defaultRuntime);
-      await runMemoryCli([
-        "promote",
-        "--min-score",
-        "0",
-        "--min-recall-count",
-        "0",
-        "--min-unique-queries",
-        "0",
-      ]);
+      vi.useFakeTimers();
+      try {
+        vi.setSystemTime(new Date("2026-04-05T10:00:00.000Z"));
+        await runMemoryCli([
+          "promote",
+          "--min-score",
+          "0",
+          "--min-recall-count",
+          "0",
+          "--min-unique-queries",
+          "0",
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
 
       expect(log).toHaveBeenCalledWith(expect.stringContaining("consolidate="));
       expect(log).toHaveBeenCalledWith(expect.stringContaining("concepts="));

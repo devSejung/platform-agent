@@ -9,27 +9,28 @@ import {
 describe("PlatformClaw release notes", () => {
   it("loads the latest release from the versioned manifest", () => {
     const index = readPlatformClawReleaseIndex();
+    const latest = index?.releases[0];
 
     expect(index).toMatchObject({
       name: "PlatformClaw",
-      latest: "2026.6.21",
+      latest: latest?.version,
     });
-    expect(index?.releases[0]).toMatchObject({
-      version: "2026.6.21",
-      date: "2026-06-21",
-      title: "결과물 미리보기 및 Skill Hub 개선",
+    expect(latest).toMatchObject({
+      version: index?.latest,
+      path: `docs/platformclaw/releases/${index?.latest}.md`,
     });
-    expect(readLatestPlatformClawReleaseNotes()).toContain("# PlatformClaw v2026.6.21");
-    expect(readPlatformClawReleaseNotes("2026.6.21")).toContain("## 추가");
+    expect(readLatestPlatformClawReleaseNotes()).toContain(`# PlatformClaw v${index?.latest}`);
+    expect(readPlatformClawReleaseNotes(index?.latest ?? "")).toContain("## 추가");
     expect(readPlatformClawReleaseNotes("2026.6.18")).toContain("## 추가");
     expect(readPlatformClawReleaseNotes("missing")).toBeNull();
   });
 
   it("uses the manifest latest version for product metadata", () => {
+    const index = readPlatformClawReleaseIndex();
     expect(resolvePlatformClawReleaseInfo({} as NodeJS.ProcessEnv)).toMatchObject({
       name: "PlatformClaw",
-      version: "2026.6.21",
-      releaseNotesPath: "docs/platformclaw/releases/2026.6.21.md",
+      version: index?.latest,
+      releaseNotesPath: `docs/platformclaw/releases/${index?.latest}.md`,
     });
   });
 });

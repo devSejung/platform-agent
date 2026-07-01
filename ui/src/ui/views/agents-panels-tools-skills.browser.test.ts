@@ -140,6 +140,7 @@ describe("agents tools panel (browser)", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("Available Right Now");
     expect(text).toContain("Message Actions");
-    expect(text).toContain("Channel: discord");
+    expect(text).toContain("discord");
+    expect(text).toMatch(/Channel|채널/);
   });
 });

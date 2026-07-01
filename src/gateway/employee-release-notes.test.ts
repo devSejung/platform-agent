@@ -11,6 +11,9 @@ import {
   resolveEmployeeReleaseReadStatePath,
 } from "./employee-release-notes.js";
 import { makeMockHttpResponse } from "./test-http-response.js";
+import { readPlatformClawReleaseIndex } from "../platformclaw-release.js";
+
+const latestReleaseVersion = readPlatformClawReleaseIndex()?.latest ?? "";
 
 describe("employee release note read state", () => {
   let tempDir = "";
@@ -33,20 +36,20 @@ describe("employee release note read state", () => {
     await prepareStateDir();
 
     expect(await readEmployeeReleaseNotesStatus("eon")).toEqual({
-      latestVersion: "2026.6.21",
+      latestVersion: latestReleaseVersion,
       readVersion: null,
       shouldAutoOpen: true,
     });
 
-    await markEmployeeReleaseNotesRead("eon", "2026.6.21");
+    await markEmployeeReleaseNotesRead("eon", latestReleaseVersion);
 
     expect(await readEmployeeReleaseNotesStatus("eon")).toEqual({
-      latestVersion: "2026.6.21",
-      readVersion: "2026.6.21",
+      latestVersion: latestReleaseVersion,
+      readVersion: latestReleaseVersion,
       shouldAutoOpen: false,
     });
     expect(await readEmployeeReleaseNotesStatus("minji")).toEqual({
-      latestVersion: "2026.6.21",
+      latestVersion: latestReleaseVersion,
       readVersion: null,
       shouldAutoOpen: true,
     });
@@ -56,7 +59,7 @@ describe("employee release note read state", () => {
     const stored = JSON.parse(await fs.readFile(statePath, "utf8")) as {
       employees: Record<string, { readVersions: Record<string, string> }>;
     };
-    expect(stored.employees.eon.readVersions["2026.6.21"]).toBeTruthy();
+    expect(stored.employees.eon.readVersions[latestReleaseVersion]).toBeTruthy();
   });
 
   it("treats an empty mounted state file as unread initial state", async () => {
@@ -66,14 +69,14 @@ describe("employee release note read state", () => {
     await fs.writeFile(statePath, "", "utf8");
 
     expect(await readEmployeeReleaseNotesStatus("eon")).toEqual({
-      latestVersion: "2026.6.21",
+      latestVersion: latestReleaseVersion,
       readVersion: null,
       shouldAutoOpen: true,
     });
 
-    await markEmployeeReleaseNotesRead("eon", "2026.6.21");
+    await markEmployeeReleaseNotesRead("eon", latestReleaseVersion);
     expect(await readEmployeeReleaseNotesStatus("eon")).toMatchObject({
-      readVersion: "2026.6.21",
+      readVersion: latestReleaseVersion,
       shouldAutoOpen: false,
     });
   });
@@ -94,15 +97,15 @@ describe("employee release note read state", () => {
     await prepareStateDir();
 
     await Promise.all([
-      markEmployeeReleaseNotesRead("eon", "2026.6.21"),
-      markEmployeeReleaseNotesRead("minji", "2026.6.21"),
+      markEmployeeReleaseNotesRead("eon", latestReleaseVersion),
+      markEmployeeReleaseNotesRead("minji", latestReleaseVersion),
     ]);
 
     const stored = JSON.parse(await fs.readFile(resolveEmployeeReleaseReadStatePath(), "utf8")) as {
       employees: Record<string, { readVersions: Record<string, string> }>;
     };
-    expect(stored.employees.eon.readVersions["2026.6.21"]).toBeTruthy();
-    expect(stored.employees.minji.readVersions["2026.6.21"]).toBeTruthy();
+    expect(stored.employees.eon.readVersions[latestReleaseVersion]).toBeTruthy();
+    expect(stored.employees.minji.readVersions[latestReleaseVersion]).toBeTruthy();
   });
 
   it("preserves previously read versions when confirming a newer release", async () => {
@@ -124,13 +127,13 @@ describe("employee release note read state", () => {
       "utf8",
     );
 
-    await markEmployeeReleaseNotesRead("eon", "2026.6.21");
+    await markEmployeeReleaseNotesRead("eon", latestReleaseVersion);
 
     const stored = JSON.parse(await fs.readFile(statePath, "utf8")) as {
       employees: Record<string, { readVersions: Record<string, string> }>;
     };
     expect(stored.employees.eon.readVersions["2026.5.20"]).toBe("2026-05-20T00:00:00.000Z");
-    expect(stored.employees.eon.readVersions["2026.6.21"]).toBeTruthy();
+    expect(stored.employees.eon.readVersions[latestReleaseVersion]).toBeTruthy();
   });
 
   it("auto-opens a new latest release after the employee read the previous release", async () => {
@@ -153,7 +156,7 @@ describe("employee release note read state", () => {
     );
 
     expect(await readEmployeeReleaseNotesStatus("eon")).toEqual({
-      latestVersion: "2026.6.21",
+      latestVersion: latestReleaseVersion,
       readVersion: null,
       shouldAutoOpen: true,
     });
@@ -187,12 +190,12 @@ describe("employee release note read state", () => {
         headers: { cookie: `openclaw_employee_session=${encodeURIComponent(token)}` },
       } as IncomingMessage,
       res: authorized.res,
-      readJsonBody: async () => ({ ok: true, value: { version: "2026.6.21" } }),
+      readJsonBody: async () => ({ ok: true, value: { version: latestReleaseVersion } }),
     });
     expect(authorized.res.statusCode).toBe(200);
     expect(JSON.parse(String(authorized.end.mock.calls[0]?.[0] ?? ""))).toEqual({
-      latestVersion: "2026.6.21",
-      readVersion: "2026.6.21",
+      latestVersion: latestReleaseVersion,
+      readVersion: latestReleaseVersion,
       shouldAutoOpen: false,
     });
   });

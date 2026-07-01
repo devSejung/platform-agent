@@ -414,9 +414,9 @@ describe("renderSkillHub", () => {
       );
       button?.click();
     };
-    clickAction(cards[0]!, "Install");
-    clickAction(cards[1]!, "Update");
-    clickAction(cards[1]!, "Delete");
+    clickAction(cards[0], "Install");
+    clickAction(cards[1], "Update");
+    clickAction(cards[1], "Delete");
 
     expect(onInstall).toHaveBeenCalledWith("new-skill");
     expect(onUpdate).toHaveBeenCalledWith("installed-skill");

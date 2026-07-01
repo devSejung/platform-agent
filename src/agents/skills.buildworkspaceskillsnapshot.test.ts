@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { withEnv } from "../test-utils/env.js";
 import { createFixtureSuite } from "../test-utils/fixture-suite.js";
 import { writeSkill } from "./skills.e2e-test-helpers.js";
@@ -40,7 +41,12 @@ afterAll(async () => {
 });
 
 function withWorkspaceHome<T>(workspaceDir: string, cb: () => T): T {
-  return withEnv({ HOME: workspaceDir, PATH: "" }, cb);
+  const homeSpy = vi.spyOn(os, "homedir").mockReturnValue(workspaceDir);
+  try {
+    return withEnv({ HOME: workspaceDir, PATH: "" }, cb);
+  } finally {
+    homeSpy.mockRestore();
+  }
 }
 
 function buildSnapshot(

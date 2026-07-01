@@ -48,7 +48,7 @@ describe("materializeAssistantArtifacts", () => {
       workspacePath: result.attachments[0]?.workspacePath,
     });
     await expect(
-      fs.readFile(path.join(workspaceDir, result.attachments[0]!.workspacePath), "utf-8"),
+      fs.readFile(path.join(workspaceDir, result.attachments[0].workspacePath), "utf-8"),
     ).resolves.toBe("not-real-png");
   });
 
@@ -139,7 +139,7 @@ describe("materializeAssistantArtifacts", () => {
       mimeType: "image/png",
     });
     await expect(
-      fs.readFile(path.join(workspaceDir, result.attachments[0]!.workspacePath), "utf-8"),
+      fs.readFile(path.join(workspaceDir, result.attachments[0].workspacePath), "utf-8"),
     ).resolves.toBe("generated");
   });
 
@@ -168,7 +168,7 @@ describe("materializeAssistantArtifacts", () => {
       /^outbox\/generated-artifacts\/2026-06-16\/reference-[a-f0-9]{8}\.md$/,
     );
     await expect(
-      fs.readFile(path.join(workspaceDir, result.attachments[0]!.workspacePath), "utf-8"),
+      fs.readFile(path.join(workspaceDir, result.attachments[0].workspacePath), "utf-8"),
     ).resolves.toBe("# reference");
   });
 
@@ -193,7 +193,7 @@ describe("materializeAssistantArtifacts", () => {
         mimeType: "image/png",
       });
       await expect(
-        fs.readFile(path.join(workspaceDir, result.attachments[0]!.workspacePath), "utf-8"),
+        fs.readFile(path.join(workspaceDir, result.attachments[0].workspacePath), "utf-8"),
       ).resolves.toBe("tmp-generated");
     } finally {
       await fs.rm(sourcePath, { force: true });

@@ -84,7 +84,7 @@ describe("dashboardCommand bind selection", () => {
       port: 18789,
       bind: "loopback",
       customBindHost: undefined,
-      basePath: undefined,
+      basePath: "/controlui",
     });
   });
 
@@ -97,7 +97,7 @@ describe("dashboardCommand bind selection", () => {
       port: 18789,
       bind: "custom",
       customBindHost: "10.0.0.5",
-      basePath: undefined,
+      basePath: "/controlui",
     });
   });
 
@@ -110,7 +110,7 @@ describe("dashboardCommand bind selection", () => {
       port: 18789,
       bind: "tailnet",
       customBindHost: undefined,
-      basePath: undefined,
+      basePath: "/controlui",
     });
   });
 });

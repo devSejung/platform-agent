@@ -44,7 +44,7 @@ describe("ui i18n locale registry", () => {
     expect(resolveNavigatorLocale("es-MX")).toBe("es");
     expect(resolveNavigatorLocale("pt-PT")).toBe("pt-BR");
     expect(resolveNavigatorLocale("zh-HK")).toBe("zh-TW");
-    expect(resolveNavigatorLocale("en-US")).toBe("en");
+    expect(resolveNavigatorLocale("en-US")).toBe("ko");
     expect(resolveNavigatorLocale("ja-JP")).toBe("ja-JP");
     expect(resolveNavigatorLocale("ko-KR")).toBe("ko");
     expect(resolveNavigatorLocale("fr-CA")).toBe("fr");

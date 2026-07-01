@@ -152,11 +152,11 @@ describe("compaction hook wiring", () => {
     expect(hookMocks.emitAgentEvent).toHaveBeenCalledWith({
       runId: "r1",
       stream: "compaction",
-      data: { phase: "start" },
+      data: { phase: "start", trigger: "runtime" },
     });
     expect(ctx.params.onAgentEvent).toHaveBeenCalledWith({
       stream: "compaction",
-      data: { phase: "start" },
+      data: { phase: "start", trigger: "runtime" },
     });
   });
 
@@ -188,7 +188,13 @@ describe("compaction hook wiring", () => {
     expect(hookMocks.emitAgentEvent).toHaveBeenCalledWith({
       runId: "r2",
       stream: "compaction",
-      data: { phase: "end", willRetry: false, completed: true },
+      data: {
+        phase: "end",
+        willRetry: false,
+        completed: true,
+        trigger: "runtime",
+        outcome: "success",
+      },
     });
   });
 
@@ -212,7 +218,13 @@ describe("compaction hook wiring", () => {
     expect(hookMocks.emitAgentEvent).toHaveBeenCalledWith({
       runId: "r3",
       stream: "compaction",
-      data: { phase: "end", willRetry: true, completed: true },
+      data: {
+        phase: "end",
+        willRetry: true,
+        completed: true,
+        trigger: "runtime",
+        outcome: "success",
+      },
     });
   });
 

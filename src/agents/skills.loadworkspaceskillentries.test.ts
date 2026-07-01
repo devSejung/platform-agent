@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { writeSkill } from "./skills.e2e-test-helpers.js";
 import { loadWorkspaceSkillEntries } from "./skills.js";
 import { readSkillFrontmatterSafe } from "./skills/local-loader.js";
@@ -59,10 +59,16 @@ describe("loadWorkspaceSkillEntries", () => {
     const managedDir = path.join(workspaceDir, ".managed");
     await fs.mkdir(managedDir, { recursive: true });
 
-    const entries = loadWorkspaceSkillEntries(workspaceDir, {
-      managedSkillsDir: managedDir,
-      bundledSkillsDir: path.join(workspaceDir, ".bundled"),
-    });
+    const homeSpy = vi.spyOn(os, "homedir").mockReturnValue(workspaceDir);
+    let entries: ReturnType<typeof loadWorkspaceSkillEntries>;
+    try {
+      entries = loadWorkspaceSkillEntries(workspaceDir, {
+        managedSkillsDir: managedDir,
+        bundledSkillsDir: path.join(workspaceDir, ".bundled"),
+      });
+    } finally {
+      homeSpy.mockRestore();
+    }
 
     expect(entries).toEqual([]);
   });

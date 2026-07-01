@@ -78,7 +78,10 @@ describe("accounts/groups gateway handlers", () => {
     } as never);
     expect(respond).toHaveBeenCalledWith(
       true,
-      expect.objectContaining({ ok: true, message: expect.stringContaining("Created group Platform") }),
+      expect.objectContaining({
+        ok: true,
+        message: expect.stringContaining("Created group Platform"),
+      }),
       undefined,
     );
 
@@ -88,9 +91,11 @@ describe("accounts/groups gateway handlers", () => {
       respond,
       client: adminClient,
     } as never);
-    const listPayload = respond.mock.calls[0]?.[1] as { entries: Array<{ id: string; name: string }> };
+    const listPayload = respond.mock.calls[0]?.[1] as {
+      entries: Array<{ id: string; name: string }>;
+    };
     expect(listPayload.entries).toHaveLength(1);
-    const groupId = listPayload.entries[0]!.id;
+    const groupId = listPayload.entries[0].id;
 
     respond = createRespond();
     await accountGroupHandlers["groups.part.create"]({
@@ -100,7 +105,10 @@ describe("accounts/groups gateway handlers", () => {
     } as never);
     expect(respond).toHaveBeenCalledWith(
       true,
-      expect.objectContaining({ ok: true, message: expect.stringContaining("Created part Agents") }),
+      expect.objectContaining({
+        ok: true,
+        message: expect.stringContaining("Created part Agents"),
+      }),
       undefined,
     );
 
@@ -180,7 +188,9 @@ describe("accounts/groups gateway handlers", () => {
     expect(detailPayload.detail.group.name).toBe("Platform Core");
     expect(detailPayload.detail.members.map((entry) => entry.accountId)).toEqual(["leader"]);
     expect(detailPayload.detail.parts[0]?.name).toBe("Automation");
-    expect(detailPayload.detail.parts[0]?.members.map((entry) => entry.accountId)).toEqual(["member"]);
+    expect(detailPayload.detail.parts[0]?.members.map((entry) => entry.accountId)).toEqual([
+      "member",
+    ]);
 
     respond = createRespond();
     await accountGroupHandlers["groups.members.remove"]({
@@ -202,7 +212,10 @@ describe("accounts/groups gateway handlers", () => {
     } as never);
     expect(respond).toHaveBeenCalledWith(
       true,
-      expect.objectContaining({ ok: true, message: expect.stringContaining("Archived Automation") }),
+      expect.objectContaining({
+        ok: true,
+        message: expect.stringContaining("Archived Automation"),
+      }),
       undefined,
     );
 

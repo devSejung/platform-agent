@@ -250,6 +250,7 @@ vi.mock("../../pi-project-settings.js", () => ({
 
 vi.mock("../../pi-settings.js", () => ({
   applyPiAutoCompactionGuard: () => {},
+  resolveEffectiveCompactionMode: () => "default",
 }));
 
 vi.mock("../extensions.js", () => ({

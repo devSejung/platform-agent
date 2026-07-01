@@ -27,6 +27,7 @@ const LIGHT_DREAMING_TEST_CONFIG: OpenClawConfig = {
           dreaming: {
             enabled: true,
             timezone: "UTC",
+            storage: { mode: "inline" },
             phases: {
               light: {
                 enabled: true,
@@ -111,6 +112,7 @@ function setDreamingTestTime(offsetMinutes = 0) {
 async function withDreamingTestClock(run: () => Promise<void>) {
   vi.useFakeTimers();
   try {
+    setDreamingTestTime();
     await run();
   } finally {
     vi.useRealTimers();
@@ -300,14 +302,16 @@ describe("memory-core dreaming phases", () => {
 
     const readSpy = vi.spyOn(fs, "readFile");
     try {
-      await beforeAgentReply(
-        { cleanedBody: "__openclaw_memory_core_light_sleep__" },
-        { trigger: "heartbeat", workspaceDir },
-      );
-      await beforeAgentReply(
-        { cleanedBody: "__openclaw_memory_core_light_sleep__" },
-        { trigger: "heartbeat", workspaceDir },
-      );
+      await withDreamingTestClock(async () => {
+        await beforeAgentReply(
+          { cleanedBody: "__openclaw_memory_core_light_sleep__" },
+          { trigger: "heartbeat", workspaceDir },
+        );
+        await beforeAgentReply(
+          { cleanedBody: "__openclaw_memory_core_light_sleep__" },
+          { trigger: "heartbeat", workspaceDir },
+        );
+      });
     } finally {
       readSpy.mockRestore();
     }
@@ -451,14 +455,16 @@ describe("memory-core dreaming phases", () => {
     const readSpy = vi.spyOn(fs, "readFile");
     let transcriptReadCount = 0;
     try {
-      await beforeAgentReply(
-        { cleanedBody: "__openclaw_memory_core_light_sleep__" },
-        { trigger: "heartbeat", workspaceDir },
-      );
-      await beforeAgentReply(
-        { cleanedBody: "__openclaw_memory_core_light_sleep__" },
-        { trigger: "heartbeat", workspaceDir },
-      );
+      await withDreamingTestClock(async () => {
+        await beforeAgentReply(
+          { cleanedBody: "__openclaw_memory_core_light_sleep__" },
+          { trigger: "heartbeat", workspaceDir },
+        );
+        await beforeAgentReply(
+          { cleanedBody: "__openclaw_memory_core_light_sleep__" },
+          { trigger: "heartbeat", workspaceDir },
+        );
+      });
     } finally {
       transcriptReadCount = readSpy.mock.calls.filter(
         ([target]) => String(target) === transcriptPath,
@@ -623,47 +629,49 @@ describe("memory-core dreaming phases", () => {
     );
 
     try {
-      await beforeAgentReply(
-        { cleanedBody: "__openclaw_memory_core_light_sleep__" },
-        { trigger: "heartbeat", workspaceDir },
-      );
+      await withDreamingTestClock(async () => {
+        await beforeAgentReply(
+          { cleanedBody: "__openclaw_memory_core_light_sleep__" },
+          { trigger: "heartbeat", workspaceDir },
+        );
 
-      const resetPath = path.join(
-        sessionsDir,
-        "dreaming-main.jsonl.reset.2026-04-06T01-00-00.000Z",
-      );
-      await fs.writeFile(resetPath, await fs.readFile(transcriptPath, "utf-8"), "utf-8");
-      const newMessage = "Keep retention at 365 days.";
-      await fs.writeFile(
-        transcriptPath,
-        [
-          JSON.stringify({
-            type: "message",
-            message: {
-              role: "user",
-              timestamp: "2026-04-05T18:01:00.000Z",
-              content: [{ type: "text", text: oldMessage }],
-            },
-          }),
-          JSON.stringify({
-            type: "message",
-            message: {
-              role: "assistant",
-              timestamp: "2026-04-06T01:02:00.000Z",
-              content: [{ type: "text", text: newMessage }],
-            },
-          }),
-        ].join("\n") + "\n",
-        "utf-8",
-      );
-      const dayTwo = new Date("2026-04-06T01:05:00.000Z");
-      await fs.utimes(transcriptPath, dayTwo, dayTwo);
-      await fs.utimes(resetPath, dayTwo, dayTwo);
+        const resetPath = path.join(
+          sessionsDir,
+          "dreaming-main.jsonl.reset.2026-04-06T01-00-00.000Z",
+        );
+        await fs.writeFile(resetPath, await fs.readFile(transcriptPath, "utf-8"), "utf-8");
+        const newMessage = "Keep retention at 365 days.";
+        await fs.writeFile(
+          transcriptPath,
+          [
+            JSON.stringify({
+              type: "message",
+              message: {
+                role: "user",
+                timestamp: "2026-04-05T18:01:00.000Z",
+                content: [{ type: "text", text: oldMessage }],
+              },
+            }),
+            JSON.stringify({
+              type: "message",
+              message: {
+                role: "assistant",
+                timestamp: "2026-04-06T01:02:00.000Z",
+                content: [{ type: "text", text: newMessage }],
+              },
+            }),
+          ].join("\n") + "\n",
+          "utf-8",
+        );
+        const dayTwo = new Date("2026-04-06T01:05:00.000Z");
+        await fs.utimes(transcriptPath, dayTwo, dayTwo);
+        await fs.utimes(resetPath, dayTwo, dayTwo);
 
-      await beforeAgentReply(
-        { cleanedBody: "__openclaw_memory_core_light_sleep__" },
-        { trigger: "heartbeat", workspaceDir },
-      );
+        await beforeAgentReply(
+          { cleanedBody: "__openclaw_memory_core_light_sleep__" },
+          { trigger: "heartbeat", workspaceDir },
+        );
+      });
     } finally {
       vi.unstubAllEnvs();
     }
@@ -829,18 +837,20 @@ describe("memory-core dreaming phases", () => {
     );
 
     try {
-      await beforeAgentReply(
-        { cleanedBody: "__openclaw_memory_core_light_sleep__" },
-        { trigger: "heartbeat", workspaceDir },
-      );
-      await beforeAgentReply(
-        { cleanedBody: "__openclaw_memory_core_light_sleep__" },
-        { trigger: "heartbeat", workspaceDir },
-      );
-      await beforeAgentReply(
-        { cleanedBody: "__openclaw_memory_core_light_sleep__" },
-        { trigger: "heartbeat", workspaceDir },
-      );
+      await withDreamingTestClock(async () => {
+        await beforeAgentReply(
+          { cleanedBody: "__openclaw_memory_core_light_sleep__" },
+          { trigger: "heartbeat", workspaceDir },
+        );
+        await beforeAgentReply(
+          { cleanedBody: "__openclaw_memory_core_light_sleep__" },
+          { trigger: "heartbeat", workspaceDir },
+        );
+        await beforeAgentReply(
+          { cleanedBody: "__openclaw_memory_core_light_sleep__" },
+          { trigger: "heartbeat", workspaceDir },
+        );
+      });
     } finally {
       vi.unstubAllEnvs();
     }
@@ -917,32 +927,34 @@ describe("memory-core dreaming phases", () => {
     );
 
     try {
-      await beforeAgentReply(
-        { cleanedBody: "__openclaw_memory_core_light_sleep__" },
-        { trigger: "heartbeat", workspaceDir },
-      );
+      await withDreamingTestClock(async () => {
+        await beforeAgentReply(
+          { cleanedBody: "__openclaw_memory_core_light_sleep__" },
+          { trigger: "heartbeat", workspaceDir },
+        );
 
-      await fs.writeFile(
-        transcriptPath,
-        [
-          JSON.stringify({
-            type: "message",
-            message: {
-              role: "assistant",
-              timestamp: "2026-04-06T01:02:00.000Z",
-              content: [{ type: "text", text: "Retention policy stays at 365 days." }],
-            },
-          }),
-        ].join("\n") + "\n",
-        "utf-8",
-      );
-      const dayTwo = new Date("2026-04-06T01:05:00.000Z");
-      await fs.utimes(transcriptPath, dayTwo, dayTwo);
+        await fs.writeFile(
+          transcriptPath,
+          [
+            JSON.stringify({
+              type: "message",
+              message: {
+                role: "assistant",
+                timestamp: "2026-04-06T01:02:00.000Z",
+                content: [{ type: "text", text: "Retention policy stays at 365 days." }],
+              },
+            }),
+          ].join("\n") + "\n",
+          "utf-8",
+        );
+        const dayTwo = new Date("2026-04-06T01:05:00.000Z");
+        await fs.utimes(transcriptPath, dayTwo, dayTwo);
 
-      await beforeAgentReply(
-        { cleanedBody: "__openclaw_memory_core_light_sleep__" },
-        { trigger: "heartbeat", workspaceDir },
-      );
+        await beforeAgentReply(
+          { cleanedBody: "__openclaw_memory_core_light_sleep__" },
+          { trigger: "heartbeat", workspaceDir },
+        );
+      });
     } finally {
       vi.unstubAllEnvs();
     }
@@ -1019,10 +1031,12 @@ describe("memory-core dreaming phases", () => {
     );
 
     try {
-      await beforeAgentReply(
-        { cleanedBody: "__openclaw_memory_core_light_sleep__" },
-        { trigger: "heartbeat", workspaceDir },
-      );
+      await withDreamingTestClock(async () => {
+        await beforeAgentReply(
+          { cleanedBody: "__openclaw_memory_core_light_sleep__" },
+          { trigger: "heartbeat", workspaceDir },
+        );
+      });
     } finally {
       vi.unstubAllEnvs();
     }
@@ -1312,11 +1326,11 @@ describe("memory-core dreaming phases", () => {
 
     await withDreamingTestClock(async () => {
       await triggerLightDreaming(beforeAgentReply, workspaceDir, 5);
+      await beforeAgentReply(
+        { cleanedBody: "__openclaw_memory_core_rem_sleep__" },
+        { trigger: "heartbeat", workspaceDir },
+      );
     });
-    await beforeAgentReply(
-      { cleanedBody: "__openclaw_memory_core_rem_sleep__" },
-      { trigger: "heartbeat", workspaceDir },
-    );
 
     const reinforced = await rankShortTermPromotionCandidates({
       workspaceDir,

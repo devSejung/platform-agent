@@ -87,7 +87,7 @@ describe("dashboardCommand", () => {
       port: 18789,
       bind: "loopback",
       customBindHost: undefined,
-      basePath: undefined,
+      basePath: "/controlui",
     });
     expect(copyToClipboardMock).toHaveBeenCalledWith("http://127.0.0.1:18789/#token=abc123");
     expect(openUrlMock).toHaveBeenCalledWith("http://127.0.0.1:18789/#token=abc123");

@@ -24,7 +24,15 @@ const fetchWithSsrFGuardMock = vi.hoisted(() =>
   })),
 );
 
-const sendFailureNotificationAnnounceMock = vi.hoisted(() => vi.fn(async () => undefined));
+const resolveDeliveryTargetMock = vi.hoisted(() =>
+  vi.fn(async () => ({
+    ok: true,
+    channel: "telegram",
+    to: "123",
+    mode: "implicit",
+  })),
+);
+const deliverOutboundPayloadsMock = vi.hoisted(() => vi.fn(async () => undefined));
 
 vi.mock("../infra/net/fetch-guard.js", () => ({
   fetchWithSsrFGuard: (...args: unknown[]) =>
@@ -37,16 +45,19 @@ vi.mock("../infra/net/fetch-guard.js", () => ({
     )(...args),
 }));
 
-vi.mock("../cron/delivery.js", async () => {
-  const actual = await vi.importActual<typeof import("../cron/delivery.js")>("../cron/delivery.js");
-  return {
-    ...actual,
-    sendFailureNotificationAnnounce: (...args: unknown[]) =>
-      (
-        sendFailureNotificationAnnounceMock as unknown as (...innerArgs: unknown[]) => Promise<void>
-      )(...args),
-  };
-});
+vi.mock("../cron/isolated-agent/delivery-target.js", () => ({
+  resolveDeliveryTarget: (...args: unknown[]) =>
+    (
+      resolveDeliveryTargetMock as unknown as (...innerArgs: unknown[]) => Promise<unknown>
+    )(...args),
+}));
+
+vi.mock("../infra/outbound/deliver.js", () => ({
+  deliverOutboundPayloads: (...args: unknown[]) =>
+    (
+      deliverOutboundPayloadsMock as unknown as (...innerArgs: unknown[]) => Promise<void>
+    )(...args),
+}));
 
 installGatewayTestHooks({ scope: "suite" });
 const CRON_WAIT_TIMEOUT_MS = 3_000;
@@ -172,6 +183,7 @@ async function addWebhookCronJob(params: {
   ws: WebSocket;
   name: string;
   sessionTarget?: "main" | "isolated";
+  sessionKey?: string;
   payloadText?: string;
   delivery: Record<string, unknown>;
 }) {
@@ -180,6 +192,7 @@ async function addWebhookCronJob(params: {
     enabled: true,
     schedule: { kind: "every", everyMs: 60_000 },
     sessionTarget: params.sessionTarget ?? "main",
+    ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
     wakeMode: "next-heartbeat",
     payload: {
       kind: params.sessionTarget === "isolated" ? "agentTurn" : "systemEvent",
@@ -245,7 +258,8 @@ describe("gateway server cron", () => {
   beforeEach(() => {
     // Keep polling helpers deterministic even if other tests left fake timers enabled.
     vi.useRealTimers();
-    sendFailureNotificationAnnounceMock.mockClear();
+    resolveDeliveryTargetMock.mockClear();
+    deliverOutboundPayloadsMock.mockClear();
   });
 
   test("handles cron CRUD, normalization, and patch semantics", { timeout: 45_000 }, async () => {
@@ -535,6 +549,7 @@ describe("gateway server cron", () => {
       const addRes = await rpcReq(ws, "cron.add", {
         name: "log test",
         enabled: true,
+        deleteAfterRun: false,
         schedule: { kind: "at", at: new Date(atMs).toISOString() },
         sessionTarget: "main",
         wakeMode: "next-heartbeat",
@@ -594,6 +609,7 @@ describe("gateway server cron", () => {
       const autoRes = await rpcReq(ws, "cron.add", {
         name: "auto run test",
         enabled: true,
+        deleteAfterRun: false,
         schedule: { kind: "at", at: new Date(Date.now() + 200).toISOString() },
         sessionTarget: "main",
         wakeMode: "next-heartbeat",
@@ -649,8 +665,11 @@ describe("gateway server cron", () => {
         id: "bad-custom-session-job",
         mode: "force",
       });
-      expect(runRes.ok).toBe(true);
-      expect(runRes.payload).toEqual({ ok: true, ran: false, reason: "invalid-spec" });
+      expect(runRes.ok).toBe(false);
+      expect(runRes.error).toMatchObject({
+        code: "INVALID_REQUEST",
+        message: "cron job not found",
+      });
       expect(cronIsolatedRun).not.toHaveBeenCalled();
     } finally {
       await cleanupCronTestRun({ ws, server, prevSkipCron });
@@ -1005,6 +1024,7 @@ describe("gateway server cron", () => {
         ws,
         name: "primary delivery fallback",
         sessionTarget: "isolated",
+        sessionKey: "agent:main:telegram:direct:123:thread:99",
         delivery: {
           mode: "announce",
           channel: "last",
@@ -1015,6 +1035,10 @@ describe("gateway server cron", () => {
         id: jobId,
         patch: {
           sessionKey: "agent:main:telegram:direct:123:thread:99",
+          failureAlert: {
+            after: 1,
+            channel: "last",
+          },
         },
       });
       expect(updateRes.ok).toBe(true);
@@ -1026,20 +1050,17 @@ describe("gateway server cron", () => {
       await runCronJobForce(ws, jobId);
       await finished;
 
-      expect(sendFailureNotificationAnnounceMock).toHaveBeenCalledTimes(1);
-      expect(sendFailureNotificationAnnounceMock).toHaveBeenCalledWith(
-        expect.anything(),
+      expect(resolveDeliveryTargetMock).toHaveBeenCalledWith(
         expect.anything(),
         expect.any(String),
-        jobId,
         {
           channel: "last",
           to: undefined,
           accountId: undefined,
           sessionKey: "agent:main:telegram:direct:123:thread:99",
         },
-        '⚠️ Cron job "primary delivery fallback" failed: unknown error',
       );
+      expect(deliverOutboundPayloadsMock).toHaveBeenCalledTimes(1);
     } finally {
       await cleanupCronTestRun({ ws, server, prevSkipCron });
     }

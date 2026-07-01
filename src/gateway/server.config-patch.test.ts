@@ -51,6 +51,11 @@ async function resetTempDir(name: string): Promise<string> {
   return dir;
 }
 
+async function writeJsonFile(filePath: string, value: unknown) {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
+}
+
 async function getConfigHash() {
   const current = await rpcReq<{
     hash?: string;
@@ -286,6 +291,48 @@ describe("gateway config methods", () => {
     // Config hash should not change (no file write)
     const after = await rpcReq<{ hash?: string }>(requireWs(), "config.get", {});
     expect(after.payload?.hash).toBe(current.payload?.hash);
+  });
+
+  it("accepts config.patch when provider baseUrl and models were only runtime-defaulted", async () => {
+    const { createConfigIO, resetConfigRuntimeState } = await import("../config/config.js");
+    const configPath = createConfigIO().configPath;
+    try {
+      await writeJsonFile(configPath, {
+        models: {
+          providers: {
+            "openai-codex": {
+              agentRuntime: { id: "openclaw" },
+            },
+          },
+        },
+      });
+      resetConfigRuntimeState();
+
+      const current = await rpcReq<{
+        hash?: string;
+      }>(requireWs(), "config.get", {});
+      expect(current.ok).toBe(true);
+      expect(typeof current.payload?.hash).toBe("string");
+
+      const res = await rpcReq<{ ok?: boolean; error?: { message?: string } }>(
+        requireWs(),
+        "config.patch",
+        {
+          raw: JSON.stringify({ gateway: { port: 19003 } }),
+          baseHash: current.payload?.hash,
+        },
+      );
+
+      expect(res.error).toBeUndefined();
+      expect(res.ok).toBe(true);
+      const persisted = await fs.readFile(configPath, "utf-8");
+      expect(persisted).toContain('"port": 19003');
+      expect(persisted).not.toContain('"baseUrl"');
+      expect(persisted).not.toContain('"models": []');
+    } finally {
+      await fs.rm(configPath, { force: true });
+      resetConfigRuntimeState();
+    }
   });
 
   it("rejects config.patch when raw is null", async () => {

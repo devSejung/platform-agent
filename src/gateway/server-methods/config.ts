@@ -6,6 +6,7 @@ import {
   readConfigFileSnapshot,
   readConfigFileSnapshotForWrite,
   resolveConfigSnapshotHash,
+  validateConfigObjectRawWithPlugins,
   validateConfigObjectWithPlugins,
   writeConfigFile,
 } from "../../config/config.js";
@@ -62,6 +63,78 @@ type ConfigOpenCommand = {
   command: string;
   args: string[];
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasOwnRecordValue(value: unknown, key: string): boolean {
+  return isRecord(value) && Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function stripDefaultedProviderRuntimeFields(params: {
+  candidate: unknown;
+  sourceConfig: unknown;
+}): unknown {
+  if (!isRecord(params.candidate)) {
+    return params.candidate;
+  }
+  const models = params.candidate.models;
+  if (!isRecord(models) || !isRecord(models.providers)) {
+    return params.candidate;
+  }
+
+  const sourceModels = isRecord(params.sourceConfig) ? params.sourceConfig.models : undefined;
+  const sourceProviders = isRecord(sourceModels) ? sourceModels.providers : undefined;
+  let nextProviders: Record<string, unknown> | undefined;
+
+  for (const [providerId, provider] of Object.entries(models.providers)) {
+    if (!isRecord(provider)) {
+      continue;
+    }
+    const sourceProvider = isRecord(sourceProviders) ? sourceProviders[providerId] : undefined;
+    let nextProvider: Record<string, unknown> | undefined;
+    if (
+      (provider.baseUrl === "" || !hasOwnRecordValue(provider, "baseUrl")) &&
+      !hasOwnRecordValue(sourceProvider, "baseUrl")
+    ) {
+      nextProvider = { ...provider };
+      delete nextProvider.baseUrl;
+    }
+    if (
+      ((Array.isArray(provider.models) && provider.models.length === 0) ||
+        !hasOwnRecordValue(provider, "models")) &&
+      !hasOwnRecordValue(sourceProvider, "models")
+    ) {
+      nextProvider ??= { ...provider };
+      delete nextProvider.models;
+    }
+    if (nextProvider) {
+      nextProviders ??= { ...models.providers };
+      const providerKeys = Object.keys(nextProvider);
+      if (
+        !hasOwnRecordValue(nextProvider, "baseUrl") &&
+        !hasOwnRecordValue(nextProvider, "models") &&
+        providerKeys.every((key) => key === "agentRuntime")
+      ) {
+        delete nextProviders[providerId];
+      } else {
+        nextProviders[providerId] = nextProvider;
+      }
+    }
+  }
+
+  if (!nextProviders) {
+    return params.candidate;
+  }
+  return {
+    ...params.candidate,
+    models: {
+      ...models,
+      providers: nextProviders,
+    },
+  };
+}
 
 function requireConfigBaseHash(
   params: unknown,
@@ -522,7 +595,23 @@ export const configHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const validated = validateConfigObjectWithPlugins(restoredMerge.result);
+    const validationCandidate = stripDefaultedProviderRuntimeFields({
+      candidate: restoredMerge.result,
+      sourceConfig: snapshot.sourceConfig,
+    });
+    const rawValidated = validateConfigObjectRawWithPlugins(validationCandidate);
+    if (!rawValidated.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, summarizeConfigValidationIssues(rawValidated.issues), {
+          details: { issues: rawValidated.issues },
+        }),
+      );
+      return;
+    }
+    const writeConfig = validationCandidate as OpenClawConfig;
+    const validated = validateConfigObjectWithPlugins(validationCandidate);
     if (!validated.ok) {
       respond(
         false,
@@ -569,7 +658,7 @@ export const configHandlers: GatewayRequestHandlers = {
       snapshot.config,
       validated.config,
     );
-    await writeConfigFile(validated.config, writeOptions);
+    await writeConfigFile(writeConfig, writeOptions);
 
     const { sessionKey, note, restartDelayMs, deliveryContext, threadId } =
       resolveConfigRestartRequest(params);

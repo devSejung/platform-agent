@@ -632,6 +632,31 @@ export abstract class MemoryManagerSyncOps {
     });
   }
 
+  protected async markSessionStartupCatchupDirtyFiles(): Promise<void> {
+    if (!this.sources.has("sessions")) {
+      return;
+    }
+    const files = await listSessionFilesForAgent(this.agentId);
+    if (files.length === 0) {
+      return;
+    }
+    const { hashes } = loadMemorySourceFileState({
+      db: this.db,
+      source: "sessions",
+    });
+    let dirty = false;
+    for (const absPath of files) {
+      if (hashes.has(sessionPathForFile(absPath))) {
+        continue;
+      }
+      this.sessionsDirtyFiles.add(absPath);
+      dirty = true;
+    }
+    if (dirty) {
+      this.sessionsDirty = true;
+    }
+  }
+
   private async syncMemoryFiles(params: {
     needsFullReindex: boolean;
     progress?: MemorySyncProgressState;

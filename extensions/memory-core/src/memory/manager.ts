@@ -170,15 +170,24 @@ export class MemoryIndexManager extends MemoryManagerEmbeddingOps implements Mem
       pending: INDEX_CACHE_PENDING,
       key,
       bypassCache: statusOnly,
-      create: async () =>
-        new MemoryIndexManager({
+      create: async () => {
+        const manager = new MemoryIndexManager({
           cacheKey: key,
           cfg,
           agentId,
           workspaceDir,
           settings,
           purpose: params.purpose,
-        }),
+        });
+        if (purpose === "status" && manager.sources.has("sessions")) {
+          try {
+            await manager.markSessionStartupCatchupDirtyFiles();
+          } catch (err) {
+            log.warn("memory status session dirty detection failed: " + String(err));
+          }
+        }
+        return manager;
+      },
     });
   }
 

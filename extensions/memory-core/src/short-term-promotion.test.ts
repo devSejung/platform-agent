@@ -487,6 +487,79 @@ describe("short-term promotion", () => {
     });
   });
 
+  it("ignores raw session and transcript snippets when recording short-term recalls", async () => {
+    await withTempWorkspace(async (workspaceDir) => {
+      await recordShortTermRecalls({
+        workspaceDir,
+        query: "session recap",
+        results: [
+          {
+            path: "memory/2026-06-18.md",
+            source: "memory",
+            startLine: 1,
+            endLine: 1,
+            score: 0.92,
+            snippet:
+              "Session: 2026-06-18 10:37:05 EDT; Session Key: agent:cody:discord:channel:1502199757592989836; Session ID: 6d52b6a2-a2e1-4839-a69a-a532b9090a6d; Source: discord",
+          },
+          {
+            path: "memory/2026-06-18.md",
+            source: "memory",
+            startLine: 2,
+            endLine: 2,
+            score: 0.91,
+            snippet: "Conversation Summary: assistant: Traced all three. No changes made.",
+          },
+          {
+            path: "memory/2026-06-18.md",
+            source: "memory",
+            startLine: 3,
+            endLine: 3,
+            score: 0.9,
+            snippet:
+              "user: Save important context from this session to the daily memory file. STRICT RULES: 1. The file MUST be named exactly memory/2026-06-18.md",
+          },
+        ],
+      });
+
+      const ranked = await rankShortTermPromotionCandidates({
+        workspaceDir,
+        minScore: 0,
+        minRecallCount: 0,
+        minUniqueQueries: 0,
+      });
+      expect(ranked).toEqual([]);
+    });
+  });
+
+  it("ignores already-promoted score metadata snippets when recording short-term recalls", async () => {
+    await withTempWorkspace(async (workspaceDir) => {
+      await recordShortTermRecalls({
+        workspaceDir,
+        query: "promotion metadata",
+        results: [
+          {
+            path: "memory/2026-06-18.md",
+            source: "memory",
+            startLine: 1,
+            endLine: 1,
+            score: 0.94,
+            snippet:
+              "2026-06-13 09:20 America/New_York - Polycore PR #112 re-review... [score=0.837 recalls=0 avg=0.620 source=memory/2026-06-13.md:10-12]",
+          },
+        ],
+      });
+
+      const ranked = await rankShortTermPromotionCandidates({
+        workspaceDir,
+        minScore: 0,
+        minRecallCount: 0,
+        minUniqueQueries: 0,
+      });
+      expect(ranked).toEqual([]);
+    });
+  });
+
   it("weights fresh phase signals more than stale ones", async () => {
     await withTempWorkspace(async (workspaceDir) => {
       await recordShortTermRecalls({

@@ -34,6 +34,17 @@ const SHORT_TERM_LOCK_RETRY_DELAY_MS = 40;
 const PHASE_SIGNAL_LIGHT_BOOST_MAX = 0.05;
 const PHASE_SIGNAL_REM_BOOST_MAX = 0.08;
 const PHASE_SIGNAL_HALF_LIFE_DAYS = 14;
+const DREAMING_TRANSCRIPT_PROMPT_LINE_RE =
+  /\[[^\]]*dreaming-narrative[^\]]*]\s*(?:User|Assistant):\s*Write a dream diary entry from these memory fragments:?/i;
+const RAW_SESSION_METADATA_RE =
+  /\bSession Key\b.{0,260}\bSession ID\b|\bSession ID\b.{0,260}\bSession Key\b/i;
+const RAW_CONVERSATION_SUMMARY_RE = /^(?:[-*+]\s*)?Conversation Summary:/i;
+const RAW_TRANSCRIPT_TURN_RE = /^(?:[-*+]\s*)?(?:user|assistant):\s/i;
+const MEMORY_FLUSH_PROMPT_RE =
+  /Save important context from this session to the daily memory file\.\s*STRICT RULES:/i;
+const PROMOTION_SCORE_METADATA_RE =
+  /\[\s*score=\d+(?:\.\d+)?\s+recalls=\d+\s+avg=\d+(?:\.\d+)?\s+source=memory\//i;
+const PROMOTION_MARKER_RE = new RegExp(`<!--\\s*${PROMOTION_MARKER_PREFIX}`, "i");
 const inProcessShortTermLocks = new Map<string, Promise<void>>();
 const ensuredShortTermDirs = new Map<string, Promise<void>>();
 
@@ -367,6 +378,22 @@ function emptyStore(nowIso: string): ShortTermRecallStore {
     updatedAt: nowIso,
     entries: {},
   };
+}
+
+function isContaminatedShortTermSnippet(raw: string): boolean {
+  const snippet = raw.trim();
+  if (!snippet) {
+    return false;
+  }
+  return (
+    PROMOTION_MARKER_RE.test(snippet) ||
+    DREAMING_TRANSCRIPT_PROMPT_LINE_RE.test(snippet) ||
+    RAW_SESSION_METADATA_RE.test(snippet) ||
+    RAW_CONVERSATION_SUMMARY_RE.test(snippet) ||
+    RAW_TRANSCRIPT_TURN_RE.test(snippet) ||
+    MEMORY_FLUSH_PROMPT_RE.test(snippet) ||
+    PROMOTION_SCORE_METADATA_RE.test(snippet)
+  );
 }
 
 function normalizeStore(raw: unknown, nowIso: string): ShortTermRecallStore {
@@ -825,7 +852,10 @@ export async function recordShortTermRecalls(params: {
     return;
   }
   const relevant = params.results.filter(
-    (result) => result.source === "memory" && isShortTermMemoryPath(result.path),
+    (result) =>
+      result.source === "memory" &&
+      isShortTermMemoryPath(result.path) &&
+      !isContaminatedShortTermSnippet(result.snippet),
   );
   if (relevant.length === 0) {
     return;
@@ -1875,4 +1905,5 @@ export const __testing = {
   calculatePhaseSignalBoost,
   buildClaimHash,
   totalSignalCountForEntry,
+  isContaminatedShortTermSnippet,
 };

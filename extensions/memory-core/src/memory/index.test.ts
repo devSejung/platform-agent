@@ -251,6 +251,11 @@ describe("memory index", () => {
     return await getRequiredMemoryIndexManager({ cfg, agentId: "main" });
   }
 
+  async function getStatusManager(cfg: TestCfg): Promise<MemoryIndexManager> {
+    const { getRequiredMemoryIndexManager } = await import("./test-manager-helpers.js");
+    return await getRequiredMemoryIndexManager({ cfg, agentId: "main", purpose: "status" });
+  }
+
   async function expectHybridKeywordSearchFindsMemory(cfg: TestCfg) {
     const manager = await getFreshManager(cfg);
     try {
@@ -493,6 +498,30 @@ describe("memory index", () => {
 
       expect(results[0]?.source).toBe("sessions");
       expect(results[0]?.snippet).toContain("ORBIT-10");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("status-purpose manager detects unindexed session transcripts as dirty", async () => {
+    const stateDir = path.join(workspaceDir, ".state-status-dirty-test");
+    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+    try {
+      const cfg = createCfg({
+        storePath: path.join(workspaceDir, "index-status-dirty.sqlite"),
+        sources: ["sessions"],
+        sessionMemory: true,
+      });
+
+      const sessionsDir = resolveSessionTranscriptsDirForAgent("main");
+      await fs.mkdir(sessionsDir, { recursive: true });
+      const transcriptPath = path.join(sessionsDir, "status-dirty-test.jsonl");
+      await fs.writeFile(transcriptPath, JSON.stringify({ type: "test", ts: 1 }) + "\n");
+
+      const manager = await getStatusManager(cfg);
+      managersForCleanup.add(manager);
+
+      expect(manager.status().dirty).toBe(true);
     } finally {
       vi.unstubAllEnvs();
     }

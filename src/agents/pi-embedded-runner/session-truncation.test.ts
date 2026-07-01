@@ -44,6 +44,27 @@ function readUserTexts(entries: ReturnType<SessionManager["getEntries"]>): strin
     });
 }
 
+function readMessageTextsByRole(
+  entries: ReturnType<SessionManager["getEntries"]>,
+  role: string,
+): string[] {
+  return entries
+    .filter((entry) => {
+      const message = (entry as { message?: { role?: unknown } }).message;
+      return entry.type === "message" && message?.role === role;
+    })
+    .map((entry) => {
+      const content = (entry as { message: { content?: unknown } }).message.content;
+      if (typeof content === "string") {
+        return content;
+      }
+      if (Array.isArray(content)) {
+        return content.map((block) => (block as { text?: string }).text ?? "").join("");
+      }
+      return "";
+    });
+}
+
 function createSessionWithCompaction(sessionDir: string): string {
   const sm = SessionManager.create(sessionDir, sessionDir);
   // Add messages before compaction
@@ -327,6 +348,65 @@ describe("truncateSessionAfterCompaction", () => {
     // buildSessionContext should include the unsummarized tail
     const ctx = smAfter.buildSessionContext();
     expect(ctx.messages.length).toBeGreaterThan(2);
+  });
+
+  it("preserves the last assistant reply before the first kept user after compaction", async () => {
+    const dir = await createTmpDir();
+    const sm = SessionManager.create(dir, dir);
+
+    sm.appendMessage({ role: "user", content: "old user", timestamp: 1 });
+    sm.appendMessage(makeAssistant("old assistant", 2));
+    const firstKeptId = sm.appendMessage({ role: "user", content: "kept user", timestamp: 3 });
+    sm.appendMessage(makeAssistant("new assistant", 4));
+    sm.appendCompaction("Summary of old user and old assistant.", firstKeptId, 5000);
+    sm.appendMessage({ role: "user", content: "next", timestamp: 5 });
+
+    const sessionFile = sm.getSessionFile()!;
+    const result = await truncateSessionAfterCompaction({ sessionFile });
+
+    expect(result.truncated).toBe(true);
+    const smAfter = SessionManager.open(sessionFile);
+    const assistantTexts = readMessageTextsByRole(smAfter.getEntries(), "assistant");
+    expect(assistantTexts).toContain("old assistant");
+
+    const ctx = smAfter.buildSessionContext();
+    expect(JSON.stringify(ctx.messages)).toContain("old assistant");
+  });
+
+  it("preserves paired tool results for the assistant reply kept before compaction", async () => {
+    const dir = await createTmpDir();
+    const sm = SessionManager.create(dir, dir);
+
+    sm.appendMessage({ role: "user", content: "read the file", timestamp: 1 });
+    sm.appendMessage(
+      makeAgentAssistantMessage({
+        content: [{ type: "toolCall", id: "call_1", name: "read", arguments: {} }],
+        timestamp: 2,
+      }),
+    );
+    sm.appendMessage({
+      role: "toolResult",
+      toolCallId: "call_1",
+      toolName: "read",
+      content: [{ type: "text", text: "file contents" }],
+      isError: false,
+      timestamp: 3,
+    });
+    const firstKeptId = sm.appendMessage({ role: "user", content: "continue", timestamp: 4 });
+    sm.appendMessage(makeAssistant("done", 5));
+    sm.appendCompaction("Summary of the read.", firstKeptId, 5000);
+    sm.appendMessage({ role: "user", content: "next", timestamp: 6 });
+
+    const sessionFile = sm.getSessionFile()!;
+    const result = await truncateSessionAfterCompaction({ sessionFile });
+
+    expect(result.truncated).toBe(true);
+    const smAfter = SessionManager.open(sessionFile);
+    const toolTexts = readMessageTextsByRole(smAfter.getEntries(), "toolResult");
+    expect(toolTexts).toContain("file contents");
+
+    const ctx = smAfter.buildSessionContext();
+    expect(JSON.stringify(ctx.messages)).toContain("file contents");
   });
 
   it("keeps a repeated kept-tail prompt whose earlier copy was summarized away", async () => {

@@ -610,6 +610,34 @@ describe("connectGateway", () => {
     });
   });
 
+  it("reloads chat history when a compaction retry run reaches final", async () => {
+    const { host, client } = connectHostGateway();
+    client.emitHello();
+    host.chatRunId = "run-compact";
+    (
+      host as typeof host & {
+        compactionStatus?: { phase: string; runId: string; startedAt: number; completedAt: null };
+      }
+    ).compactionStatus = {
+      phase: "retrying",
+      runId: "run-compact",
+      startedAt: Date.now(),
+      completedAt: null,
+    };
+
+    client.emitEvent({
+      event: "chat",
+      payload: {
+        state: "final",
+        runId: "run-compact",
+        sessionKey: "main",
+        message: { role: "assistant", content: [{ type: "text", text: "done" }] },
+      },
+    });
+
+    expect(loadChatHistoryMock).toHaveBeenCalledTimes(1);
+  });
+
   it("routes plugin.approval.requested into execApprovalQueue with kind plugin", () => {
     const host = createHost();
 

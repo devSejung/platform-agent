@@ -373,6 +373,9 @@ function handleTerminalChatEvent(
   // Check if tool events were seen before resetting (resetToolStream clears toolStreamOrder).
   const toolHost = host as unknown as Parameters<typeof resetToolStream>[0];
   const hadToolEvents = toolHost.toolStreamOrder.length > 0;
+  const hadCompactionRetry =
+    (host as GatewayHost & { compactionStatus?: { phase?: string } | null }).compactionStatus
+      ?.phase === "retrying";
   resetToolStream(toolHost);
   clearPendingQueueItemsForRun(
     host as unknown as Parameters<typeof clearPendingQueueItemsForRun>[0],
@@ -397,9 +400,9 @@ function handleTerminalChatEvent(
       rerunIfLoading: true,
     });
   }
-  // Reload history when tools were used so the persisted tool results
-  // replace the now-cleared streaming state.
-  if (hadToolEvents && state === "final") {
+  // Reload history when tools or compaction retry were involved so the persisted
+  // transcript replaces the now-cleared streaming state.
+  if ((hadToolEvents || hadCompactionRetry) && state === "final") {
     void loadChatHistory(host as unknown as OpenClawApp);
     return true;
   }

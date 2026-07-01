@@ -92,11 +92,70 @@ export async function truncateSessionAfterCompaction(params: {
   // (everything before firstKeptEntryId). Entries from firstKeptEntryId through
   // the compaction are the unsummarized tail and must be preserved.
   const summarizedBranchIds = new Set<string>();
+  let firstKeptIndex = -1;
   for (let i = 0; i < latestCompactionIdx; i++) {
     if (firstKeptEntryId && branch[i].id === firstKeptEntryId) {
+      firstKeptIndex = i;
       break; // Everything from here to the compaction is the unsummarized tail
     }
     summarizedBranchIds.add(branch[i].id);
+  }
+  if (firstKeptIndex < 0 && firstKeptEntryId) {
+    firstKeptIndex = branch.findIndex((entry) => entry.id === firstKeptEntryId);
+  }
+
+  const isHardenedBoundary = compactionEntry.firstKeptEntryId === compactionEntry.id;
+  const firstKeptEntry = firstKeptIndex >= 0 ? branch[firstKeptIndex] : undefined;
+  const shouldPreservePreKeptAssistant =
+    firstKeptEntry?.type === "message" && firstKeptEntry.message.role === "user";
+  const preservedPreCompactionIds = new Set<string>();
+  let preservedAssistantId: string | undefined;
+  let preservedAssistantIndex = -1;
+  if (!isHardenedBoundary && shouldPreservePreKeptAssistant && firstKeptIndex > 0) {
+    for (let i = firstKeptIndex - 1; i >= 0; i--) {
+      const entry = branch[i];
+      if (
+        entry?.type === "message" &&
+        summarizedBranchIds.has(entry.id) &&
+        entry.message.role === "assistant"
+      ) {
+        preservedAssistantId = entry.id;
+        preservedAssistantIndex = i;
+        preservedPreCompactionIds.add(entry.id);
+        break;
+      }
+    }
+  }
+  if (
+    preservedAssistantId &&
+    preservedAssistantIndex >= 0 &&
+    firstKeptIndex > preservedAssistantIndex
+  ) {
+    const assistant = branch[preservedAssistantIndex];
+    if (assistant?.type === "message" && assistant.message.role === "assistant") {
+      const content = Array.isArray(assistant.message.content) ? assistant.message.content : [];
+      const toolCallIds = new Set<string>();
+      for (const block of content) {
+        if (
+          block &&
+          typeof block === "object" &&
+          (block as { type?: unknown }).type === "toolCall" &&
+          typeof (block as { id?: unknown }).id === "string"
+        ) {
+          toolCallIds.add((block as { id: string }).id);
+        }
+      }
+      for (let i = preservedAssistantIndex + 1; i < firstKeptIndex; i++) {
+        const entry = branch[i];
+        if (
+          entry?.type === "message" &&
+          entry.message.role === "toolResult" &&
+          toolCallIds.has(entry.message.toolCallId)
+        ) {
+          preservedPreCompactionIds.add(entry.id);
+        }
+      }
+    }
   }
 
   // Operate on the full transcript so sibling branches and tree metadata
@@ -113,7 +172,11 @@ export async function truncateSessionAfterCompaction(params: {
   // tool-result-truncation.ts).
   const removedIds = new Set<string>();
   for (const entry of allEntries) {
-    if (summarizedBranchIds.has(entry.id) && entry.type === "message") {
+    if (
+      summarizedBranchIds.has(entry.id) &&
+      entry.type === "message" &&
+      !preservedPreCompactionIds.has(entry.id)
+    ) {
       removedIds.add(entry.id);
     }
   }
@@ -179,10 +242,16 @@ export async function truncateSessionAfterCompaction(params: {
       newParentId = parent?.parentId ?? null;
     }
 
-    if (newParentId !== entry.parentId) {
-      keptEntries.push({ ...entry, parentId: newParentId });
+    const reparented = newParentId !== entry.parentId ? { ...entry, parentId: newParentId } : entry;
+    if (
+      reparented.type === "compaction" &&
+      reparented.id === compactionEntry.id &&
+      preservedAssistantId &&
+      reparented.firstKeptEntryId !== reparented.id
+    ) {
+      keptEntries.push({ ...reparented, firstKeptEntryId: preservedAssistantId });
     } else {
-      keptEntries.push(entry);
+      keptEntries.push(reparented);
     }
   }
 

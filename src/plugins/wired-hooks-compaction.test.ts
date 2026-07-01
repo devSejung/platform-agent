@@ -149,15 +149,27 @@ describe("compaction hook wiring", () => {
       expectedSessionKey: "agent:main:web-abc123",
     });
     expect(ctx.ensureCompactionPromise).toHaveBeenCalledTimes(1);
-    expect(hookMocks.emitAgentEvent).toHaveBeenCalledWith({
-      runId: "r1",
-      stream: "compaction",
-      data: { phase: "start", trigger: "runtime" },
-    });
-    expect(ctx.params.onAgentEvent).toHaveBeenCalledWith({
-      stream: "compaction",
-      data: { phase: "start", trigger: "runtime" },
-    });
+    expect(hookMocks.emitAgentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runId: "r1",
+        stream: "compaction",
+        data: expect.objectContaining({
+          phase: "start",
+          trigger: "runtime",
+          startedAt: expect.any(Number),
+        }),
+      }),
+    );
+    expect(ctx.params.onAgentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stream: "compaction",
+        data: expect.objectContaining({
+          phase: "start",
+          trigger: "runtime",
+          startedAt: expect.any(Number),
+        }),
+      }),
+    );
   });
 
   it("calls runAfterCompaction when willRetry is false", () => {

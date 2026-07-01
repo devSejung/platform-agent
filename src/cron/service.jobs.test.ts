@@ -244,6 +244,31 @@ describe("applyJobPatch", () => {
     }
   });
 
+  it("clears agentTurn payload.thinking when patch requests null", () => {
+    const job = createIsolatedAgentTurnJob("job-thinking-clear", {
+      mode: "announce",
+      channel: "telegram",
+    });
+    job.payload = {
+      kind: "agentTurn",
+      message: "do it",
+      thinking: "high",
+    };
+
+    applyJobPatch(job, {
+      payload: {
+        kind: "agentTurn",
+        message: "do it",
+        thinking: null,
+      },
+    });
+
+    expect(job.payload.kind).toBe("agentTurn");
+    if (job.payload.kind === "agentTurn") {
+      expect(job.payload.thinking).toBeUndefined();
+    }
+  });
+
   it("applies payload.lightContext when replacing payload kind via patch", () => {
     const job = createIsolatedAgentTurnJob("job-light-context-switch", {
       mode: "announce",

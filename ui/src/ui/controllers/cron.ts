@@ -582,7 +582,7 @@ export function buildCronPayload(form: CronFormState) {
     kind: "agentTurn";
     message: string;
     model?: string;
-    thinking?: string;
+    thinking?: string | null;
     timeoutSeconds?: number;
     lightContext?: boolean;
   } = { kind: "agentTurn", message };
@@ -667,6 +667,11 @@ export async function addCronJob(state: CronState) {
         existingLightContext !== undefined
       ) {
         payload.lightContext = false;
+      }
+      const existingThinking =
+        editingPayload?.kind === "agentTurn" ? editingPayload.thinking : undefined;
+      if (!form.payloadThinking.trim() && state.cronEditingJobId && existingThinking) {
+        payload.thinking = null;
       }
     }
     const selectedDeliveryMode = form.deliveryMode;

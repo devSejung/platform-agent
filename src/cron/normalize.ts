@@ -187,11 +187,15 @@ function coercePayload(payload: UnknownRecord) {
     }
   }
   if ("thinking" in next) {
-    const thinking = parseOptionalField(TrimmedNonEmptyStringFieldSchema, next.thinking);
-    if (thinking !== undefined) {
-      next.thinking = thinking;
+    if (next.thinking === null) {
+      next.thinking = null;
     } else {
-      delete next.thinking;
+      const thinking = parseOptionalField(TrimmedNonEmptyStringFieldSchema, next.thinking);
+      if (thinking !== undefined) {
+        next.thinking = thinking;
+      } else {
+        delete next.thinking;
+      }
     }
   }
   if ("timeoutSeconds" in next) {

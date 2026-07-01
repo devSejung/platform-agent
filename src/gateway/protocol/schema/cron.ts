@@ -1,14 +1,18 @@
 import { Type, type TSchema } from "@sinclair/typebox";
 import { NonEmptyString } from "./primitives.js";
 
-function cronAgentTurnPayloadSchema(params: { message: TSchema; toolsAllow: TSchema }) {
+function cronAgentTurnPayloadSchema(params: {
+  message: TSchema;
+  thinking: TSchema;
+  toolsAllow: TSchema;
+}) {
   return Type.Object(
     {
       kind: Type.Literal("agentTurn"),
       message: params.message,
       model: Type.Optional(Type.String()),
       fallbacks: Type.Optional(Type.Array(Type.String())),
-      thinking: Type.Optional(Type.String()),
+      thinking: Type.Optional(params.thinking),
       timeoutSeconds: Type.Optional(Type.Integer({ minimum: 0 })),
       allowUnsafeExternalContent: Type.Optional(Type.Boolean()),
       lightContext: Type.Optional(Type.Boolean()),
@@ -150,6 +154,7 @@ export const CronPayloadSchema = Type.Union([
   ),
   cronAgentTurnPayloadSchema({
     message: NonEmptyString,
+    thinking: Type.String(),
     toolsAllow: Type.Array(Type.String()),
   }),
 ]);
@@ -164,6 +169,7 @@ export const CronPayloadPatchSchema = Type.Union([
   ),
   cronAgentTurnPayloadSchema({
     message: Type.Optional(NonEmptyString),
+    thinking: Type.Union([Type.String(), Type.Null()]),
     toolsAllow: Type.Union([Type.Array(Type.String()), Type.Null()]),
   }),
 ]);

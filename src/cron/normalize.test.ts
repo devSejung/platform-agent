@@ -426,6 +426,20 @@ describe("normalizeCronJobCreate", () => {
     expect(validateCronAddParams(normalized)).toBe(true);
   });
 
+  it("preserves null thinking in agentTurn payload patches so edits can clear it", () => {
+    const normalized = normalizeCronJobPatch({
+      payload: {
+        kind: "agentTurn",
+        thinking: null,
+      },
+    }) as unknown as Record<string, unknown>;
+
+    const payload = normalized.payload as Record<string, unknown>;
+    expect(payload.kind).toBe("agentTurn");
+    expect(payload.thinking).toBeNull();
+    expect(validateCronUpdateParams({ id: "job-1", patch: normalized })).toBe(true);
+  });
+
   it("preserves timeoutSeconds=0 for no-timeout agentTurn payloads", () => {
     const normalized = normalizeCronJobCreate({
       name: "legacy no-timeout",

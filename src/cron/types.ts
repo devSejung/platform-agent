@@ -108,7 +108,8 @@ type CronAgentTurnPayload = {
 
 type CronAgentTurnPayloadPatch = {
   kind: "agentTurn";
-} & Partial<Omit<CronAgentTurnPayloadFields, "toolsAllow">> & {
+} & Partial<Omit<CronAgentTurnPayloadFields, "toolsAllow" | "thinking">> & {
+    thinking?: string | null;
     toolsAllow?: string[] | null;
   };
 export type CronJobState = {

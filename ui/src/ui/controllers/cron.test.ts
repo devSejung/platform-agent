@@ -628,6 +628,62 @@ describe("cron controller", () => {
     });
   });
 
+  it("sends thinking=null in cron.update when clearing prior thinking setting", async () => {
+    const request = vi.fn(async (method: string, _payload?: unknown) => {
+      if (method === "cron.update") {
+        return { id: "job-clear-thinking" };
+      }
+      if (method === "cron.list") {
+        return { jobs: [{ id: "job-clear-thinking" }] };
+      }
+      if (method === "cron.status") {
+        return { enabled: true, jobs: 1, nextWakeAtMs: null };
+      }
+      return {};
+    });
+    const state = createState({
+      client: { request } as unknown as CronState["client"],
+      cronEditingJobId: "job-clear-thinking",
+      cronJobs: [
+        {
+          id: "job-clear-thinking",
+          name: "Thinking job",
+          enabled: true,
+          createdAtMs: 0,
+          updatedAtMs: 0,
+          schedule: { kind: "cron", expr: "0 9 * * *" },
+          sessionTarget: "isolated",
+          wakeMode: "now",
+          payload: { kind: "agentTurn", message: "run", thinking: "high" },
+          state: {},
+        },
+      ],
+      cronForm: {
+        ...DEFAULT_CRON_FORM,
+        name: "Thinking job",
+        scheduleKind: "cron",
+        cronExpr: "0 9 * * *",
+        payloadKind: "agentTurn",
+        payloadText: "run",
+        payloadThinking: "",
+      },
+    });
+
+    await addCronJob(state);
+
+    const updateCall = request.mock.calls.find(([method]) => method === "cron.update");
+    expect(updateCall).toBeDefined();
+    expect(updateCall?.[1]).toMatchObject({
+      id: "job-clear-thinking",
+      patch: {
+        payload: {
+          kind: "agentTurn",
+          thinking: null,
+        },
+      },
+    });
+  });
+
   it("includes custom failureAlert fields in cron.update patch", async () => {
     const request = vi.fn(async (method: string, _payload?: unknown) => {
       if (method === "cron.update") {

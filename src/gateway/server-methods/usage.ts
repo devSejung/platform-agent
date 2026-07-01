@@ -68,6 +68,7 @@ const DASHBOARD_TOTAL_CACHE_TTL_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type DateRange = { startMs: number; endMs: number };
+type DateRangeResolution = { ok: true; value: DateRange } | { ok: false; error: string };
 type DateInterpretation =
   | { mode: "utc" | "gateway" }
   | { mode: "specific"; utcOffsetMinutes: number };
@@ -138,7 +139,31 @@ const parseDateParts = (
   if (!Number.isFinite(year) || !Number.isFinite(monthIndex) || !Number.isFinite(day)) {
     return undefined;
   }
+  const probe = new Date(Date.UTC(year, monthIndex, day));
+  if (
+    probe.getUTCFullYear() !== year ||
+    probe.getUTCMonth() !== monthIndex ||
+    probe.getUTCDate() !== day
+  ) {
+    return undefined;
+  }
   return { year, monthIndex, day };
+};
+
+const findInvalidExplicitDate = (params: {
+  startDate?: unknown;
+  endDate?: unknown;
+}): "startDate" | "endDate" | undefined => {
+  for (const field of ["startDate", "endDate"] as const) {
+    const raw = params[field];
+    if (raw === undefined || raw === null || (typeof raw === "string" && raw.trim() === "")) {
+      continue;
+    }
+    if (parseDateParts(raw) === undefined) {
+      return field;
+    }
+  }
+  return undefined;
 };
 
 /**
@@ -242,13 +267,20 @@ const parseDays = (raw: unknown): number | undefined => {
  * Get date range from params (startDate/endDate or days).
  * Falls back to last 30 days if not provided.
  */
-const parseDateRange = (params: {
+const resolveDateRange = (params: {
   startDate?: unknown;
   endDate?: unknown;
   days?: unknown;
   mode?: unknown;
   utcOffset?: unknown;
-}): DateRange => {
+}): DateRangeResolution => {
+  const invalidDate = findInvalidExplicitDate(params);
+  if (invalidDate) {
+    return {
+      ok: false,
+      error: `invalid ${invalidDate}: expected a valid YYYY-MM-DD calendar date`,
+    };
+  }
   const now = new Date();
   const interpretation = resolveDateInterpretation(params);
   const todayStartMs = getTodayStartMs(now, interpretation);
@@ -258,20 +290,23 @@ const parseDateRange = (params: {
   const endMs = parseDateToMs(params.endDate, interpretation);
 
   if (startMs !== undefined && endMs !== undefined) {
+    if (startMs > endMs) {
+      return { ok: false, error: "startDate must not be after endDate" };
+    }
     // endMs should be end of day
-    return { startMs, endMs: endMs + DAY_MS - 1 };
+    return { ok: true, value: { startMs, endMs: endMs + DAY_MS - 1 } };
   }
 
   const days = parseDays(params.days);
   if (days !== undefined) {
     const clampedDays = Math.max(1, days);
     const start = todayStartMs - (clampedDays - 1) * DAY_MS;
-    return { startMs: start, endMs: todayEndMs };
+    return { ok: true, value: { startMs: start, endMs: todayEndMs } };
   }
 
   // Default to last 30 days
   const defaultStartMs = todayStartMs - 29 * DAY_MS;
-  return { startMs: defaultStartMs, endMs: todayEndMs };
+  return { ok: true, value: { startMs: defaultStartMs, endMs: todayEndMs } };
 };
 
 type DiscoveredSessionWithAgent = DiscoveredSession & { agentId: string };
@@ -408,7 +443,11 @@ function resolveDashboardWindow(range: DashboardRange): DateRange {
     return { startMs: 0, endMs: Date.now() };
   }
   const days = range === "today" ? 1 : range === "7d" ? 7 : 30;
-  return parseDateRange({ days, mode: "gateway" });
+  const resolved = resolveDateRange({ days, mode: "gateway" });
+  if (!resolved.ok) {
+    throw new Error(resolved.error);
+  }
+  return resolved.value;
 }
 
 function resolveDashboardParts(accountId?: string): string[] {
@@ -908,7 +947,7 @@ export const __test = {
   parseDateToMs,
   getTodayStartMs,
   parseDays,
-  parseDateRange,
+  resolveDateRange,
   discoverAllSessionsForUsage,
   loadCostUsageSummaryCached,
   costUsageCache,
@@ -942,14 +981,19 @@ export const usageHandlers: GatewayRequestHandlers = {
     respond(true, result, undefined);
   },
   "usage.cost": async ({ respond, params }) => {
-    const config = loadConfig();
-    const { startMs, endMs } = parseDateRange({
+    const dateRange = resolveDateRange({
       startDate: params?.startDate,
       endDate: params?.endDate,
       days: params?.days,
       mode: params?.mode,
       utcOffset: params?.utcOffset,
     });
+    if (!dateRange.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, dateRange.error));
+      return;
+    }
+    const config = loadConfig();
+    const { startMs, endMs } = dateRange.value;
     const summary = await loadCostUsageSummaryCached({ startMs, endMs, config });
     respond(true, summary, undefined);
   },
@@ -967,13 +1011,18 @@ export const usageHandlers: GatewayRequestHandlers = {
     }
 
     const p = params;
-    const config = loadConfig();
-    const { startMs, endMs } = parseDateRange({
+    const dateRange = resolveDateRange({
       startDate: p.startDate,
       endDate: p.endDate,
       mode: p.mode,
       utcOffset: p.utcOffset,
     });
+    if (!dateRange.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, dateRange.error));
+      return;
+    }
+    const config = loadConfig();
+    const { startMs, endMs } = dateRange.value;
     const limit = typeof p.limit === "number" && Number.isFinite(p.limit) ? p.limit : 50;
     const includeContextWeight = p.includeContextWeight ?? false;
     const specificKey = normalizeOptionalString(p.key) ?? null;

@@ -18,10 +18,18 @@ vi.mock("../../infra/session-cost-usage.js", async () => {
 });
 
 import { loadCostUsageSummary } from "../../infra/session-cost-usage.js";
-import { __test } from "./usage.js";
+import { __test, usageHandlers } from "./usage.js";
 
 describe("gateway usage helpers", () => {
   const dayMs = 24 * 60 * 60 * 1000;
+
+  function expectDateRange(result: ReturnType<typeof __test.resolveDateRange>) {
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+    return result.value;
+  }
 
   beforeEach(() => {
     __test.costUsageCache.clear();
@@ -35,6 +43,20 @@ describe("gateway usage helpers", () => {
     expect(__test.parseDateToMs("2026-2-5")).toBeUndefined();
     expect(__test.parseDateToMs("nope")).toBeUndefined();
     expect(__test.parseDateToMs(undefined)).toBeUndefined();
+    expect(__test.parseDateToMs("2026-02-30")).toBeUndefined();
+  });
+
+  it.each([
+    [{ startDate: "2026-02-30" }, "invalid startDate"],
+    [{ endDate: "2026-2-5" }, "invalid endDate"],
+    [{ startDate: 0 }, "invalid startDate"],
+    [{ endDate: [] }, "invalid endDate"],
+    [{ startDate: "2026-02-03", endDate: "2026-02-02" }, "startDate must not be after endDate"],
+  ])("resolveDateRange rejects invalid explicit ranges", (params, error) => {
+    expect(__test.resolveDateRange(params)).toEqual({
+      ok: false,
+      error: expect.stringContaining(error),
+    });
   });
 
   it("parseUtcOffsetToMinutes supports whole-hour and half-hour offsets", () => {
@@ -59,28 +81,34 @@ describe("gateway usage helpers", () => {
   });
 
   it("parseDateRange uses explicit start/end as UTC when mode is missing (backward compatible)", () => {
-    const range = __test.parseDateRange({ startDate: "2026-02-01", endDate: "2026-02-02" });
+    const range = expectDateRange(
+      __test.resolveDateRange({ startDate: "2026-02-01", endDate: "2026-02-02" }),
+    );
     expect(range.startMs).toBe(Date.UTC(2026, 1, 1));
     expect(range.endMs).toBe(Date.UTC(2026, 1, 2) + dayMs - 1);
   });
 
   it("parseDateRange uses explicit UTC mode", () => {
-    const range = __test.parseDateRange({
-      startDate: "2026-02-01",
-      endDate: "2026-02-02",
-      mode: "utc",
-    });
+    const range = expectDateRange(
+      __test.resolveDateRange({
+        startDate: "2026-02-01",
+        endDate: "2026-02-02",
+        mode: "utc",
+      }),
+    );
     expect(range.startMs).toBe(Date.UTC(2026, 1, 1));
     expect(range.endMs).toBe(Date.UTC(2026, 1, 2) + dayMs - 1);
   });
 
   it("parseDateRange uses specific UTC offset for explicit dates", () => {
-    const range = __test.parseDateRange({
-      startDate: "2026-02-01",
-      endDate: "2026-02-02",
-      mode: "specific",
-      utcOffset: "UTC+5:30",
-    });
+    const range = expectDateRange(
+      __test.resolveDateRange({
+        startDate: "2026-02-01",
+        endDate: "2026-02-02",
+        mode: "specific",
+        utcOffset: "UTC+5:30",
+      }),
+    );
     const start = Date.UTC(2026, 1, 1) - 5.5 * 60 * 60 * 1000;
     const endStart = Date.UTC(2026, 1, 2) - 5.5 * 60 * 60 * 1000;
     expect(range.startMs).toBe(start);
@@ -88,17 +116,21 @@ describe("gateway usage helpers", () => {
   });
 
   it("parseDateRange falls back to UTC when specific mode offset is missing or invalid", () => {
-    const missingOffset = __test.parseDateRange({
-      startDate: "2026-02-01",
-      endDate: "2026-02-02",
-      mode: "specific",
-    });
-    const invalidOffset = __test.parseDateRange({
-      startDate: "2026-02-01",
-      endDate: "2026-02-02",
-      mode: "specific",
-      utcOffset: "bad-value",
-    });
+    const missingOffset = expectDateRange(
+      __test.resolveDateRange({
+        startDate: "2026-02-01",
+        endDate: "2026-02-02",
+        mode: "specific",
+      }),
+    );
+    const invalidOffset = expectDateRange(
+      __test.resolveDateRange({
+        startDate: "2026-02-01",
+        endDate: "2026-02-02",
+        mode: "specific",
+        utcOffset: "bad-value",
+      }),
+    );
     expect(missingOffset.startMs).toBe(Date.UTC(2026, 1, 1));
     expect(missingOffset.endMs).toBe(Date.UTC(2026, 1, 2) + dayMs - 1);
     expect(invalidOffset.startMs).toBe(Date.UTC(2026, 1, 1));
@@ -108,11 +140,13 @@ describe("gateway usage helpers", () => {
   it("parseDateRange uses specific offset for today/day math after UTC midnight", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-17T03:57:00.000Z"));
-    const range = __test.parseDateRange({
-      days: 1,
-      mode: "specific",
-      utcOffset: "UTC-5",
-    });
+    const range = expectDateRange(
+      __test.resolveDateRange({
+        days: 1,
+        mode: "specific",
+        utcOffset: "UTC-5",
+      }),
+    );
     expect(range.startMs).toBe(Date.UTC(2026, 1, 16, 5, 0, 0, 0));
     expect(range.endMs).toBe(Date.UTC(2026, 1, 17, 4, 59, 59, 999));
   });
@@ -120,7 +154,7 @@ describe("gateway usage helpers", () => {
   it("parseDateRange uses gateway local day boundaries in gateway mode", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-05T12:34:56.000Z"));
-    const range = __test.parseDateRange({ days: 1, mode: "gateway" });
+    const range = expectDateRange(__test.resolveDateRange({ days: 1, mode: "gateway" }));
     const expectedStart = new Date(2026, 1, 5).getTime();
     expect(range.startMs).toBe(expectedStart);
     expect(range.endMs).toBe(expectedStart + dayMs - 1);
@@ -129,11 +163,11 @@ describe("gateway usage helpers", () => {
   it("parseDateRange clamps days to at least 1 and defaults to 30 days", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-05T12:34:56.000Z"));
-    const oneDay = __test.parseDateRange({ days: 0 });
+    const oneDay = expectDateRange(__test.resolveDateRange({ days: 0 }));
     expect(oneDay.endMs).toBe(Date.UTC(2026, 1, 5) + dayMs - 1);
     expect(oneDay.startMs).toBe(Date.UTC(2026, 1, 5));
 
-    const def = __test.parseDateRange({});
+    const def = expectDateRange(__test.resolveDateRange({}));
     expect(def.endMs).toBe(Date.UTC(2026, 1, 5) + dayMs - 1);
     expect(def.startMs).toBe(Date.UTC(2026, 1, 5) - 29 * dayMs);
   });
@@ -158,4 +192,22 @@ describe("gateway usage helpers", () => {
     expect(b.totals.totalTokens).toBe(1);
     expect(vi.mocked(loadCostUsageSummary)).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["usage.cost", "sessions.usage"] as const)(
+    "%s rejects startDate after endDate before loading usage",
+    async (method) => {
+      const respond = vi.fn();
+      await usageHandlers[method]({
+        respond,
+        params: { startDate: "2026-02-03", endDate: "2026-02-02" },
+      } as unknown as Parameters<(typeof usageHandlers)[typeof method]>[0]);
+
+      expect(respond).toHaveBeenCalledTimes(1);
+      const [ok, payload, error] = respond.mock.calls[0];
+      expect(ok).toBe(false);
+      expect(payload).toBeUndefined();
+      expect(JSON.stringify(error)).toContain("startDate must not be after endDate");
+      expect(vi.mocked(loadCostUsageSummary)).not.toHaveBeenCalled();
+    },
+  );
 });

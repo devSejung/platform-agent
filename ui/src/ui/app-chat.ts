@@ -46,6 +46,7 @@ export type ChatHost = {
 };
 
 export const CHAT_SESSIONS_ACTIVE_MINUTES = 120;
+const CHAT_RUN_TERMINAL_FALLBACK_TIMEOUT_MS = 10 * 60_000;
 
 export function isChatBusy(host: ChatHost) {
   return host.chatSending || Boolean(host.chatRunId);
@@ -199,7 +200,45 @@ async function sendChatMessageNow(
   if (ok && opts?.refreshSessions && runId) {
     host.refreshSessionsAfterChat.add(runId);
   }
+  if (ok && runId) {
+    void refreshChatHistoryWhenRunTerminal(host, runId, host.sessionKey);
+  }
   return ok;
+}
+
+async function refreshChatHistoryWhenRunTerminal(
+  host: ChatHost,
+  runId: string,
+  sessionKey: string,
+) {
+  const client = host.client;
+  if (!client) {
+    return;
+  }
+  try {
+    const result = await client.request<{ status?: string }>("agent.wait", {
+      runId,
+      timeoutMs: CHAT_RUN_TERMINAL_FALLBACK_TIMEOUT_MS,
+    });
+    if (!result?.status || result.status === "timeout") {
+      return;
+    }
+    // Normal live chat events clear chatRunId. If it is still the same run after
+    // agent.wait reaches a terminal state, the browser missed the final event.
+    if (host.sessionKey !== sessionKey || host.chatRunId !== runId || !host.connected) {
+      return;
+    }
+    await loadChatHistory(host as unknown as OpenClawApp);
+    if (host.sessionKey === sessionKey && host.chatRunId === runId) {
+      host.chatRunId = null;
+      host.chatStream = null;
+    }
+    scheduleChatScroll(host as unknown as Parameters<typeof scheduleChatScroll>[0], true);
+    void flushChatQueue(host);
+  } catch {
+    // This is only a missed-event recovery path. Normal chat event handling still
+    // owns user-visible errors.
+  }
 }
 
 export async function retryFailedChatMessage(host: ChatHost, failedRunId: string) {

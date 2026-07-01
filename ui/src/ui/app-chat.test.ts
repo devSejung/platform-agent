@@ -37,7 +37,7 @@ async function loadChatHelpers(params?: { reload?: boolean }): Promise<void> {
 }
 
 function makeHost(overrides?: Partial<ChatHost>): ChatHost {
-  return {
+  const host = {
     client: null,
     chatMessages: [],
     chatStream: null,
@@ -59,8 +59,13 @@ function makeHost(overrides?: Partial<ChatHost>): ChatHost {
     chatModelCatalog: [],
     refreshSessionsAfterChat: new Set<string>(),
     updateComplete: Promise.resolve(),
+    toolStreamById: new Map(),
+    toolStreamOrder: [],
+    chatToolMessages: [],
+    chatStreamSegments: [],
     ...overrides,
   };
+  return host as ChatHost;
 }
 
 function createDeferred<T>() {
@@ -344,6 +349,79 @@ describe("handleSendChat", () => {
       value: "openai/gpt-5-mini",
     });
     expect(onSlashAction).toHaveBeenCalledWith("refresh-tools-effective");
+  });
+
+  it("reloads chat history when agent.wait finishes after a missed final event", async () => {
+    const request = vi.fn(async (method: string, params?: Record<string, unknown>) => {
+      if (method === "chat.send") {
+        return { runId: params?.idempotencyKey, status: "started" };
+      }
+      if (method === "agent.wait") {
+        return { runId: params?.runId, status: "done" };
+      }
+      if (method === "chat.history") {
+        return {
+          messages: [{ role: "assistant", content: [{ type: "text", text: "done" }] }],
+          thinkingLevel: null,
+        };
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    const host = makeHost({
+      client: { request } as unknown as ChatHost["client"],
+      chatMessage: "hello",
+      sessionKey: "agent:main:main",
+    });
+
+    await handleSendChat(host);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(request).toHaveBeenCalledWith("agent.wait", {
+      runId: expect.any(String),
+      timeoutMs: 600_000,
+    });
+    expect(request).toHaveBeenCalledWith("chat.history", {
+      sessionKey: "agent:main:main",
+      limit: 200,
+    });
+    expect(host.chatMessages).toEqual([
+      { role: "assistant", content: [{ type: "text", text: "done" }] },
+    ]);
+    expect(host.chatRunId).toBeNull();
+  });
+
+  it("does not reload history from agent.wait when the final event already cleared the run", async () => {
+    const wait = createDeferred<{ runId?: unknown; status: string }>();
+    let runId: string | null = null;
+    const request = vi.fn((method: string, params?: Record<string, unknown>) => {
+      if (method === "chat.send") {
+        runId = String(params?.idempotencyKey ?? "");
+        return Promise.resolve({ runId, status: "started" });
+      }
+      if (method === "agent.wait") {
+        return wait.promise;
+      }
+      if (method === "chat.history") {
+        return Promise.resolve({
+          messages: [{ role: "assistant", content: [{ type: "text", text: "done" }] }],
+          thinkingLevel: null,
+        });
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    const host = makeHost({
+      client: { request } as unknown as ChatHost["client"],
+      chatMessage: "hello",
+      sessionKey: "agent:main:main",
+    });
+
+    await handleSendChat(host);
+    expect(runId).toBeTruthy();
+    host.chatRunId = null;
+    wait.resolve({ runId, status: "done" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(request).not.toHaveBeenCalledWith("chat.history", expect.anything());
   });
 
   it("shows a visible pending item for /steer on the active run", async () => {

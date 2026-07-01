@@ -106,6 +106,73 @@ describe("sessionsCommand", () => {
     expect(group?.totalTokensFresh).toBe(false);
   });
 
+  it("preserves lineage metadata in JSON output", async () => {
+    const startedAt = Date.now() - 20 * 60_000;
+    const endedAt = Date.now() - 5 * 60_000;
+    const store = writeStore(
+      {
+        "agent:main:dashboard:child": {
+          sessionId: "child-session",
+          sessionFile: "/tmp/openclaw/child-session.jsonl",
+          updatedAt: endedAt,
+          spawnedBy: "agent:main:dashboard:parent",
+          spawnedWorkspaceDir: "/tmp/openclaw/workspace-main",
+          parentSessionKey: "agent:main:dashboard:parent",
+          forkedFromParent: true,
+          spawnDepth: 1,
+          subagentRole: "leaf",
+          subagentControlScope: "none",
+          startedAt,
+          endedAt,
+          runtimeMs: 15 * 60_000,
+          label: "Investigation",
+          displayName: "Investigation",
+          status: "done",
+          model: "pi:opus",
+        },
+      },
+      "sessions-lineage",
+    );
+
+    const payload = await runSessionsJson<{
+      sessions?: Array<{
+        key: string;
+        sessionFile?: string;
+        spawnedBy?: string;
+        spawnedWorkspaceDir?: string;
+        parentSessionKey?: string;
+        forkedFromParent?: boolean;
+        spawnDepth?: number;
+        subagentRole?: string;
+        subagentControlScope?: string;
+        startedAt?: number;
+        endedAt?: number;
+        runtimeMs?: number;
+        label?: string;
+        displayName?: string;
+        status?: string;
+      }>;
+    }>(sessionsCommand, store);
+
+    expect(payload.sessions?.[0]).toMatchObject({
+      key: "agent:main:dashboard:child",
+      sessionFile: "/tmp/openclaw/child-session.jsonl",
+      spawnedBy: "agent:main:dashboard:parent",
+      spawnedWorkspaceDir: "/tmp/openclaw/workspace-main",
+      parentSessionKey: "agent:main:dashboard:parent",
+      forkedFromParent: true,
+      spawnDepth: 1,
+      subagentRole: "leaf",
+      subagentControlScope: "none",
+      startedAt,
+      endedAt,
+      runtimeMs: 15 * 60_000,
+      label: "Investigation",
+      displayName: "Investigation",
+      status: "done",
+    });
+  });
+
   it("applies --active filtering in JSON output", async () => {
     const store = writeStore(
       {

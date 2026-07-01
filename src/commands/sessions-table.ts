@@ -12,6 +12,20 @@ export type SessionDisplayRow = {
   updatedAt: number | null;
   ageMs: number | null;
   sessionId?: string;
+  sessionFile?: string;
+  spawnedBy?: string;
+  spawnedWorkspaceDir?: string;
+  parentSessionKey?: string;
+  forkedFromParent?: boolean;
+  spawnDepth?: number;
+  subagentRole?: "orchestrator" | "leaf";
+  subagentControlScope?: "children" | "none";
+  startedAt?: number;
+  endedAt?: number;
+  runtimeMs?: number;
+  label?: string;
+  displayName?: string;
+  status?: "running" | "done" | "failed" | "killed" | "timeout";
   systemSent?: boolean;
   abortedLastRun?: boolean;
   thinkingLevel?: string;
@@ -48,6 +62,20 @@ export function toSessionDisplayRows(store: Record<string, SessionEntry>): Sessi
         updatedAt,
         ageMs: updatedAt ? Date.now() - updatedAt : null,
         sessionId: entry?.sessionId,
+        sessionFile: entry?.sessionFile,
+        spawnedBy: entry?.spawnedBy,
+        spawnedWorkspaceDir: entry?.spawnedWorkspaceDir,
+        parentSessionKey: entry?.parentSessionKey,
+        forkedFromParent: entry?.forkedFromParent,
+        spawnDepth: entry?.spawnDepth,
+        subagentRole: entry?.subagentRole,
+        subagentControlScope: entry?.subagentControlScope,
+        startedAt: entry?.startedAt,
+        endedAt: entry?.endedAt,
+        runtimeMs: entry?.runtimeMs,
+        label: entry?.label,
+        displayName: entry?.displayName,
+        status: entry?.status,
         systemSent: entry?.systemSent,
         abortedLastRun: entry?.abortedLastRun,
         thinkingLevel: entry?.thinkingLevel,

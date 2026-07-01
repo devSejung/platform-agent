@@ -235,6 +235,51 @@ describe("noteMemorySearchHealth", () => {
     expect(message).toContain("bun install -g @tobilu/qmd");
   });
 
+  it("allows memory search lint callers to collect notes without probing qmd", async () => {
+    const notes: string[] = [];
+    resolveActiveMemoryBackendConfig.mockReturnValue({
+      backend: "qmd",
+      citations: "auto",
+      qmd: { command: "qmd" },
+    });
+    resolveMemorySearchConfig.mockReturnValue({
+      provider: "auto",
+      local: {},
+      remote: {},
+    });
+
+    await noteMemorySearchHealth(cfg, {
+      skipQmdBinaryProbe: true,
+      noteFn: (message) => {
+        notes.push(String(message));
+      },
+    });
+
+    expect(checkQmdBinaryAvailability).not.toHaveBeenCalled();
+    expect(note).not.toHaveBeenCalled();
+    expect(notes).toEqual([]);
+  });
+
+  it("allows memory search lint callers to collect provider notes", async () => {
+    const notes: string[] = [];
+    resolveMemorySearchConfig.mockReturnValue({
+      provider: "gemini",
+      local: {},
+      remote: {},
+    });
+
+    await noteMemorySearchHealth(cfg, {
+      noteFn: (message) => {
+        notes.push(String(message));
+      },
+    });
+
+    expect(note).not.toHaveBeenCalled();
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain('provider is set to "gemini"');
+    expect(notes[0]).toContain("GEMINI_API_KEY");
+  });
+
   it("does not warn when remote apiKey is configured for explicit provider", async () => {
     await expectNoWarningWithConfiguredRemoteApiKey("openai");
   });

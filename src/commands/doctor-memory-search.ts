@@ -180,15 +180,18 @@ export async function noteMemorySearchHealth(
       ready: boolean;
       error?: string;
     };
+    noteFn?: typeof note;
+    skipQmdBinaryProbe?: boolean;
   },
 ): Promise<void> {
+  const noteFn = opts?.noteFn ?? note;
   const agentId = resolveDefaultAgentId(cfg);
   const agentDir = resolveAgentDir(cfg, agentId);
   const resolved = resolveMemorySearchConfig(cfg, agentId);
   const hasRemoteApiKey = hasConfiguredMemorySecretInput(resolved?.remote?.apiKey);
 
   if (!resolved) {
-    note("Memory search is explicitly disabled (enabled: false).", "Memory search");
+    noteFn("Memory search is explicitly disabled (enabled: false).", "Memory search");
     return;
   }
 
@@ -196,32 +199,34 @@ export async function noteMemorySearchHealth(
   // separate embedding provider is needed. Skip the provider check entirely.
   const backendConfig = resolveActiveMemoryBackendConfig({ cfg, agentId });
   if (!backendConfig) {
-    note("No active memory plugin is registered for the current config.", "Memory search");
+    noteFn("No active memory plugin is registered for the current config.", "Memory search");
     return;
   }
   if (backendConfig.backend === "qmd") {
-    const qmdCheck = await checkQmdBinaryAvailability({
-      command: backendConfig.qmd?.command ?? "qmd",
-      env: process.env,
-      cwd: resolveAgentWorkspaceDir(cfg, agentId),
-    });
-    if (!qmdCheck.available) {
-      note(
-        [
-          `QMD memory backend is configured, but the qmd binary could not be started (${backendConfig.qmd?.command ?? "qmd"}).`,
-          qmdCheck.error ? `Probe error: ${qmdCheck.error}` : null,
-          "",
-          "Fix (pick one):",
-          "- Install the supported QMD package: npm install -g @tobilu/qmd (or bun install -g @tobilu/qmd)",
-          `- Set an explicit binary path: ${formatCliCommand("openclaw config set memory.qmd.command /absolute/path/to/qmd")}`,
-          `- Or switch back to builtin memory: ${formatCliCommand("openclaw config set memory.backend builtin")}`,
-          "",
-          `Verify: ${formatCliCommand("openclaw memory status --deep")}`,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        "Memory search",
-      );
+    if (opts?.skipQmdBinaryProbe !== true) {
+      const qmdCheck = await checkQmdBinaryAvailability({
+        command: backendConfig.qmd?.command ?? "qmd",
+        env: process.env,
+        cwd: resolveAgentWorkspaceDir(cfg, agentId),
+      });
+      if (!qmdCheck.available) {
+        noteFn(
+          [
+            `QMD memory backend is configured, but the qmd binary could not be started (${backendConfig.qmd?.command ?? "qmd"}).`,
+            qmdCheck.error ? `Probe error: ${qmdCheck.error}` : null,
+            "",
+            "Fix (pick one):",
+            "- Install the supported QMD package: npm install -g @tobilu/qmd (or bun install -g @tobilu/qmd)",
+            `- Set an explicit binary path: ${formatCliCommand("openclaw config set memory.qmd.command /absolute/path/to/qmd")}`,
+            `- Or switch back to builtin memory: ${formatCliCommand("openclaw config set memory.backend builtin")}`,
+            "",
+            `Verify: ${formatCliCommand("openclaw memory status --deep")}`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+          "Memory search",
+        );
+      }
     }
     return;
   }
@@ -236,7 +241,7 @@ export async function noteMemorySearchHealth(
         // the model download or node-llama-cpp setup may have failed at runtime.
         if (opts?.gatewayMemoryProbe?.checked && !opts.gatewayMemoryProbe.ready) {
           const detail = opts.gatewayMemoryProbe.error?.trim();
-          note(
+          noteFn(
             [
               'Memory search provider is set to "local" and a model path is configured,',
               "but the gateway reports local embeddings are not ready.",
@@ -251,7 +256,7 @@ export async function noteMemorySearchHealth(
         }
         return;
       }
-      note(
+      noteFn(
         [
           'Memory search provider is set to "local" but no local model file was found.',
           "",
@@ -272,7 +277,7 @@ export async function noteMemorySearchHealth(
       return;
     }
     if (opts?.gatewayMemoryProbe?.checked && opts.gatewayMemoryProbe.ready) {
-      note(
+      noteFn(
         [
           `Memory search provider is set to "${resolved.provider}" but the API key was not found in the CLI environment.`,
           "The running gateway reports memory embeddings are ready for the default agent.",
@@ -284,7 +289,7 @@ export async function noteMemorySearchHealth(
     }
     const gatewayProbeWarning = buildGatewayProbeWarning(opts?.gatewayMemoryProbe);
     const envVar = resolvePrimaryMemoryProviderEnvVar(resolved.provider);
-    note(
+    noteFn(
       [
         `Memory search provider is set to "${resolved.provider}" but no API key was found.`,
         `Semantic recall will not work without a valid API key.`,
@@ -316,7 +321,7 @@ export async function noteMemorySearchHealth(
   }
 
   if (opts?.gatewayMemoryProbe?.checked && opts.gatewayMemoryProbe.ready) {
-    note(
+    noteFn(
       [
         'Memory search provider is set to "auto" but the API key was not found in the CLI environment.',
         "The running gateway reports memory embeddings are ready for the default agent.",
@@ -328,7 +333,7 @@ export async function noteMemorySearchHealth(
   }
   const gatewayProbeWarning = buildGatewayProbeWarning(opts?.gatewayMemoryProbe);
 
-  note(
+  noteFn(
     [
       "Memory search is enabled, but no embedding provider is ready.",
       "Semantic recall needs at least one embedding provider.",

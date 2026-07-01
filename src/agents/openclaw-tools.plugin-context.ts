@@ -22,6 +22,7 @@ export type OpenClawPluginToolOptions = {
   allowHostBrowserControl?: boolean;
   sandboxed?: boolean;
   allowGatewaySubagentBinding?: boolean;
+  oneShotCliRun?: boolean;
 };
 
 export function resolveOpenClawPluginToolInputs(params: {
@@ -66,6 +67,7 @@ export function resolveOpenClawPluginToolInputs(params: {
       requesterSenderId: options?.requesterSenderId ?? undefined,
       senderIsOwner: options?.senderIsOwner ?? undefined,
       sandboxed: options?.sandboxed,
+      oneShotCliRun: options?.oneShotCliRun,
     },
     allowGatewaySubagentBinding: options?.allowGatewaySubagentBinding,
   };

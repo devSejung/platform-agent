@@ -101,6 +101,10 @@ export function getMemorySearchManagerMockCalls(): number {
   return getMemorySearchManagerMock.mock.calls.length;
 }
 
+export function getMemorySyncMockCalls(): number {
+  return stubManager.sync.mock.calls.length;
+}
+
 export function getReadAgentMemoryFileMockCalls(): number {
   return readAgentMemoryFileMock.mock.calls.length;
 }

@@ -163,6 +163,8 @@ export type OpenClawPluginToolContext = {
   /** Whether the trusted sender is an owner. */
   senderIsOwner?: boolean;
   sandboxed?: boolean;
+  /** True for short-lived local/CLI runs without a background memory lifecycle. */
+  oneShotCliRun?: boolean;
 };
 
 export type OpenClawPluginToolFactory = (

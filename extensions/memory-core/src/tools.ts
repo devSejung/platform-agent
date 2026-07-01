@@ -144,6 +144,7 @@ async function executeMemoryReadResult<T>(params: {
 export function createMemorySearchTool(options: {
   config?: OpenClawConfig;
   agentSessionKey?: string;
+  oneShotCliRun?: boolean;
 }): AnyAgentTool | null {
   return createMemoryTool({
     options,
@@ -188,6 +189,19 @@ export function createMemorySearchTool(options: {
               minScore,
               sessionKey: options.agentSessionKey,
             });
+            const statusBeforeRetry = memory.manager.status();
+            if (
+              rawResults.length === 0 &&
+              memory.manager.sync &&
+              (statusBeforeRetry.backend !== "qmd" || options.oneShotCliRun === true)
+            ) {
+              await memory.manager.sync({ reason: "search", force: true });
+              rawResults = await memory.manager.search(query, {
+                maxResults,
+                minScore,
+                sessionKey: options.agentSessionKey,
+              });
+            }
             const status = memory.manager.status();
             const decorated = decorateCitations(rawResults, includeCitations);
             const resolved = resolveMemoryBackendConfig({ cfg, agentId });

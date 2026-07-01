@@ -44,6 +44,7 @@ export default definePluginEntry({
         createMemorySearchTool({
           config: ctx.config,
           agentSessionKey: ctx.sessionKey,
+          oneShotCliRun: ctx.oneShotCliRun,
         }),
       { names: ["memory_search"] },
     );

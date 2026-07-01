@@ -116,4 +116,40 @@ describe("lintMemoryWikiVault", () => {
     await expect(fs.readFile(result.reportPath, "utf8")).resolves.toContain("### Contradictions");
     await expect(fs.readFile(result.reportPath, "utf8")).resolves.toContain("### Open Questions");
   });
+
+  it("does not flag wikilink-like text inside code as broken links", async () => {
+    const { rootDir, config } = await createVault({
+      prefix: "memory-wiki-lint-code-links-",
+      config: {
+        vault: { renderMode: "obsidian" },
+      },
+    });
+    await fs.mkdir(path.join(rootDir, "entities"), { recursive: true });
+    await fs.writeFile(
+      path.join(rootDir, "entities", "code.md"),
+      renderWikiMarkdown({
+        frontmatter: {
+          pageType: "entity",
+          id: "entity.code",
+          title: "Code",
+        },
+        body: [
+          "# Code",
+          "",
+          "```bash",
+          "if [[ -f missing-file ]]; then",
+          "  echo ok",
+          "fi",
+          "```",
+          "",
+          "Inline `[[not-a-wiki-link]]` is code too.",
+        ].join("\n"),
+      }),
+      "utf8",
+    );
+
+    const result = await lintMemoryWikiVault(config);
+
+    expect(result.issues.some((issue) => issue.code === "broken-wikilink")).toBe(false);
+  });
 });

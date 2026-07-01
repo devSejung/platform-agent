@@ -17,17 +17,19 @@ function resolveRuntimeCompactionOutcome(params: {
 }
 
 export function handleAutoCompactionStart(ctx: EmbeddedPiSubscribeContext) {
+  const startedAt = Date.now();
   ctx.state.compactionInFlight = true;
+  ctx.state.compactionStartedAt = startedAt;
   ctx.ensureCompactionPromise();
   ctx.log.debug(`embedded run compaction start: runId=${ctx.params.runId}`);
   emitAgentEvent({
     runId: ctx.params.runId,
     stream: "compaction",
-    data: { phase: "start", trigger: "runtime" },
+    data: { phase: "start", trigger: "runtime", startedAt },
   });
   void ctx.params.onAgentEvent?.({
     stream: "compaction",
-    data: { phase: "start", trigger: "runtime" },
+    data: { phase: "start", trigger: "runtime", startedAt },
   });
 
   // Run before_compaction plugin hook (fire-and-forget)
@@ -55,6 +57,7 @@ export function handleAutoCompactionEnd(
   evt: AgentEvent & { willRetry?: unknown; result?: unknown; aborted?: unknown },
 ) {
   ctx.state.compactionInFlight = false;
+  const startedAt = ctx.state.compactionStartedAt ?? undefined;
   const willRetry = Boolean(evt.willRetry);
   // Increment counter whenever compaction actually produced a result,
   // regardless of willRetry.  Overflow-triggered compaction sets willRetry=true
@@ -104,6 +107,7 @@ export function handleAutoCompactionEnd(
       completed: hasResult && !wasAborted,
       outcome,
       trigger: "runtime",
+      ...(startedAt !== undefined ? { startedAt } : {}),
       ...(tokensBefore !== undefined ? { tokensBefore } : {}),
       ...(tokensAfter !== undefined ? { tokensAfter } : {}),
     },
@@ -116,10 +120,14 @@ export function handleAutoCompactionEnd(
       completed: hasResult && !wasAborted,
       outcome,
       trigger: "runtime",
+      ...(startedAt !== undefined ? { startedAt } : {}),
       ...(tokensBefore !== undefined ? { tokensBefore } : {}),
       ...(tokensAfter !== undefined ? { tokensAfter } : {}),
     },
   });
+  if (!willRetry) {
+    ctx.state.compactionStartedAt = null;
+  }
 
   // Run after_compaction plugin hook (fire-and-forget)
   if (!willRetry) {

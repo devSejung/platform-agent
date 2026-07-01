@@ -9,6 +9,7 @@ import {
 } from "./pi-embedded-subscribe.compaction-test-helpers.js";
 import {
   handleAutoCompactionEnd,
+  handleAutoCompactionStart,
   reconcileSessionStoreCompactionCountAfterSuccess,
 } from "./pi-embedded-subscribe.handlers.compaction.js";
 import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
@@ -98,6 +99,36 @@ describe("reconcileSessionStoreCompactionCountAfterSuccess", () => {
 });
 
 describe("handleAutoCompactionEnd", () => {
+  it("emits compaction startedAt through start and end events", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(12_345);
+    const onAgentEvent = vi.fn();
+    const ctx = createCompactionContext({
+      storePath: "",
+      sessionKey: "main",
+      initialCount: 0,
+      onAgentEvent,
+    });
+
+    handleAutoCompactionStart(ctx);
+    handleAutoCompactionEnd(ctx, {
+      type: "auto_compaction_end",
+      result: { kept: 12 },
+      willRetry: true,
+      aborted: false,
+    } as never);
+
+    expect(onAgentEvent).toHaveBeenNthCalledWith(1, {
+      stream: "compaction",
+      data: expect.objectContaining({ phase: "start", startedAt: 12_345 }),
+    });
+    expect(onAgentEvent).toHaveBeenNthCalledWith(2, {
+      stream: "compaction",
+      data: expect.objectContaining({ phase: "end", startedAt: 12_345 }),
+    });
+    vi.useRealTimers();
+  });
+
   it.each([
     {
       label: "successful",

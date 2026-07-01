@@ -132,6 +132,83 @@ describe("deleteSessionsAndRefresh", () => {
 });
 
 describe("loadSessions", () => {
+  it("restores active session run timing from session rows after reload", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.list") {
+        return {
+          ts: 1,
+          path: "(multiple)",
+          count: 1,
+          defaults: {},
+          sessions: [
+            {
+              key: "agent:eon:main",
+              kind: "direct",
+              updatedAt: 10_000,
+              status: "running",
+              startedAt: 4_000,
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request, {
+      sessionKey: "agent:eon:main",
+      runPhaseStatus: null,
+    });
+
+    await loadSessions(state);
+
+    expect(state.runPhaseStatus).toEqual({
+      phase: "running",
+      runId: null,
+      startedAt: 4_000,
+      endedAt: null,
+    });
+  });
+
+  it("does not replace active compaction phase when session rows refresh", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.list") {
+        return {
+          ts: 1,
+          path: "(multiple)",
+          count: 1,
+          defaults: {},
+          sessions: [
+            {
+              key: "agent:eon:main",
+              kind: "direct",
+              updatedAt: 10_000,
+              status: "running",
+              startedAt: 4_000,
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request, {
+      sessionKey: "agent:eon:main",
+      runPhaseStatus: {
+        phase: "preflight_compacting",
+        runId: "run-1",
+        startedAt: 2_000,
+        endedAt: null,
+      },
+    });
+
+    await loadSessions(state);
+
+    expect(state.runPhaseStatus).toEqual({
+      phase: "preflight_compacting",
+      runId: "run-1",
+      startedAt: 2_000,
+      endedAt: null,
+    });
+  });
+
   it("refreshes expanded checkpoint cards when the row summary changes", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "sessions.list") {

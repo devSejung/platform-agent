@@ -456,6 +456,10 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
   const phase = typeof data.phase === "string" ? data.phase : "";
   const outcome = resolveCompactionEventOutcome(data);
   const completed = outcome === "success";
+  const eventStartedAt =
+    typeof data.startedAt === "number" && Number.isFinite(data.startedAt) && data.startedAt > 0
+      ? data.startedAt
+      : undefined;
 
   clearCompactionTimer(host);
 
@@ -463,7 +467,7 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
     host.compactionStatus = {
       phase: "active",
       runId: payload.runId,
-      startedAt: Date.now(),
+      startedAt: eventStartedAt ?? Date.now(),
       completedAt: null,
     };
     ensureCompactionRefreshTimer(host);
@@ -476,7 +480,7 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
       host.compactionStatus = {
         phase: "retrying",
         runId: payload.runId,
-        startedAt: host.compactionStatus?.startedAt ?? Date.now(),
+        startedAt: eventStartedAt ?? host.compactionStatus?.startedAt ?? Date.now(),
         completedAt: null,
         tokensBefore:
           typeof data.tokensBefore === "number" && Number.isFinite(data.tokensBefore)
@@ -494,7 +498,7 @@ export function handleCompactionEvent(host: CompactionHost, payload: AgentEventP
       host.compactionStatus = {
         phase: "complete",
         runId: payload.runId,
-        startedAt: host.compactionStatus?.startedAt ?? null,
+        startedAt: eventStartedAt ?? host.compactionStatus?.startedAt ?? null,
         completedAt: Date.now(),
         tokensBefore:
           typeof data.tokensBefore === "number" && Number.isFinite(data.tokensBefore)

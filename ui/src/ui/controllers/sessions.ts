@@ -1,6 +1,8 @@
 import { toNumber } from "../format.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
+import type { RunPhaseStatus } from "../app-tool-stream.ts";
 import type {
+  GatewaySessionRow,
   SessionCompactionCheckpoint,
   SessionsCompactionBranchResult,
   SessionsCompactionListResult,
@@ -28,6 +30,8 @@ export type SessionsState = {
   sessionsCheckpointLoadingKey: string | null;
   sessionsCheckpointBusyKey: string | null;
   sessionsCheckpointErrorByKey: Record<string, string>;
+  sessionKey?: string;
+  runPhaseStatus?: RunPhaseStatus | null;
 };
 
 type SessionsLoadOverrides = {
@@ -68,6 +72,35 @@ function invalidateCheckpointCacheForKey(state: SessionsState, key: string) {
   delete nextErrors[key];
   state.sessionsCheckpointItemsByKey = nextItems;
   state.sessionsCheckpointErrorByKey = nextErrors;
+}
+
+function restoreActiveSessionRunPhase(state: SessionsState, row?: GatewaySessionRow) {
+  const existing = state.runPhaseStatus;
+  if (
+    row?.status === "running" &&
+    typeof row.startedAt === "number" &&
+    Number.isFinite(row.startedAt) &&
+    row.startedAt > 0
+  ) {
+    if (
+      existing?.phase === "preflight_compacting" ||
+      existing?.phase === "memory_flushing" ||
+      existing?.phase === "queued"
+    ) {
+      return;
+    }
+    state.runPhaseStatus = {
+      phase: "running",
+      runId: null,
+      startedAt: row.startedAt,
+      endedAt: null,
+    };
+    return;
+  }
+
+  if (existing?.runId === null && existing.phase === "running") {
+    state.runPhaseStatus = null;
+  }
 }
 
 async function fetchSessionCompactionCheckpoints(state: SessionsState, key: string) {
@@ -147,6 +180,10 @@ export async function loadSessions(
     const res = await state.client.request<SessionsListResult | undefined>("sessions.list", params);
     if (res) {
       state.sessionsResult = res;
+      const activeRow = state.sessionKey
+        ? res.sessions.find((row) => row.key === state.sessionKey)
+        : undefined;
+      restoreActiveSessionRunPhase(state, activeRow);
       const nextKeys = new Set(res.sessions.map((row) => row.key));
       for (const key of Object.keys(state.sessionsCheckpointItemsByKey)) {
         if (!nextKeys.has(key)) {

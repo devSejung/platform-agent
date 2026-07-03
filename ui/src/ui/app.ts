@@ -207,6 +207,7 @@ export class OpenClawApp extends LitElement {
   @state() employeeLoginSubmitting = false;
   @state() employeeUi = {
     docsUrl: null as string | null,
+    vocUrl: null as string | null,
     announcementTitle: null as string | null,
     announcementBody: null as string | null,
     announcementLinkLabel: null as string | null,

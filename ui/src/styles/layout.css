@@ -273,6 +273,57 @@
     transform var(--duration-fast) ease;
 }
 
+.topbar-voc-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, #0f7c72 38%, var(--border) 62%);
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 30% 28%, color-mix(in srgb, #8bf5de 22%, transparent), transparent 42%),
+    linear-gradient(180deg, color-mix(in srgb, #0f7c72 12%, var(--bg-elevated)), var(--bg-elevated));
+  color: #0f7c72;
+  text-decoration: none;
+  box-sizing: border-box;
+  transition:
+    border-color var(--duration-fast) ease,
+    background var(--duration-fast) ease,
+    color var(--duration-fast) ease,
+    transform var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease;
+}
+
+.topbar-voc-link:hover {
+  border-color: color-mix(in srgb, #0f7c72 60%, var(--border) 40%);
+  background:
+    radial-gradient(circle at 30% 28%, color-mix(in srgb, #9ff7e5 30%, transparent), transparent 44%),
+    linear-gradient(180deg, color-mix(in srgb, #0f7c72 18%, var(--bg-hover)), var(--bg-elevated));
+  color: #0b6a61;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #0f7c72 14%, transparent);
+  transform: translateY(-1px);
+}
+
+.topbar-voc-link__icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+.topbar-voc-link__icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+}
+
 .topbar-dashboard-link:hover {
   border-color: color-mix(in srgb, var(--border-strong) 90%, transparent);
   background: color-mix(in srgb, var(--bg-hover) 84%, transparent);
@@ -394,8 +445,44 @@
   overflow: visible;
 }
 
-.topbar-dashboard-link__label {
-  white-space: nowrap;
+.topbar-voc-link {
+  min-width: 38px;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 9999px;
+  letter-spacing: 0.06em;
+}
+
+.topbar-voc-link--report {
+  border-color: color-mix(in srgb, #d97706 42%, var(--border));
+  background: color-mix(in srgb, #d97706 14%, var(--bg-elevated));
+  color: #d97706;
+  box-shadow: 0 0 0 1px color-mix(in srgb, #d97706 12%, transparent) inset;
+}
+
+.topbar-voc-link--report:hover {
+  border-color: color-mix(in srgb, #d97706 60%, var(--border));
+  background: color-mix(in srgb, #d97706 20%, var(--bg-hover));
+  color: #b45309;
+}
+
+.topbar-voc-link__icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+}
+
+.topbar-voc-link__icon svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .topbar-theme-mode {

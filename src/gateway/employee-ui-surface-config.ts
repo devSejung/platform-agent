@@ -10,6 +10,7 @@ const DEFAULT_EMPLOYEE_UI_EXTRA_FILENAME = "employee-ui.extra.json";
 
 type EmployeeUiSurfaceExtraFile = {
   docsUrl?: unknown;
+  vocUrl?: unknown;
   announcement?: {
     title?: unknown;
     body?: unknown;
@@ -41,6 +42,7 @@ function normalizeSurfaceConfigExtra(value: unknown): EmployeeUiSurfaceConfig | 
   }
   const parsed = value as EmployeeUiSurfaceExtraFile;
   const docsUrl = trimOptionalString(parsed.docsUrl);
+  const vocUrl = trimOptionalString(parsed.vocUrl);
   const announcement: EmployeeUiAnnouncement = {
     title:
       trimOptionalString(parsed.announcement?.title) ??
@@ -57,11 +59,12 @@ function normalizeSurfaceConfigExtra(value: unknown): EmployeeUiSurfaceConfig | 
   const hasAnnouncement = Boolean(
     announcement.title || announcement.body || announcement.linkLabel || announcement.linkUrl,
   );
-  if (!docsUrl && !hasAnnouncement) {
+  if (!docsUrl && !vocUrl && !hasAnnouncement) {
     return undefined;
   }
   return {
     ...(docsUrl ? { docsUrl } : {}),
+    ...(vocUrl ? { vocUrl } : {}),
     ...(hasAnnouncement ? { announcement } : {}),
   };
 }
@@ -122,11 +125,12 @@ function resolveConfigSurfaceConfig(config: OpenClawConfig): EmployeeUiSurfaceCo
   const hasAnnouncement = Boolean(
     announcement.title || announcement.body || announcement.linkLabel || announcement.linkUrl,
   );
-  if (!docsUrl && !hasAnnouncement) {
+  if (!docsUrl && !vocUrl && !hasAnnouncement) {
     return undefined;
   }
   return {
     ...(docsUrl ? { docsUrl } : {}),
+    ...(vocUrl ? { vocUrl } : {}),
     ...(hasAnnouncement ? { announcement } : {}),
   };
 }

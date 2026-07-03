@@ -15,6 +15,7 @@ export type EmployeeBootstrapState = {
   password: string;
   employeeUi: {
     docsUrl: string | null;
+    vocUrl: string | null;
     announcementTitle: string | null;
     announcementBody: string | null;
     announcementLinkLabel: string | null;
@@ -57,6 +58,7 @@ export async function loadEmployeeBootstrap(
     const parsed = (await res.json()) as EmployeeUiBootstrapResponse;
     state.employeeUi = {
       docsUrl: parsed.ui?.docsUrl?.trim() || null,
+      vocUrl: parsed.ui?.vocUrl?.trim() || null,
       announcementTitle: parsed.ui?.announcement?.title?.trim() || null,
       announcementBody: parsed.ui?.announcement?.body?.trim() || null,
       announcementLinkLabel: parsed.ui?.announcement?.linkLabel?.trim() || null,

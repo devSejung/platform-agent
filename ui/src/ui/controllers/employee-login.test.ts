@@ -13,6 +13,7 @@ function createEmployeeLoginState(): EmployeeLoginState {
     password: "",
     employeeUi: {
       docsUrl: null,
+      vocUrl: null,
       announcementTitle: null,
       announcementBody: null,
       announcementLinkLabel: null,

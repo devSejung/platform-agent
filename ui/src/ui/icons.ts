@@ -96,6 +96,21 @@ export const icons = {
       <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
     </svg>
   `,
+  flag: html`
+    <svg viewBox="0 0 24 24">
+      <path d="M4 21V4" />
+      <path d="M4 5c3-1 5-1 8 0s5 1 8 0v10c-3 1-5 1-8 0s-5-1-8 0" />
+      <path d="M4 5v16" />
+    </svg>
+  `,
+  headset: html`
+    <svg viewBox="0 0 24 24">
+      <path d="M4 12a8 8 0 0 1 16 0" />
+      <path d="M4 12v4a2 2 0 0 0 2 2h1v-6H6a2 2 0 0 0-2 2Z" />
+      <path d="M20 12v4a2 2 0 0 1-2 2h-1v-6h1a2 2 0 0 1 2 2Z" />
+      <path d="M9 18a3 3 0 0 0 3 3h2a2 2 0 0 0 2-2v-1" />
+    </svg>
+  `,
   scrollText: html`
     <svg viewBox="0 0 24 24">
       <path d="M8 21h12a2 2 0 0 0 2-2v-2H10v2a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v3h4" />

@@ -455,6 +455,10 @@ function resolveWorkspaceDocsUrl(state: AppViewState): string | null {
   return configDocsUrl ?? state.employeeUi.docsUrl;
 }
 
+function resolveWorkspaceVocUrl(state: AppViewState): string | null {
+  return state.employeeUi.vocUrl;
+}
+
 function renderEmployeeLoginNotice(state: AppViewState) {
   if (!state.employeeMode || !state.employeeLoginNotice) {
     return nothing;
@@ -1950,6 +1954,20 @@ export function renderApp(state: AppViewState) {
               <span class="topbar-search__label">${t("common.search")}</span>
               <kbd class="topbar-search__kbd">⌘K</kbd>
             </button>
+            ${resolveWorkspaceVocUrl(state)
+              ? html`
+                  <a
+                    href=${resolveWorkspaceVocUrl(state)!}
+                    class="topbar-voc-link topbar-voc-link--report"
+                    target="_blank"
+                    rel=${buildExternalLinkRel()}
+                    title="불만 접수"
+                    aria-label="불만 접수"
+                  >
+                    <span class="topbar-voc-link__icon" aria-hidden="true">${icons.headset}</span>
+                  </a>
+                `
+              : nothing}
             <a
               href=${dashboardHref}
               class="topbar-dashboard-link ${state.tab === "dashboard"

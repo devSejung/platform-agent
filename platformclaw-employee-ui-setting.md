@@ -30,6 +30,7 @@ Employee UI에서 보이는 다음 정보는 OpenClaw 본체 설정과 분리해
 별도 파일로 빼는 값:
 
 - `docsUrl`
+- `vocUrl`
 - `announcement.title`
 - `announcement.body`
 - `announcement.linkLabel`
@@ -78,6 +79,7 @@ Employee UI에서 보이는 다음 정보는 OpenClaw 본체 설정과 분리해
 ```json
 {
   "docsUrl": "https://intranet.company.example/platformclaw/help",
+  "vocUrl": "https://jira.company.example/browse/SOCPE-75195",
   "announcement": {
     "title": "Scheduled maintenance",
     "body": "PlatformClaw will be read-only on April 12 from 22:00 to 23:00 KST.",
@@ -96,8 +98,8 @@ Employee UI에서 보이는 다음 정보는 OpenClaw 본체 설정과 분리해
 | 필드 | 필수 | 설명 |
 | --- | --- | --- |
 | `docsUrl` | 아니오 | Employee UI 도움말/문서 링크 |
+| `vocUrl` | 아니오 | 불만 접수/신고 링크 |
 | `announcement.title` | 아니오 | 공지 제목 |
-| `announcement.body` | 아니오 | 공지 본문 |
 | `announcement.linkLabel` | 아니오 | 공지 링크 버튼 라벨 |
 | `announcement.linkUrl` | 아니오 | 공지 링크 URL |
 

@@ -66,6 +66,7 @@ export type AppViewState = {
   employeeLoginSubmitting: boolean;
   employeeUi: {
     docsUrl: string | null;
+    vocUrl: string | null;
     announcementTitle: string | null;
     announcementBody: string | null;
     announcementLinkLabel: string | null;

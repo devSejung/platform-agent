@@ -284,7 +284,20 @@
     justify-content: center;
   }
 
-  .topbar-dashboard-link__label {
+  .topbar-voc-link {
+    min-width: 38px;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+  }
+
+  .topbar-voc-link__icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .topbar-dashboard-link__label,
+  .topbar-voc-link__label {
     display: none;
   }
 

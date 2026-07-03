@@ -19,6 +19,7 @@ export type EmployeeUiAnnouncement = {
 
 export type EmployeeUiSurfaceConfig = {
   docsUrl?: string;
+  vocUrl?: string;
   announcement?: EmployeeUiAnnouncement;
 };
 

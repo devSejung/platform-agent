@@ -153,6 +153,7 @@ function createHost() {
     execApprovalQueue: [],
     execApprovalError: null,
     updateAvailable: null,
+    updateComplete: Promise.resolve(),
   } as unknown as Parameters<typeof connectGateway>[0];
 }
 
@@ -607,6 +608,31 @@ describe("connectGateway", () => {
       includeGlobal: undefined,
       includeUnknown: undefined,
       activeMinutes: 120,
+    });
+  });
+
+  it("refreshes employee session metadata without active-minute filtering after finals", async () => {
+    const { host, client } = connectHostGateway();
+    host.employeeMode = true;
+    client.emitHello();
+    host.chatRunId = "run-usage";
+
+    client.emitEvent({
+      event: "chat",
+      payload: {
+        state: "final",
+        runId: "run-usage",
+        sessionKey: "main",
+        message: { role: "assistant", content: [{ type: "text", text: "done" }] },
+      },
+    });
+    for (let i = 0; i < 5; i += 1) {
+      await Promise.resolve();
+    }
+
+    expect(client.request).toHaveBeenCalledWith("sessions.list", {
+      includeGlobal: false,
+      includeUnknown: false,
     });
   });
 

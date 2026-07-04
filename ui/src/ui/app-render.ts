@@ -456,7 +456,11 @@ function resolveWorkspaceDocsUrl(state: AppViewState): string | null {
 }
 
 function resolveWorkspaceVocUrl(state: AppViewState): string | null {
-  return state.employeeUi.vocUrl;
+  const configVocUrl = trimStringOrNull(
+    (state.configSnapshot?.config as { gateway?: { controlUi?: { vocUrl?: unknown } } } | null)
+      ?.gateway?.controlUi?.vocUrl,
+  );
+  return configVocUrl ?? state.employeeUi.vocUrl;
 }
 
 function renderEmployeeLoginNotice(state: AppViewState) {
@@ -1967,6 +1971,7 @@ export function renderApp(state: AppViewState) {
                     aria-label="불만 접수"
                   >
                     <span class="topbar-voc-link__icon" aria-hidden="true">${icons.headset}</span>
+                    <span class="topbar-voc-link__label">VOC</span>
                   </a>
                 `
               : nothing}

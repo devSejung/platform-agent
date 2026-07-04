@@ -230,7 +230,10 @@ async function refreshChatHistoryWhenRunTerminal(
     }
     await loadChatHistory(host as unknown as OpenClawApp);
     await loadSessions(host as unknown as OpenClawApp, {
-      activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
+      activeMinutes: host.employeeMode ? 0 : CHAT_SESSIONS_ACTIVE_MINUTES,
+      limit: host.employeeMode ? 0 : undefined,
+      includeGlobal: host.employeeMode ? false : undefined,
+      includeUnknown: host.employeeMode ? false : undefined,
       rerunIfLoading: true,
     });
     if (host.sessionKey === sessionKey && host.chatRunId === runId) {
@@ -528,8 +531,8 @@ export async function refreshChat(host: ChatHost, opts?: { scheduleScroll?: bool
     loadSessions(host as unknown as OpenClawApp, {
       activeMinutes: 0,
       limit: 0,
-      includeGlobal: true,
-      includeUnknown: true,
+      includeGlobal: !host.employeeMode,
+      includeUnknown: !host.employeeMode,
     }),
     refreshChatAvatar(host),
     refreshChatModels(host),

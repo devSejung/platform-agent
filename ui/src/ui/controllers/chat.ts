@@ -482,7 +482,19 @@ export function handleChatEvent(state: ChatState, payload?: ChatEventPayload) {
       if (finalMessage && !isAssistantSilentReply(finalMessage)) {
         state.chatMessages = [...state.chatMessages, finalMessage];
         replaceCachedChatMessages(state, state.sessionKey, state.chatMessages);
+        if (!state.chatStream?.trim()) {
+          state.chatStream = null;
+          state.chatRunId = null;
+          state.chatStreamStartedAt = null;
+          return "final";
+        }
         return null;
+      }
+      if (!state.chatStream?.trim()) {
+        state.chatStream = null;
+        state.chatRunId = null;
+        state.chatStreamStartedAt = null;
+        return "final";
       }
       return "final";
     }

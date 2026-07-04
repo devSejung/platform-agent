@@ -152,6 +152,28 @@ describe("employee mode", () => {
     expect(app.querySelector(".topbar-skillhub-link--active")).not.toBeNull();
   });
 
+  it("shows the employee VOC shortcut when the surface config provides a URL", async () => {
+    const app = mountConnectedEmployeeApp();
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.employeeUi = {
+      ...app.employeeUi,
+      vocUrl: "https://voc.company.example/intake",
+    };
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const link = app.querySelector<HTMLAnchorElement>(".topbar-voc-link");
+    expect(link).not.toBeNull();
+    expect(link?.href).toBe("https://voc.company.example/intake");
+    expect(link?.textContent).toContain("VOC");
+  });
+
   it("collapses employee sidebar sections independently", async () => {
     const app = mountConnectedEmployeeApp();
     app.employeeProfile = {

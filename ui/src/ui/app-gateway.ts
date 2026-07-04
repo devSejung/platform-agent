@@ -388,7 +388,10 @@ function handleTerminalChatEvent(
     host.refreshSessionsAfterChat.delete(runId);
     if (state === "final") {
       void loadSessions(host as unknown as OpenClawApp, {
-        activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
+        activeMinutes: host.employeeMode ? 0 : CHAT_SESSIONS_ACTIVE_MINUTES,
+        limit: host.employeeMode ? 0 : undefined,
+        includeGlobal: host.employeeMode ? false : undefined,
+        includeUnknown: host.employeeMode ? false : undefined,
         rerunIfLoading: true,
       });
       sessionsRefreshed = true;
@@ -396,7 +399,10 @@ function handleTerminalChatEvent(
   }
   if (state === "final" && !sessionsRefreshed) {
     void loadSessions(host as unknown as OpenClawApp, {
-      activeMinutes: CHAT_SESSIONS_ACTIVE_MINUTES,
+      activeMinutes: host.employeeMode ? 0 : CHAT_SESSIONS_ACTIVE_MINUTES,
+      limit: host.employeeMode ? 0 : undefined,
+      includeGlobal: host.employeeMode ? false : undefined,
+      includeUnknown: host.employeeMode ? false : undefined,
       rerunIfLoading: true,
     });
   }
@@ -472,7 +478,17 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
   }
 
   if (evt.event === "sessions.changed") {
-    void loadSessions(host as unknown as OpenClawApp);
+    if (host.employeeMode) {
+      void loadSessions(host as unknown as OpenClawApp, {
+        activeMinutes: 0,
+        limit: 0,
+        includeGlobal: false,
+        includeUnknown: false,
+        rerunIfLoading: true,
+      });
+    } else {
+      void loadSessions(host as unknown as OpenClawApp);
+    }
     return;
   }
 

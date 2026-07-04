@@ -122,6 +122,28 @@ describe("handleGatewayEvent sessions.changed", () => {
     expect(loadSessionsMock).toHaveBeenCalledTimes(1);
     expect(loadSessionsMock).toHaveBeenCalledWith(host);
   });
+
+  it("reloads employee sessions without narrowing the sidebar list", () => {
+    loadSessionsMock.mockReset();
+    const host = createHost();
+    host.employeeMode = true;
+
+    handleGatewayEvent(host, {
+      type: "event",
+      event: "sessions.changed",
+      payload: { sessionKey: "agent:eon:dashboard:alpha", reason: "patch" },
+      seq: 1,
+    });
+
+    expect(loadSessionsMock).toHaveBeenCalledTimes(1);
+    expect(loadSessionsMock).toHaveBeenCalledWith(host, {
+      activeMinutes: 0,
+      limit: 0,
+      includeGlobal: false,
+      includeUnknown: false,
+      rerunIfLoading: true,
+    });
+  });
 });
 
 describe("addExecApproval", () => {

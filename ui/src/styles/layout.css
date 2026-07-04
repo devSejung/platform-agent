@@ -277,10 +277,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 7px;
   min-width: 38px;
-  width: 38px;
   height: 38px;
-  padding: 0;
+  padding: 0 13px;
   border: 1px solid color-mix(in srgb, #0f7c72 38%, var(--border) 62%);
   border-radius: 9999px;
   background:
@@ -446,12 +446,14 @@
 }
 
 .topbar-voc-link {
-  min-width: 38px;
-  width: 38px;
+  min-width: 0;
   height: 38px;
-  padding: 0;
+  padding: 0 13px;
   border-radius: 9999px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
 }
 
 .topbar-voc-link--report {
@@ -483,6 +485,12 @@
   stroke-width: 1.75px;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.topbar-voc-link__label {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
 }
 
 .topbar-theme-mode {

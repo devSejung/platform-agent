@@ -98,7 +98,7 @@ function restoreActiveSessionRunPhase(state: SessionsState, row?: GatewaySession
     return;
   }
 
-  if (existing?.runId === null && existing.phase === "running") {
+  if (row && existing?.phase === "running") {
     state.runPhaseStatus = null;
   }
 }

@@ -681,6 +681,7 @@ export const OpenClawSchema = z
             basePath: z.string().optional(),
             root: z.string().optional(),
             docsUrl: z.string().optional(),
+            vocUrl: z.string().optional(),
             announcementTitle: z.string().optional(),
             announcementBody: z.string().optional(),
             announcementLinkLabel: z.string().optional(),

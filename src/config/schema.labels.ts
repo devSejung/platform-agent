@@ -259,6 +259,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "gateway.controlUi.basePath": "Control UI Base Path",
   "gateway.controlUi.root": "Control UI Assets Root",
   "gateway.controlUi.docsUrl": "Workspace Docs URL",
+  "gateway.controlUi.vocUrl": "Employee VOC URL",
   "gateway.controlUi.announcementTitle": "Employee Announcement Title",
   "gateway.controlUi.announcementBody": "Employee Announcement Body",
   "gateway.controlUi.announcementLinkLabel": "Employee Announcement Link Label",

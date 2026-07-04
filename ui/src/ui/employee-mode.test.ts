@@ -397,6 +397,7 @@ describe("employee mode", () => {
       (row) => row.textContent?.includes("Alpha Plan"),
     );
     expect(alphaRow).not.toBeNull();
+    const selectSpy = vi.spyOn(HTMLInputElement.prototype, "select");
     alphaRow
       ?.querySelector<HTMLButtonElement>(".employee-chat-session__menu-trigger")
       ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -408,6 +409,12 @@ describe("employee mode", () => {
 
     const input = app.querySelector<HTMLInputElement>(".employee-chat-session__rename-input");
     expect(input).not.toBeNull();
+    await Promise.resolve();
+    expect(selectSpy).toHaveBeenCalledTimes(1);
+    input!.value = "A";
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+    await flushEmployeeApp(app);
+    expect(selectSpy).toHaveBeenCalledTimes(1);
     input!.value = "Alpha Renamed";
     input!.dispatchEvent(new Event("input", { bubbles: true }));
     input!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));

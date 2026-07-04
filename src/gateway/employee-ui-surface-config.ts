@@ -116,6 +116,7 @@ function readSurfaceConfigExtraFile(filePath: string): EmployeeUiSurfaceConfig |
 function resolveConfigSurfaceConfig(config: OpenClawConfig): EmployeeUiSurfaceConfig | undefined {
   const controlUi = config.gateway?.controlUi;
   const docsUrl = trimOptionalString(controlUi?.docsUrl);
+  const vocUrl = trimOptionalString(controlUi?.vocUrl);
   const announcement: EmployeeUiAnnouncement = {
     title: trimOptionalString(controlUi?.announcementTitle),
     body: trimOptionalString(controlUi?.announcementBody),

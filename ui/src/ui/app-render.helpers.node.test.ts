@@ -516,6 +516,12 @@ describe("switchChatSession", () => {
       chatStream: "stream",
       lastError: "oops",
       compactionStatus: { phase: "active" },
+      runPhaseStatus: {
+        phase: "running",
+        runId: "run-1",
+        startedAt: 1,
+        endedAt: null,
+      },
       fallbackStatus: { phase: "active" },
       chatAvatarUrl: "/avatar/old",
       chatQueue: [],
@@ -537,6 +543,7 @@ describe("switchChatSession", () => {
     await switchChatSession(state, "agent:main:test-b");
     await Promise.resolve();
 
+    expect(state.runPhaseStatus).toBeNull();
     expect(refreshChatAvatarMock).toHaveBeenCalledWith(state);
     expect(loadChatHistoryMock).toHaveBeenCalledWith(state);
     expect(loadSessionsMock).toHaveBeenCalledWith(state, {

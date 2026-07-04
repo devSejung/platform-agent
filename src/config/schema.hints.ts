@@ -87,6 +87,7 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
   "gateway.controlUi.basePath": "/openclaw",
   "gateway.controlUi.root": "dist/control-ui",
   "gateway.controlUi.docsUrl": "https://intranet.company.example/platformclaw/help",
+  "gateway.controlUi.vocUrl": "https://intranet.company.example/platformclaw/voc",
   "gateway.controlUi.announcementTitle": "Scheduled maintenance",
   "gateway.controlUi.announcementBody": "PlatformClaw will be read-only on April 12 from 22:00 to 23:00 KST.",
   "gateway.controlUi.announcementLinkLabel": "View notice",

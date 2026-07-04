@@ -378,6 +378,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Optional filesystem root for Control UI assets (defaults to dist/control-ui).",
   "gateway.controlUi.docsUrl":
     "Optional docs/help URL rendered in the web UI sidebar. Leave empty to hide the Docs shortcut entirely.",
+  "gateway.controlUi.vocUrl":
+    "Optional employee VOC/intake URL rendered in the employee UI. Leave empty to hide the VOC shortcut entirely.",
   "gateway.controlUi.announcementTitle":
     "Optional employee-facing announcement title shown on the login screen and inside the employee workspace.",
   "gateway.controlUi.announcementBody":

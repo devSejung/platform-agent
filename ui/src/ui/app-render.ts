@@ -919,8 +919,10 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                             ${ref((el) => {
                               if (el instanceof HTMLInputElement) {
                                 queueMicrotask(() => {
-                                  el.focus();
-                                  el.select();
+                                  if (document.activeElement !== el) {
+                                    el.focus();
+                                    el.select();
+                                  }
                                 });
                               }
                             })}

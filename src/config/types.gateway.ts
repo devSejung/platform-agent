@@ -87,6 +87,8 @@ export type GatewayControlUiConfig = {
   root?: string;
   /** Optional docs/help URL rendered in the web UI. Hidden when omitted. */
   docsUrl?: string;
+  /** Optional employee VOC/intake URL rendered in the employee UI. Hidden when omitted. */
+  vocUrl?: string;
   /** Optional employee announcement title shown in login/workspace. */
   announcementTitle?: string;
   /** Optional employee announcement body shown in login/workspace. */

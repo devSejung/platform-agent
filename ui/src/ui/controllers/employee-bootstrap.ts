@@ -80,12 +80,24 @@ export async function loadEmployeeBootstrap(
     if (!parsed.token || !parsed.agentId || !parsed.sessionKey) {
       throw new Error("employee bootstrap missing required fields");
     }
+    const currentSessionKey = state.sessionKey?.trim() || state.settings.sessionKey;
+    const currentLastActiveSessionKey =
+      state.settings.lastActiveSessionKey?.trim() || currentSessionKey;
+    const shouldPreserveSessionSelection =
+      background &&
+      Boolean(currentSessionKey) &&
+      state.employeeProfile.employeeId === parsed.employeeId &&
+      state.employeeProfile.agentId === parsed.agentId;
+    const nextSessionKey = shouldPreserveSessionSelection ? currentSessionKey : parsed.sessionKey;
+    const nextLastActiveSessionKey = shouldPreserveSessionSelection
+      ? currentLastActiveSessionKey
+      : parsed.sessionKey;
     const nextSettings: UiSettings = {
       ...state.settings,
       gatewayUrl: parsed.gatewayUrl?.trim() || state.settings.gatewayUrl,
       token: "",
-      sessionKey: parsed.sessionKey,
-      lastActiveSessionKey: parsed.sessionKey,
+      sessionKey: nextSessionKey,
+      lastActiveSessionKey: nextLastActiveSessionKey,
     };
     if (typeof state.applySettings === "function") {
       state.applySettings(nextSettings);
@@ -93,10 +105,10 @@ export async function loadEmployeeBootstrap(
       state.settings = nextSettings;
     }
     if (typeof state.sessionKey === "string") {
-      state.sessionKey = parsed.sessionKey;
+      state.sessionKey = nextSessionKey;
     }
     if (typeof state.applySessionKey === "string") {
-      state.applySessionKey = parsed.sessionKey;
+      state.applySessionKey = nextLastActiveSessionKey;
     }
     state.password = "";
     state.employeeProfile = {

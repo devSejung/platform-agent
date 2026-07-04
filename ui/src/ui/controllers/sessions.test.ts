@@ -209,6 +209,41 @@ describe("loadSessions", () => {
     });
   });
 
+  it("clears stale running phase when the active session row is no longer running", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "sessions.list") {
+        return {
+          ts: 1,
+          path: "(multiple)",
+          count: 1,
+          defaults: {},
+          sessions: [
+            {
+              key: "agent:eon:main",
+              kind: "direct",
+              updatedAt: 10_000,
+              status: "idle",
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const state = createState(request, {
+      sessionKey: "agent:eon:main",
+      runPhaseStatus: {
+        phase: "running",
+        runId: "run-1",
+        startedAt: 2_000,
+        endedAt: null,
+      },
+    });
+
+    await loadSessions(state);
+
+    expect(state.runPhaseStatus).toBeNull();
+  });
+
   it("refreshes expanded checkpoint cards when the row summary changes", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "sessions.list") {

@@ -1551,7 +1551,10 @@ export function renderApp(state: AppViewState) {
           loading: state.chatLoading,
           sending: state.chatSending,
           compactionStatus: state.compactionStatus,
-          runPhaseStatus: state.runPhaseStatus,
+          runPhaseStatus:
+            state.employeeMode && state.runPhaseStatus?.phase === "running" && !state.runPhaseStatus.runId
+              ? null
+              : state.runPhaseStatus,
           fallbackStatus: state.fallbackStatus,
           assistantAvatarUrl: chatAvatarUrl,
           messages: state.chatMessages,
@@ -1971,7 +1974,6 @@ export function renderApp(state: AppViewState) {
                     aria-label="불만 접수"
                   >
                     <span class="topbar-voc-link__icon" aria-hidden="true">${icons.headset}</span>
-                    <span class="topbar-voc-link__label">VOC</span>
                   </a>
                 `
               : nothing}

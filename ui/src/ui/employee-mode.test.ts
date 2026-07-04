@@ -171,7 +171,7 @@ describe("employee mode", () => {
     const link = app.querySelector<HTMLAnchorElement>(".topbar-voc-link");
     expect(link).not.toBeNull();
     expect(link?.href).toBe("https://voc.company.example/intake");
-    expect(link?.textContent).toContain("VOC");
+    expect(link?.getAttribute("aria-label")).toBe("불만 접수");
   });
 
   it("collapses employee sidebar sections independently", async () => {

@@ -2206,6 +2206,24 @@ describe("chat view", () => {
     expect(container.textContent).toContain("Preparing response");
   });
 
+  it("does not show employee waiting status from a stale session active-run flag alone", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          employeeMode: true,
+          canAbort: true,
+          stream: null,
+          sending: false,
+          streamStartedAt: Date.now() - 7_000,
+        }),
+      ),
+      container,
+    );
+    expect(container.querySelector(".live-run-status")).toBeNull();
+    expect(container.textContent).not.toContain("Preparing response");
+  });
+
   it("shows a timeout-specific failure callout", () => {
     const container = document.createElement("div");
     render(renderChat(createProps({ error: "provider timeout after 60000ms" })), container);

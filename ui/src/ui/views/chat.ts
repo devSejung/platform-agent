@@ -785,7 +785,7 @@ function deriveLiveRunViewState(props: ChatProps): LiveRunViewState {
     };
   }
 
-  if (props.canAbort || props.stream !== null) {
+  if (props.stream !== null || (!props.employeeMode && props.canAbort)) {
     const copy = waitCopy(elapsedMs);
     return {
       kind: "waiting",

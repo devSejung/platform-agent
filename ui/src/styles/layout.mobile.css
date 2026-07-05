@@ -429,10 +429,23 @@
     gap: 12px;
   }
 
+  .content--employee-layout {
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
+    row-gap: 12px;
+  }
+
+  .content--employee-layout > .employee-tools-panel {
+    grid-column: 1;
+    grid-row: auto;
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
   .employee-tools-panel {
     gap: 12px;
     padding: 14px 12px;
-    margin-bottom: 8px;
   }
 
   .employee-tools-panel__header {

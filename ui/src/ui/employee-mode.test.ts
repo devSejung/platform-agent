@@ -92,7 +92,7 @@ describe("employee mode", () => {
     expect(app.textContent).toContain("로그아웃");
   });
 
-  it("keeps chat in the left sidebar and moves employee tools into the main panel", async () => {
+  it("keeps chat in the left sidebar and moves employee tools into the right workspace rail", async () => {
     const app = mountConnectedEmployeeApp();
     app.employeeProfile = {
       employeeId: "eon",
@@ -118,6 +118,7 @@ describe("employee mode", () => {
     expect(sidebarNav?.textContent).not.toContain("Heartbeat");
     expect(sidebarNav?.textContent).not.toContain("Groups");
     expect(sidebarNav?.textContent).not.toContain("Skill Hub");
+    expect(app.querySelector(".content--employee-layout")).not.toBeNull();
     const toolsPanel = app.querySelector(".employee-tools-panel");
     expect(toolsPanel).not.toBeNull();
     expect(toolsPanel?.textContent).toContain("Workspace tools");
@@ -182,7 +183,7 @@ describe("employee mode", () => {
     expect(link?.getAttribute("aria-label")).toBe("불만 접수");
   });
 
-  it("renders non-chat employee destinations inside the workspace tools panel", async () => {
+  it("renders non-chat employee destinations inside the right workspace rail", async () => {
     const app = mountConnectedEmployeeApp();
     app.employeeProfile = {
       employeeId: "eon",
@@ -196,6 +197,7 @@ describe("employee mode", () => {
 
     const toolsPanel = app.querySelector<HTMLElement>(".employee-tools-panel");
     expect(toolsPanel).not.toBeNull();
+    expect(app.querySelector(".content--employee-layout")).not.toBeNull();
     expect(toolsPanel?.textContent).toContain("Files");
     expect(toolsPanel?.textContent).toContain("Skills");
     expect(toolsPanel?.textContent).toContain("Cron Jobs");

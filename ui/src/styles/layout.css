@@ -1599,10 +1599,37 @@
   background: var(--bg-content);
 }
 
+.content--employee-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  align-content: start;
+  align-items: start;
+  column-gap: 20px;
+  row-gap: 20px;
+}
+
+.content--employee-layout > * + * {
+  margin-top: 0;
+}
+
+.content--employee-layout > :not(.employee-tools-panel) {
+  grid-column: 1;
+  min-width: 0;
+}
+
+.content--employee-layout > .employee-tools-panel {
+  grid-column: 2;
+  grid-row: 1 / span 99;
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+
 .employee-tools-panel {
   display: grid;
   gap: 16px;
-  margin-bottom: 12px;
   padding: 18px;
   border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
   border-radius: calc(var(--radius-xl) + 2px);
@@ -1647,7 +1674,7 @@
 
 .employee-tools-panel__groups {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -1684,6 +1711,12 @@
 
 .content--chat > * + * {
   margin-top: 0;
+}
+
+.content--employee-layout.content--chat {
+  display: grid;
+  gap: 20px;
+  overflow-y: auto;
 }
 
 /* Content header */

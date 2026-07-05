@@ -2242,7 +2242,12 @@ export function renderApp(state: AppViewState) {
           </div>
         </aside>
       </div>
-      <main class="content ${isChat ? "content--chat" : ""}">
+      <main
+        class="content ${isChat ? "content--chat" : ""} ${state.employeeMode &&
+        employeeUtilityGroups.length > 0
+          ? "content--employee-layout"
+          : ""}"
+      >
         ${renderEmployeeLoginNotice(state)}
         ${showEmployeeAnnouncement
           ? html`

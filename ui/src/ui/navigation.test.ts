@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { t } from "../i18n/index.ts";
 import {
+  EMPLOYEE_TAB_GROUPS,
   TAB_GROUPS,
+  employeeSidebarTabGroups,
+  employeeUtilityTabGroups,
   iconForTab,
   inferBasePathFromPathname,
   normalizeBasePath,
@@ -190,5 +193,18 @@ describe("TAB_GROUPS", () => {
     const allTabs = TAB_GROUPS.flatMap((g) => g.tabs);
     const uniqueTabs = new Set(allTabs);
     expect(uniqueTabs.size).toBe(allTabs.length);
+  });
+});
+
+describe("employee tab groups", () => {
+  it("keeps chat as the only left-sidebar section", () => {
+    expect(employeeSidebarTabGroups()).toEqual([{ label: "chat", tabs: ["chat"] }]);
+  });
+
+  it("moves every non-chat employee tab into utility groups", () => {
+    const utilityTabs = employeeUtilityTabGroups().flatMap((group) => group.tabs);
+    const employeeTabs = EMPLOYEE_TAB_GROUPS.flatMap((group) => group.tabs);
+    expect(utilityTabs).not.toContain("chat");
+    expect(new Set(["chat", ...utilityTabs])).toEqual(new Set(employeeTabs));
   });
 });

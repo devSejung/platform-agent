@@ -299,3 +299,17 @@ export function subtitleForTab(tab: Tab) {
 export function tabGroupsForMode(employeeMode: boolean) {
   return employeeMode ? EMPLOYEE_TAB_GROUPS : TAB_GROUPS;
 }
+
+export function employeeSidebarTabGroups() {
+  return EMPLOYEE_TAB_GROUPS.filter((group) => group.tabs.includes("chat")).map((group) => ({
+    ...group,
+    tabs: group.tabs.filter((tab) => tab === "chat"),
+  }));
+}
+
+export function employeeUtilityTabGroups() {
+  return EMPLOYEE_TAB_GROUPS.map((group) => ({
+    ...group,
+    tabs: group.tabs.filter((tab) => tab !== "chat"),
+  })).filter((group) => group.tabs.length > 0);
+}

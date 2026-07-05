@@ -429,6 +429,25 @@
     gap: 12px;
   }
 
+  .employee-tools-panel {
+    gap: 12px;
+    padding: 14px 12px;
+    margin-bottom: 8px;
+  }
+
+  .employee-tools-panel__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .employee-tools-panel__title {
+    font-size: 20px;
+  }
+
+  .employee-tools-panel__groups {
+    grid-template-columns: 1fr;
+  }
+
   /* Cards */
   .card {
     padding: 12px;

@@ -154,6 +154,8 @@ import { icons } from "./icons.ts";
 import "./components/dashboard-header.ts";
 import { toSanitizedMarkdownHtml } from "./markdown.ts";
 import {
+  employeeSidebarTabGroups,
+  employeeUtilityTabGroups,
   normalizeBasePath,
   pathForTab,
   subtitleForTab,
@@ -1206,6 +1208,58 @@ function renderEmployeeHeartbeat(state: AppViewState) {
   `;
 }
 
+type VisibleTabGroup = {
+  label: string;
+  tabs: Tab[];
+};
+
+function filterVisibleTabGroups(
+  groups: readonly { label: string; tabs: readonly Tab[] }[],
+  state: AppViewState,
+): VisibleTabGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      tabs: group.tabs.filter((tab) =>
+        tab === "admin" ? Boolean(state.employeeAccountSummary?.hasAdminAccess) : true,
+      ),
+    }))
+    .filter((group) => group.tabs.length > 0);
+}
+
+function renderEmployeeUtilityPanel(state: AppViewState, groups: VisibleTabGroup[]) {
+  if (!state.employeeMode || groups.length === 0) {
+    return nothing;
+  }
+  return html`
+    <section class="employee-tools-panel" aria-label="Workspace tools">
+      <div class="employee-tools-panel__header">
+        <div>
+          <div class="employee-tools-panel__eyebrow">${t("nav.workspace")}</div>
+          <h2 class="employee-tools-panel__title">Workspace tools</h2>
+        </div>
+        <div class="employee-tools-panel__meta">
+          ${groups.reduce((count, group) => count + group.tabs.length, 0)} items
+        </div>
+      </div>
+      <div class="employee-tools-panel__groups">
+        ${groups.map(
+          (group) => html`
+            <section class="nav-section employee-tools-panel__section">
+              <div class="nav-section__label employee-tools-panel__label">
+                <span class="nav-section__label-text">${t(`nav.${group.label}`)}</span>
+              </div>
+              <div class="nav-section__items employee-tools-panel__items">
+                ${group.tabs.map((tab) => renderTab(state, tab, { collapsed: false }))}
+              </div>
+            </section>
+          `,
+        )}
+      </div>
+    </section>
+  `;
+}
+
 function resolveProductVersion(state: AppViewState): { name: string; version: string } | null {
   const product = state.hello?.server?.product;
   const version = product?.version ?? state.hello?.server?.version ?? "";
@@ -1388,12 +1442,13 @@ export function renderApp(state: AppViewState) {
   if (!state.connected) {
     return html` ${renderLoginGate(state)} ${renderGatewayUrlConfirmation(state)} `;
   }
-  const visibleTabGroups = tabGroupsForMode(state.employeeMode).map((group) => ({
-    ...group,
-    tabs: group.tabs.filter((tab) =>
-      tab === "admin" ? Boolean(state.employeeAccountSummary?.hasAdminAccess) : true,
-    ),
-  }));
+  const visibleTabGroups = filterVisibleTabGroups(tabGroupsForMode(state.employeeMode), state);
+  const employeeSidebarGroups = state.employeeMode
+    ? filterVisibleTabGroups(employeeSidebarTabGroups(), state)
+    : visibleTabGroups;
+  const employeeUtilityGroups = state.employeeMode
+    ? filterVisibleTabGroups(employeeUtilityTabGroups(), state)
+    : [];
   const allowedTabs = new Set<Tab>(visibleTabGroups.flatMap((group) => [...group.tabs]));
   // Dashboard and Skill Hub are intentionally entered from the topbar instead of
   // the employee sidebar, so they must stay routable even when omitted from the
@@ -2075,14 +2130,18 @@ export function renderApp(state: AppViewState) {
               <div class="sidebar-body-stack">
                 ${renderEmployeeIdentitySummary(state, navCollapsed)}
                 <nav class="sidebar-nav">
-                  ${visibleTabGroups.map((group) => {
+                  ${employeeSidebarGroups.map((group) => {
                     const isGroupCollapsed =
                       state.settings.navGroupsCollapsed[group.label] ?? false;
                     const hasActiveTab = group.tabs.some((tab) => tab === state.tab);
                     const showItems = navCollapsed || hasActiveTab || !isGroupCollapsed;
 
                     return html`
-                      <section class="nav-section ${!showItems ? "nav-section--collapsed" : ""}">
+                      <section
+                        class="nav-section ${state.employeeMode && group.label === "chat"
+                          ? "nav-section--chat"
+                          : ""} ${!showItems ? "nav-section--collapsed" : ""}"
+                      >
                         ${!navCollapsed
                           ? html`
                               <button
@@ -2249,6 +2308,7 @@ export function renderApp(state: AppViewState) {
               </button>
             </div>`
           : nothing}
+        ${renderEmployeeUtilityPanel(state, employeeUtilityGroups)}
         ${state.tab === "config"
           ? nothing
           : html`<section class="content-header">

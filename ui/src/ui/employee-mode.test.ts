@@ -92,7 +92,7 @@ describe("employee mode", () => {
     expect(app.textContent).toContain("로그아웃");
   });
 
-  it("shows employee tabs, sidebar sessions, and the compact chat model selector", async () => {
+  it("keeps chat in the left sidebar and moves employee tools into the main panel", async () => {
     const app = mountConnectedEmployeeApp();
     app.employeeProfile = {
       employeeId: "eon",
@@ -112,12 +112,20 @@ describe("employee mode", () => {
 
     const sidebarNav = app.querySelector(".sidebar-nav");
     expect(sidebarNav?.textContent).toContain("Chat");
-    expect(sidebarNav?.textContent).toMatch(/Workspace|워크스페이스/);
-    expect(sidebarNav?.textContent).toMatch(/Automation|자동화/);
-    expect(sidebarNav?.textContent).toContain("Control");
-    expect(sidebarNav?.textContent).toContain("Cron Jobs");
-    expect(sidebarNav?.textContent).toContain("Heartbeat");
+    expect(sidebarNav?.textContent).not.toContain("Files");
+    expect(sidebarNav?.textContent).not.toContain("Skills");
+    expect(sidebarNav?.textContent).not.toContain("Cron Jobs");
+    expect(sidebarNav?.textContent).not.toContain("Heartbeat");
+    expect(sidebarNav?.textContent).not.toContain("Groups");
     expect(sidebarNav?.textContent).not.toContain("Skill Hub");
+    const toolsPanel = app.querySelector(".employee-tools-panel");
+    expect(toolsPanel).not.toBeNull();
+    expect(toolsPanel?.textContent).toContain("Workspace tools");
+    expect(toolsPanel?.textContent).toContain("Files");
+    expect(toolsPanel?.textContent).toContain("Skills");
+    expect(toolsPanel?.textContent).toContain("Cron Jobs");
+    expect(toolsPanel?.textContent).toContain("Heartbeat");
+    expect(toolsPanel?.textContent).toContain("Groups");
     expect(app.querySelector(".topbar-skillhub-link")?.textContent).toContain("Skill Hub");
     expect(app.querySelector("[data-chat-model-select='true']")).not.toBeNull();
     expect(app.querySelector(".content-header optgroup")).toBeNull();
@@ -174,7 +182,7 @@ describe("employee mode", () => {
     expect(link?.getAttribute("aria-label")).toBe("불만 접수");
   });
 
-  it("collapses employee sidebar sections independently", async () => {
+  it("renders non-chat employee destinations inside the workspace tools panel", async () => {
     const app = mountConnectedEmployeeApp();
     app.employeeProfile = {
       employeeId: "eon",
@@ -186,23 +194,13 @@ describe("employee mode", () => {
     app.requestUpdate();
     await app.updateComplete;
 
-    const workspaceSection = Array.from(app.querySelectorAll<HTMLElement>(".nav-section")).find(
-      (section) =>
-        /Workspace|워크스페이스/.test(
-          section.querySelector(".nav-section__label")?.textContent ?? "",
-        ),
-    );
-    expect(workspaceSection).not.toBeUndefined();
-    expect(workspaceSection?.textContent).toContain("Files");
-    expect(workspaceSection?.textContent).toContain("Skills");
-
-    workspaceSection
-      ?.querySelector<HTMLButtonElement>(".nav-section__label")
-      ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    await flushEmployeeApp(app);
-
-    expect(workspaceSection?.classList.contains("nav-section--collapsed")).toBe(true);
-    expect(app.settings.navGroupsCollapsed.workspace).toBe(true);
+    const toolsPanel = app.querySelector<HTMLElement>(".employee-tools-panel");
+    expect(toolsPanel).not.toBeNull();
+    expect(toolsPanel?.textContent).toContain("Files");
+    expect(toolsPanel?.textContent).toContain("Skills");
+    expect(toolsPanel?.textContent).toContain("Cron Jobs");
+    expect(toolsPanel?.textContent).toContain("Heartbeat");
+    expect(toolsPanel?.textContent).toContain("Groups");
   });
 
   it("filters the employee chat session list without exposing raw session keys", async () => {

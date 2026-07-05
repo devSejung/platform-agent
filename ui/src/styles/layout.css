@@ -817,6 +817,20 @@
   gap: 4px;
 }
 
+.nav-section--chat {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-section--chat .nav-section__items {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
 .nav-section--collapsed .nav-section__items {
   display: none;
 }
@@ -956,6 +970,8 @@
   gap: 7px;
   margin: 8px 0 14px;
   padding: 9px 8px 8px;
+  min-height: 0;
+  flex: 1 1 auto;
   border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--card) 82%, var(--bg-muted) 18%);
@@ -1055,8 +1071,11 @@
 }
 
 .employee-chat-sessions__list {
-  max-height: 168px;
+  min-height: 0;
+  max-height: none;
   display: grid;
+  align-content: start;
+  flex: 1 1 auto;
   gap: 4px;
   overflow-y: auto;
   padding: 1px 3px 1px 0;
@@ -1578,6 +1597,81 @@
 
 :root[data-theme-mode="light"] .content {
   background: var(--bg-content);
+}
+
+.employee-tools-panel {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-radius: calc(var(--radius-xl) + 2px);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--card) 96%, white 4%),
+      color-mix(in srgb, var(--bg-elevated) 92%, transparent 8%)
+    );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 10%, transparent);
+}
+
+.employee-tools-panel__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.employee-tools-panel__eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.employee-tools-panel__title {
+  margin: 4px 0 0;
+  font-size: 24px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+}
+
+.employee-tools-panel__meta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.employee-tools-panel__groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.employee-tools-panel__section {
+  margin-bottom: 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+}
+
+.employee-tools-panel__label {
+  min-height: 0;
+  padding: 0 2px 8px;
+  color: var(--muted-strong);
+  cursor: default;
+}
+
+.employee-tools-panel__items {
+  gap: 6px;
+}
+
+.employee-tools-panel__items .nav-item {
+  min-height: 42px;
 }
 
 .content--chat {

@@ -1,12 +1,12 @@
 {
   "name": "PlatformClaw",
-  "latest": "2026.7.1",
+  "latest": "2026.7.6",
   "releases": [
     {
-      "version": "2026.7.1",
-      "date": "2026-07-01",
+      "version": "2026.7.6",
+      "date": "2026-07-06",
       "title": "브랜치 반영 업데이트 및 안정화",
-      "path": "docs/platformclaw/releases/2026.7.1.md"
+      "path": "docs/platformclaw/releases/2026.7.6.md"
     },
     {
       "version": "2026.6.26",

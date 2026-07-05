@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 import "../styles.css";
 import type { OpenClawApp } from "./app.ts";
 import "./app.ts";
@@ -111,7 +111,7 @@ describe("employee mode", () => {
     await app.updateComplete;
 
     const sidebarNav = app.querySelector(".sidebar-nav");
-    expect(sidebarNav?.textContent).toContain("Chat");
+    expect(sidebarNav?.textContent).toContain("최근 세션");
     expect(sidebarNav?.textContent).not.toContain("Files");
     expect(sidebarNav?.textContent).not.toContain("Skills");
     expect(sidebarNav?.textContent).not.toContain("Cron Jobs");
@@ -237,7 +237,7 @@ describe("employee mode", () => {
     const list = app.querySelector<HTMLElement>(".employee-chat-sessions__list");
     expect(list).not.toBeNull();
     expect(Array.from(list!.querySelectorAll(".employee-chat-session"))).toHaveLength(4);
-    expect(app.querySelector(".employee-chat-sessions__header")?.textContent).toContain("4개");
+    expect(app.querySelector(".employee-chat-sessions__header")?.textContent).toContain("4");
     expect(app.textContent).toContain("Alpha Plan");
     expect(app.textContent).not.toContain("agent:eon:dashboard:alpha");
 
@@ -278,7 +278,7 @@ describe("employee mode", () => {
     expect(app.querySelector(".employee-chat-session__live")).not.toBeNull();
   });
 
-  it("shows the employee recent chat session list only while Chat is active and toggles on Chat click", async () => {
+  it("keeps the employee recent chat session list visible across employee tabs", async () => {
     const app = mountConnectedEmployeeApp("/employee/files");
     app.employeeProfile = {
       employeeId: "eon",
@@ -295,25 +295,12 @@ describe("employee mode", () => {
     app.requestUpdate();
     await app.updateComplete;
 
-    expect(app.querySelector(".employee-chat-sessions")).toBeNull();
-
-    app.tab = "chat";
-    app.requestUpdate();
-    await app.updateComplete;
-
     const sidebarSessions = app.querySelector(".employee-chat-sessions");
-    expect(sidebarSessions?.textContent).toContain("최근");
+    expect(sidebarSessions?.textContent).toContain("최근 세션");
     expect(sidebarSessions?.textContent).toContain("Main");
 
     app
-      .querySelector<HTMLAnchorElement>(".nav-item--active")
-      ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-    await app.updateComplete;
-
-    expect(app.querySelector(".employee-chat-sessions")).toBeNull();
-
-    app
-      .querySelector<HTMLAnchorElement>(".nav-item--active")
+      .querySelector<HTMLAnchorElement>(".nav-item")
       ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     await app.updateComplete;
 
@@ -807,3 +794,4 @@ describe("employee mode", () => {
     expect(app.textContent).toContain("Review accounts, roles, and membership assignments.");
   });
 });
+

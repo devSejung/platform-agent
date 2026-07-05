@@ -1,4 +1,4 @@
-import { html, nothing } from "lit";
+﻿import { html, nothing } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { i18n, t, type Locale } from "../i18n/index.ts";
@@ -192,7 +192,7 @@ import { renderLoginGate } from "./views/login-gate.ts";
 import { renderOverview } from "./views/overview.ts";
 import { renderWorkspaceFiles } from "./views/workspace-files.ts";
 
-// Lazy-loaded view modules – deferred so the initial bundle stays small.
+// Lazy-loaded view modules ??deferred so the initial bundle stays small.
 // Each loader resolves once; subsequent calls return the cached module.
 type LazyState<T> = { mod: T | null; promise: Promise<T> | null };
 
@@ -481,7 +481,7 @@ function renderEmployeeLoginNotice(state: AppViewState) {
             state.employeeLoginNotice = null;
           }}
         >
-          확인
+          ?뺤씤
         </button>
       </div>
     </div>
@@ -514,7 +514,7 @@ function renderEmployeeIdentitySummary(state: AppViewState, navCollapsed: boolea
         accountSummary.partCount > 0 ? `${accountSummary.partCount} part` : null,
       ]
         .filter(Boolean)
-        .join(" · ")
+        .join(" 쨌 ")
     : "";
   return html`
     <section class="sidebar-identity" aria-label="Employee identity">
@@ -569,7 +569,7 @@ function renderEmployeeIdentitySummary(state: AppViewState, navCollapsed: boolea
 
 function formatEmployeeDateTime(value: unknown): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return "기록 없음";
+    return "湲곕줉 ?놁쓬";
   }
   return new Intl.DateTimeFormat("ko-KR", {
     dateStyle: "medium",
@@ -579,19 +579,19 @@ function formatEmployeeDateTime(value: unknown): string {
 
 function formatEmployeeRelative(value: unknown): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return "아직 기록이 없습니다.";
+    return "No recent activity.";
   }
   const diffMs = Date.now() - value;
   const absMinutes = Math.max(1, Math.round(Math.abs(diffMs) / 60_000));
   if (absMinutes < 60) {
-    return `${absMinutes}분 ${diffMs >= 0 ? "전" : "후"}`;
+    return `${absMinutes}m ${diffMs >= 0 ? "ago" : "from now"}`;
   }
   const absHours = Math.round(absMinutes / 60);
   if (absHours < 24) {
-    return `${absHours}시간 ${diffMs >= 0 ? "전" : "후"}`;
+    return `${absHours}h ${diffMs >= 0 ? "ago" : "from now"}`;
   }
   const absDays = Math.round(absHours / 24);
-  return `${absDays}일 ${diffMs >= 0 ? "전" : "후"}`;
+  return `${absDays}d ${diffMs >= 0 ? "ago" : "from now"}`;
 }
 
 function isEmployeeChatSessionRowVisible(state: AppViewState, row: GatewaySessionRow): boolean {
@@ -623,7 +623,7 @@ function formatEmployeeSessionMeta(
         ? defaults.modelProvider.trim()
         : "";
   const modelLabel = provider && model && !model.includes("/") ? `${provider}/${model}` : model;
-  return [modelLabel, formatEmployeeRelative(row.updatedAt)].filter(Boolean).join(" · ");
+  return [modelLabel, formatEmployeeRelative(row.updatedAt)].filter(Boolean).join(" 쨌 ");
 }
 
 function formatEmployeeSessionTitle(row: GatewaySessionRow): string {
@@ -749,7 +749,7 @@ async function deleteEmployeeChatSession(state: AppViewState, row: GatewaySessio
   const confirmed = window.confirm(
     english
       ? `Delete "${title}"?\n\nThis archives the transcript and removes the session from this employee agent.`
-      : `"${title}" 세션을 삭제할까요?\n\n대화 기록은 보관되고 이 직원 에이전트의 세션 목록에서 제거됩니다.`,
+      : `"${title}" ?몄뀡????젣?좉퉴??\n\n???湲곕줉? 蹂닿??섍퀬 ??吏곸썝 ?먯씠?꾪듃???몄뀡 紐⑸줉?먯꽌 ?쒓굅?⑸땲??`,
   );
   if (!confirmed) {
     closeEmployeeChatSessionActionMenu(state);
@@ -832,13 +832,7 @@ async function saveEmployeeChatSessionRename(state: AppViewState, row: GatewaySe
 }
 
 function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollapsed: boolean) {
-  if (
-    !state.employeeMode ||
-    tab !== "chat" ||
-    navCollapsed ||
-    state.tab !== "chat" ||
-    state.employeeChatSessionsCollapsed
-  ) {
+  if (!state.employeeMode || tab !== "chat" || navCollapsed) {
     return nothing;
   }
   const query = state.employeeChatSessionSearch.trim().toLowerCase();
@@ -854,17 +848,25 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
     });
   const count = rows.length;
   const english = state.settings.locale === "en";
+  const recentSessionsLabel = t("overview.cards.recentSessions");
+  const newSessionLabel = t("overview.quickActions.newSession");
+  const noRecentSessionsLabel = t("usage.sessions.noRecent");
+  const searchLabel = t("common.search");
   const renameLabel = english ? "Rename" : "이름 변경";
   const deleteLabel = english ? "Delete" : "삭제";
+  const deletingLabel = english ? "Deleting" : "삭제 중";
   const menuLabel = english ? "Session actions" : "세션 작업";
   const saveLabel = english ? "Save" : "저장";
   const cancelLabel = english ? "Cancel" : "취소";
+  const liveLabel = english ? "In progress" : "진행 중";
+  const renameInputLabel = english ? "Session name" : "세션 이름";
+  const loadingLabel = english ? "Loading..." : "불러오는 중";
   return html`
-    <div class="employee-chat-sessions" aria-label="Chat sessions">
+    <div class="employee-chat-sessions" aria-label=${recentSessionsLabel}>
       <div class="employee-chat-sessions__header">
         <span class="employee-chat-sessions__heading">
-          <span>최근</span>
-          <span class="employee-chat-sessions__count">${count}개</span>
+          <span>${recentSessionsLabel}</span>
+          <span class="employee-chat-sessions__count">${count}</span>
         </span>
         <button
           type="button"
@@ -873,14 +875,14 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
           @click=${() => void createEmployeeChatSession(state)}
         >
           <span aria-hidden="true">${icons.plus}</span>
-          <span>새 대화</span>
+          <span>${newSessionLabel}</span>
         </button>
       </div>
       <div class="employee-chat-sessions__tools">
         <label class="employee-chat-sessions__search">
           <input
             type="search"
-            placeholder="검색"
+            placeholder=${searchLabel}
             .value=${state.employeeChatSessionSearch}
             @input=${(event: Event) => {
               state.employeeChatSessionSearch = (event.target as HTMLInputElement).value;
@@ -919,7 +921,7 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                         <span class="employee-chat-session__rename-form">
                           <input
                             class="employee-chat-session__rename-input"
-                            aria-label="세션 이름"
+                            aria-label=${renameInputLabel}
                             .value=${state.employeeChatSessionRenameValue}
                             ?disabled=${state.employeeChatSessionRenameBusy}
                             ${ref((el) => {
@@ -1021,8 +1023,8 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                           ? html`
                               <span
                                 class="employee-chat-session__live"
-                                title="진행 중"
-                                aria-label="진행 중"
+                                title=${liveLabel}
+                                aria-label=${liveLabel}
                               ></span>
                             `
                           : nothing}
@@ -1053,7 +1055,7 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                                     void deleteEmployeeChatSession(state, row);
                                   }}
                                 >
-                                  ${deleting ? (english ? "Deleting" : "삭제 중") : deleteLabel}
+                                  ${deleting ? deletingLabel : deleteLabel}
                                 </button>
                               </span>
                             `
@@ -1062,12 +1064,12 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                 </div>
               `;
             })
-          : html`<div class="employee-chat-sessions__empty">표시할 세션이 없습니다.</div>`}
+          : html`<div class="employee-chat-sessions__empty">${noRecentSessionsLabel}</div>`}
       </div>
       ${state.sessionsLoading || state.sessionsError
         ? html`
             <div class="employee-chat-sessions__footer">
-              ${state.sessionsLoading ? "불러오는 중" : nothing}
+              ${state.sessionsLoading ? loadingLabel : nothing}
               ${state.sessionsError ? html`<span>${state.sessionsError}</span>` : nothing}
             </div>
           `
@@ -1199,7 +1201,7 @@ function renderEmployeeHeartbeat(state: AppViewState) {
             ${t("employeeHeartbeat.lastDeliveryInfo")}
           </div>
           <div class="employee-heartbeat-details__preview">
-            ${typeof heartbeat?.durationMs === "number" ? `${heartbeat.durationMs}ms` : "-"} ·
+            ${typeof heartbeat?.durationMs === "number" ? `${heartbeat.durationMs}ms` : "-"} 쨌
             ${heartbeat?.to?.trim() || t("employeeHeartbeat.noTarget")}<br />${preview}
           </div>
         </div>
@@ -1313,14 +1315,14 @@ export function renderReleaseNotesDialog(state: AppViewState) {
       <div class="md-preview-dialog__panel">
         <div class="md-preview-dialog__header">
           <div>
-            <div class="md-preview-dialog__title">업데이트 내역</div>
-            <div class="release-notes-dialog__subtitle">PlatformClaw 릴리즈 기록</div>
+            <div class="md-preview-dialog__title">?낅뜲?댄듃 ?댁뿭</div>
+            <div class="release-notes-dialog__subtitle">PlatformClaw 由대━利?湲곕줉</div>
           </div>
           <button
             class="btn btn--icon release-notes-dialog__close"
             type="button"
-            aria-label="닫기"
-            title="닫기"
+            aria-label="?リ린"
+            title="?リ린"
             @click=${() => state.handleCloseReleaseNotes()}
           >
             ${icons.x}
@@ -1331,8 +1333,8 @@ export function renderReleaseNotesDialog(state: AppViewState) {
             ? "release-notes-layout--detail"
             : ""}"
         >
-          <aside class="release-notes-list" aria-label="릴리즈 목록">
-            <div class="release-notes-list__heading">릴리즈 목록</div>
+          <aside class="release-notes-list" aria-label="由대━利?紐⑸줉">
+            <div class="release-notes-list__heading">由대━利?紐⑸줉</div>
             <div class="release-notes-list__items">
               ${index
                 ? index.releases.map((release) => {
@@ -1349,12 +1351,12 @@ export function renderReleaseNotesDialog(state: AppViewState) {
                           ${isLatest && latestIsUnread
                             ? html`<span
                                 class="release-notes-list__unread"
-                                aria-label="읽지 않은 최신 릴리즈"
+                                aria-label="?쎌? ?딆? 理쒖떊 由대━利?
                               ></span>`
                             : nothing}
                           <strong>v${release.version}</strong>
                           ${isLatest
-                            ? html`<span class="release-notes-list__latest">최신</span>`
+                            ? html`<span class="release-notes-list__latest">理쒖떊</span>`
                             : nothing}
                         </span>
                         <span class="release-notes-list__title">${release.title}</span>
@@ -1365,7 +1367,7 @@ export function renderReleaseNotesDialog(state: AppViewState) {
                     `;
                   })
                 : state.releaseNotesLoading
-                  ? html`<div class="release-notes-list__empty">목록을 불러오는 중입니다.</div>`
+                  ? html`<div class="release-notes-list__empty">紐⑸줉??遺덈윭?ㅻ뒗 以묒엯?덈떎.</div>`
                   : nothing}
             </div>
           </aside>
@@ -1376,26 +1378,26 @@ export function renderReleaseNotesDialog(state: AppViewState) {
               @click=${() => state.handleReleaseNotesBackToList()}
             >
               <span aria-hidden="true">${icons.arrowLeft}</span>
-              릴리즈 목록
+              由대━利?紐⑸줉
             </button>
             ${selectedRelease
               ? html`
                   <div class="release-notes-detail__meta">
                     <span>${selectedRelease.date}</span>
                     ${selectedIsLatest
-                      ? html`<span class="release-notes-list__latest">최신</span>`
+                      ? html`<span class="release-notes-list__latest">理쒖떊</span>`
                       : nothing}
                   </div>
                 `
               : nothing}
             <div class="md-preview-dialog__body release-notes-detail__content sidebar-markdown">
               ${state.releaseNotesLoading
-                ? html`<p>릴리즈 노트를 불러오는 중입니다.</p>`
+                ? html`<p>由대━利??명듃瑜?遺덈윭?ㅻ뒗 以묒엯?덈떎.</p>`
                 : state.releaseNotesError
                   ? html`<p class="release-notes-detail__error">${state.releaseNotesError}</p>`
                   : selectedMarkdown
                     ? unsafeHTML(toSanitizedMarkdownHtml(selectedMarkdown))
-                    : html`<p>표시할 릴리즈 노트가 없습니다.</p>`}
+                    : html`<p>No release notes available.</p>`}
             </div>
           </section>
         </div>
@@ -1403,7 +1405,7 @@ export function renderReleaseNotesDialog(state: AppViewState) {
           ${state.employeeMode && hasEmployeeSession && selectedIsLatest && latestIsUnread
             ? html`
                 <button class="btn" type="button" @click=${() => state.handleCloseReleaseNotes()}>
-                  ${state.releaseNotesAutoMode ? "나중에" : "닫기"}
+                  ${state.releaseNotesAutoMode ? "Auto close" : "Close"}
                 </button>
                 <button
                   class="btn primary"
@@ -1411,7 +1413,7 @@ export function renderReleaseNotesDialog(state: AppViewState) {
                   ?disabled=${state.releaseNotesReadSubmitting || !selectedMarkdown}
                   @click=${() => state.handleConfirmReleaseNotes()}
                 >
-                  ${state.releaseNotesReadSubmitting ? "저장 중..." : "확인"}
+                  ${state.releaseNotesReadSubmitting ? "???以?.." : "?뺤씤"}
                 </button>
               `
             : html`
@@ -1420,7 +1422,7 @@ export function renderReleaseNotesDialog(state: AppViewState) {
                   type="button"
                   @click=${() => state.handleCloseReleaseNotes()}
                 >
-                  닫기
+                  ?リ린
                 </button>
               `}
         </div>
@@ -2012,11 +2014,11 @@ export function renderApp(state: AppViewState) {
               @click=${() => {
                 state.paletteOpen = !state.paletteOpen;
               }}
-              title="Search or jump to… (⌘K)"
+              title="Search or jump to??(?쁊)"
               aria-label="Open command palette"
             >
               <span class="topbar-search__label">${t("common.search")}</span>
-              <kbd class="topbar-search__kbd">⌘K</kbd>
+              <kbd class="topbar-search__kbd">?쁊</kbd>
             </button>
             ${resolveWorkspaceVocUrl(state)
               ? html`
@@ -2131,19 +2133,26 @@ export function renderApp(state: AppViewState) {
                 ${renderEmployeeIdentitySummary(state, navCollapsed)}
                 <nav class="sidebar-nav">
                   ${employeeSidebarGroups.map((group) => {
+                    const isChatGroup = state.employeeMode && group.label === "chat";
                     const isGroupCollapsed =
                       state.settings.navGroupsCollapsed[group.label] ?? false;
                     const hasActiveTab = group.tabs.some((tab) => tab === state.tab);
-                    const showItems = navCollapsed || hasActiveTab || !isGroupCollapsed;
+                    const showItems = isChatGroup || navCollapsed || hasActiveTab || !isGroupCollapsed;
 
                     return html`
                       <section
-                        class="nav-section ${state.employeeMode && group.label === "chat"
-                          ? "nav-section--chat"
-                          : ""} ${!showItems ? "nav-section--collapsed" : ""}"
+                        class="nav-section ${isChatGroup ? "nav-section--chat" : ""} ${!showItems
+                          ? "nav-section--collapsed"
+                          : ""}"
                       >
                         ${!navCollapsed
-                          ? html`
+                          ? isChatGroup
+                            ? html`
+                                <div class="nav-section__label nav-section__label--static">
+                                  <span class="nav-section__label-text">${t(`nav.${group.label}`)}</span>
+                                </div>
+                              `
+                            : html`
                               <button
                                 class="nav-section__label"
                                 @click=${() => {
@@ -2164,12 +2173,14 @@ export function renderApp(state: AppViewState) {
                             `
                           : nothing}
                         <div class="nav-section__items">
-                          ${group.tabs.map(
-                            (tab) => html`
-                              ${renderTab(state, tab, { collapsed: navCollapsed })}
-                              ${renderEmployeeChatSessionList(state, tab, navCollapsed)}
-                            `,
-                          )}
+                          ${isChatGroup
+                            ? renderEmployeeChatSessionList(state, "chat", navCollapsed)
+                            : group.tabs.map(
+                                (tab) => html`
+                                  ${renderTab(state, tab, { collapsed: navCollapsed })}
+                                  ${renderEmployeeChatSessionList(state, tab, navCollapsed)}
+                                `,
+                              )}
                         </div>
                       </section>
                     `;
@@ -2297,7 +2308,7 @@ export function renderApp(state: AppViewState) {
                 ?disabled=${state.updateRunning || !state.connected}
                 @click=${() => runUpdate(state)}
               >
-                ${state.updateRunning ? "Updating…" : "Update now"}
+                ${state.updateRunning ? "Updating..." : "Update now"}
               </button>
               <button
                 class="update-banner__close"
@@ -3036,8 +3047,8 @@ export function renderApp(state: AppViewState) {
                         ? true
                         : window.confirm(
                             slug
-                              ? "이 스킬을 workspace에서 제거합니다. 다시 사용하려면 Skill Hub에서 다시 설치해야 합니다."
-                              : "이 스킬을 workspace에서 완전히 삭제합니다. 되돌릴 수 없습니다.",
+                              ? "???ㅽ궗??workspace?먯꽌 ?쒓굅?⑸땲?? ?ㅼ떆 ?ъ슜?섎젮硫?Skill Hub?먯꽌 ?ㅼ떆 ?ㅼ튂?댁빞 ?⑸땲??"
+                              : "???ㅽ궗??workspace?먯꽌 ?꾩쟾????젣?⑸땲?? ?섎룎由????놁뒿?덈떎.",
                           );
                     if (!confirmed) {
                       return Promise.resolve();
@@ -3186,7 +3197,7 @@ export function renderApp(state: AppViewState) {
                   if (
                     typeof window !== "undefined" &&
                     !window.confirm(
-                      "이 스킬을 workspace에서 제거합니다. 다시 사용하려면 Skill Hub에서 다시 설치해야 합니다.",
+                      "???ㅽ궗??workspace?먯꽌 ?쒓굅?⑸땲?? ?ㅼ떆 ?ъ슜?섎젮硫?Skill Hub?먯꽌 ?ㅼ떆 ?ㅼ튂?댁빞 ?⑸땲??",
                     )
                   ) {
                     return;
@@ -3208,7 +3219,7 @@ export function renderApp(state: AppViewState) {
                   if (
                     typeof window !== "undefined" &&
                     !window.confirm(
-                      "이 스킬을 Skill Hub에서 완전히 삭제합니다. 워크스페이스 복사본은 유지되며 다시 발행할 수 있습니다.",
+                      "???ㅽ궗??Skill Hub?먯꽌 ?꾩쟾????젣?⑸땲?? ?뚰겕?ㅽ럹?댁뒪 蹂듭궗蹂몄? ?좎??섎ŉ ?ㅼ떆 諛쒗뻾?????덉뒿?덈떎.",
                     )
                   ) {
                     return;
@@ -3383,7 +3394,7 @@ export function renderApp(state: AppViewState) {
                         );
                         if (!publishEntry || publishEntry.disabled) {
                           state.skillHubEditorError =
-                            "발행 상태가 변경되었습니다. Skill Hub를 새로고침해주세요.";
+                            "諛쒗뻾 ?곹깭媛 蹂寃쎈릺?덉뒿?덈떎. Skill Hub瑜??덈줈怨좎묠?댁＜?몄슂.";
                           return;
                         }
                         await publishWorkspaceSkillWithPrompts(state, publishEntry, prompts, {

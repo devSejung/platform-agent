@@ -1041,7 +1041,8 @@
 }
 
 .chat-controls__session select {
-  padding: 6px 10px;
+  min-height: 38px;
+  padding: 8px 10px;
   font-size: 13px;
   max-width: 190px;
   overflow: hidden;

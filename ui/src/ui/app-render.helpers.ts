@@ -210,15 +210,8 @@ export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: bo
           event.altKey
         ) {
           return;
-        }
+      }
         event.preventDefault();
-        if (state.employeeMode && tab === "chat") {
-          if (isActive) {
-            state.employeeChatSessionsCollapsed = !state.employeeChatSessionsCollapsed;
-            return;
-          }
-          state.employeeChatSessionsCollapsed = false;
-        }
         if (tab === "chat" && !state.employeeMode) {
           const mainSessionKey = resolveSidebarChatSessionKey(state);
           if (state.sessionKey !== mainSessionKey) {

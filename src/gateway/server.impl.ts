@@ -1113,8 +1113,8 @@ export async function startGatewayServer(
                 spawnDepth: sessionRow.spawnDepth,
                 subagentRole: sessionRow.subagentRole,
                 subagentControlScope: sessionRow.subagentControlScope,
-                label: sessionRow.label,
-                displayName: sessionRow.displayName,
+                label: sessionRow.label ?? null,
+                displayName: sessionRow.displayName ?? null,
                 deliveryContext: sessionRow.deliveryContext,
                 parentSessionKey: sessionRow.parentSessionKey,
                 childSessions: sessionRow.childSessions,
@@ -1216,8 +1216,11 @@ export async function startGatewayServer(
                     spawnDepth: sessionRow.spawnDepth,
                     subagentRole: sessionRow.subagentRole,
                     subagentControlScope: sessionRow.subagentControlScope,
-                    label: event.label ?? sessionRow.label,
-                    displayName: event.displayName ?? sessionRow.displayName,
+                    label: event.label === undefined ? (sessionRow.label ?? null) : event.label,
+                    displayName:
+                      event.displayName === undefined
+                        ? (sessionRow.displayName ?? null)
+                        : event.displayName,
                     deliveryContext: sessionRow.deliveryContext,
                     parentSessionKey: event.parentSessionKey ?? sessionRow.parentSessionKey,
                     childSessions: sessionRow.childSessions,

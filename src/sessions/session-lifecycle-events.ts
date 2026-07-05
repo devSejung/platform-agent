@@ -2,8 +2,8 @@ export type SessionLifecycleEvent = {
   sessionKey: string;
   reason: string;
   parentSessionKey?: string;
-  label?: string;
-  displayName?: string;
+  label?: string | null;
+  displayName?: string | null;
 };
 
 type SessionLifecycleListener = (event: SessionLifecycleEvent) => void;

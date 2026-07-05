@@ -127,6 +127,48 @@ describe("gateway sessions patch", () => {
     expect(entry.thinkingLevel).toBeUndefined();
   });
 
+  test("clears label-derived displayName when label is cleared", async () => {
+    const store: Record<string, SessionEntry> = {
+      [MAIN_SESSION_KEY]: { label: "Dev", displayName: "Dev" } as SessionEntry,
+    };
+    const entry = expectPatchOk(
+      await runPatch({
+        store,
+        patch: { key: MAIN_SESSION_KEY, label: null },
+      }),
+    );
+    expect(entry.label).toBeUndefined();
+    expect(entry.displayName).toBeUndefined();
+  });
+
+  test("preserves independent displayName when label is cleared", async () => {
+    const store: Record<string, SessionEntry> = {
+      [MAIN_SESSION_KEY]: { label: "Dev", displayName: "Pinned Name" } as SessionEntry,
+    };
+    const entry = expectPatchOk(
+      await runPatch({
+        store,
+        patch: { key: MAIN_SESSION_KEY, label: null },
+      }),
+    );
+    expect(entry.label).toBeUndefined();
+    expect(entry.displayName).toBe("Pinned Name");
+  });
+
+  test("updates label-derived displayName when label changes", async () => {
+    const store: Record<string, SessionEntry> = {
+      [MAIN_SESSION_KEY]: { label: "Dev", displayName: "Dev" } as SessionEntry,
+    };
+    const entry = expectPatchOk(
+      await runPatch({
+        store,
+        patch: { key: MAIN_SESSION_KEY, label: "Ops" },
+      }),
+    );
+    expect(entry.label).toBe("Ops");
+    expect(entry.displayName).toBe("Ops");
+  });
+
   test("persists reasoningLevel=off (does not clear)", async () => {
     const entry = expectPatchOk(
       await runPatch({

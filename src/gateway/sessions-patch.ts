@@ -213,8 +213,15 @@ export async function applySessionsPatchToStore(params: {
 
   if ("label" in patch) {
     const raw = patch.label;
+    const existingLabel = normalizeOptionalString(existing?.label);
+    const displayNameIsLabelDerived =
+      normalizeOptionalString(existing?.displayName) !== undefined &&
+      normalizeOptionalString(existing?.displayName) === existingLabel;
     if (raw === null) {
       delete next.label;
+      if (displayNameIsLabelDerived) {
+        delete next.displayName;
+      }
     } else if (raw !== undefined) {
       const parsed = parseSessionLabel(raw);
       if (!parsed.ok) {
@@ -229,6 +236,9 @@ export async function applySessionsPatchToStore(params: {
         }
       }
       next.label = parsed.label;
+      if (!normalizeOptionalString(existing?.displayName) || displayNameIsLabelDerived) {
+        next.displayName = parsed.label;
+      }
     }
   }
 

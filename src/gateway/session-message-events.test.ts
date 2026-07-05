@@ -148,6 +148,43 @@ describe("session.message websocket events", () => {
     });
   });
 
+  test("clears label-derived display names on lifecycle sessions.changed events", async () => {
+    const storePath = await createSessionStoreFile();
+    await writeSessionStore({
+      entries: {
+        main: {
+          sessionId: "sess-main",
+          updatedAt: Date.now(),
+        },
+      },
+      storePath,
+    });
+
+    await withOperatorSessionSubscriber(harness, async (ws) => {
+      const changedEvent = onceMessage(
+        ws,
+        (message) =>
+          message.type === "event" &&
+          message.event === "sessions.changed" &&
+          (message.payload as { sessionKey?: string } | undefined)?.sessionKey ===
+            "agent:main:main",
+      );
+
+      emitSessionLifecycleEvent({
+        sessionKey: "agent:main:main",
+        reason: "patch",
+      });
+
+      const event = await changedEvent;
+      expect(event.payload).toMatchObject({
+        sessionKey: "agent:main:main",
+        reason: "patch",
+        label: null,
+        displayName: null,
+      });
+    });
+  });
+
   test("only sends transcript events to subscribed operator clients", async () => {
     const storePath = await createSessionStoreFile();
     await writeSessionStore({

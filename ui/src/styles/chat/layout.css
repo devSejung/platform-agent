@@ -964,7 +964,18 @@
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
-  color: var(--brand, #0f766e);
+  color: color-mix(in srgb, var(--brand, #0f766e) 78%, var(--text) 22%);
+}
+
+.chat-message-attachments__icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .chat-message-attachments__body {

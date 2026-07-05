@@ -301,10 +301,10 @@ export function tabGroupsForMode(employeeMode: boolean) {
 }
 
 export function employeeSidebarTabGroups() {
-  return EMPLOYEE_TAB_GROUPS.filter((group) => group.tabs.includes("chat")).map((group) => ({
+  return EMPLOYEE_TAB_GROUPS.map((group) => ({
     ...group,
     tabs: group.tabs.filter((tab) => tab === "chat"),
-  }));
+  })).filter((group) => group.tabs.length > 0);
 }
 
 export function employeeUtilityTabGroups() {

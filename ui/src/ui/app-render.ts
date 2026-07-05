@@ -1,4 +1,4 @@
-﻿import { html, nothing } from "lit";
+import { html, nothing } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { i18n, t, type Locale } from "../i18n/index.ts";
@@ -481,7 +481,7 @@ function renderEmployeeLoginNotice(state: AppViewState) {
             state.employeeLoginNotice = null;
           }}
         >
-          ?뺤씤
+          확인
         </button>
       </div>
     </div>
@@ -514,7 +514,7 @@ function renderEmployeeIdentitySummary(state: AppViewState, navCollapsed: boolea
         accountSummary.partCount > 0 ? `${accountSummary.partCount} part` : null,
       ]
         .filter(Boolean)
-        .join(" 쨌 ")
+        .join(" · ")
     : "";
   return html`
     <section class="sidebar-identity" aria-label="Employee identity">
@@ -569,7 +569,7 @@ function renderEmployeeIdentitySummary(state: AppViewState, navCollapsed: boolea
 
 function formatEmployeeDateTime(value: unknown): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return "湲곕줉 ?놁쓬";
+    return "기록 없음";
   }
   return new Intl.DateTimeFormat("ko-KR", {
     dateStyle: "medium",
@@ -579,19 +579,19 @@ function formatEmployeeDateTime(value: unknown): string {
 
 function formatEmployeeRelative(value: unknown): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return "No recent activity.";
+    return "아직 기록이 없습니다.";
   }
   const diffMs = Date.now() - value;
   const absMinutes = Math.max(1, Math.round(Math.abs(diffMs) / 60_000));
   if (absMinutes < 60) {
-    return `${absMinutes}m ${diffMs >= 0 ? "ago" : "from now"}`;
+    return `${absMinutes}분 ${diffMs >= 0 ? "전" : "후"}`;
   }
   const absHours = Math.round(absMinutes / 60);
   if (absHours < 24) {
-    return `${absHours}h ${diffMs >= 0 ? "ago" : "from now"}`;
+    return `${absHours}시간 ${diffMs >= 0 ? "전" : "후"}`;
   }
   const absDays = Math.round(absHours / 24);
-  return `${absDays}d ${diffMs >= 0 ? "ago" : "from now"}`;
+  return `${absDays}일 ${diffMs >= 0 ? "전" : "후"}`;
 }
 
 function isEmployeeChatSessionRowVisible(state: AppViewState, row: GatewaySessionRow): boolean {
@@ -623,7 +623,7 @@ function formatEmployeeSessionMeta(
         ? defaults.modelProvider.trim()
         : "";
   const modelLabel = provider && model && !model.includes("/") ? `${provider}/${model}` : model;
-  return [modelLabel, formatEmployeeRelative(row.updatedAt)].filter(Boolean).join(" 쨌 ");
+  return [modelLabel, formatEmployeeRelative(row.updatedAt)].filter(Boolean).join(" · ");
 }
 
 function formatEmployeeSessionTitle(row: GatewaySessionRow): string {
@@ -749,7 +749,7 @@ async function deleteEmployeeChatSession(state: AppViewState, row: GatewaySessio
   const confirmed = window.confirm(
     english
       ? `Delete "${title}"?\n\nThis archives the transcript and removes the session from this employee agent.`
-      : `"${title}" ?몄뀡????젣?좉퉴??\n\n???湲곕줉? 蹂닿??섍퀬 ??吏곸썝 ?먯씠?꾪듃???몄뀡 紐⑸줉?먯꽌 ?쒓굅?⑸땲??`,
+      : `"${title}" 세션을 삭제할까요?\n\n대화 기록은 보관되고 이 직원 에이전트의 세션 목록에서 제거됩니다.`,
   );
   if (!confirmed) {
     closeEmployeeChatSessionActionMenu(state);
@@ -1201,7 +1201,7 @@ function renderEmployeeHeartbeat(state: AppViewState) {
             ${t("employeeHeartbeat.lastDeliveryInfo")}
           </div>
           <div class="employee-heartbeat-details__preview">
-            ${typeof heartbeat?.durationMs === "number" ? `${heartbeat.durationMs}ms` : "-"} 쨌
+            ${typeof heartbeat?.durationMs === "number" ? `${heartbeat.durationMs}ms` : "-"} ·
             ${heartbeat?.to?.trim() || t("employeeHeartbeat.noTarget")}<br />${preview}
           </div>
         </div>
@@ -1315,14 +1315,14 @@ export function renderReleaseNotesDialog(state: AppViewState) {
       <div class="md-preview-dialog__panel">
         <div class="md-preview-dialog__header">
           <div>
-            <div class="md-preview-dialog__title">?낅뜲?댄듃 ?댁뿭</div>
-            <div class="release-notes-dialog__subtitle">PlatformClaw 由대━利?湲곕줉</div>
+            <div class="md-preview-dialog__title">업데이트 내역</div>
+            <div class="release-notes-dialog__subtitle">PlatformClaw 릴리즈 기록</div>
           </div>
           <button
             class="btn btn--icon release-notes-dialog__close"
             type="button"
-            aria-label="?リ린"
-            title="?リ린"
+            aria-label="닫기"
+            title="닫기"
             @click=${() => state.handleCloseReleaseNotes()}
           >
             ${icons.x}
@@ -1333,8 +1333,8 @@ export function renderReleaseNotesDialog(state: AppViewState) {
             ? "release-notes-layout--detail"
             : ""}"
         >
-          <aside class="release-notes-list" aria-label="由대━利?紐⑸줉">
-            <div class="release-notes-list__heading">由대━利?紐⑸줉</div>
+          <aside class="release-notes-list" aria-label="릴리즈 목록">
+            <div class="release-notes-list__heading">릴리즈 목록</div>
             <div class="release-notes-list__items">
               ${index
                 ? index.releases.map((release) => {
@@ -1351,12 +1351,12 @@ export function renderReleaseNotesDialog(state: AppViewState) {
                           ${isLatest && latestIsUnread
                             ? html`<span
                                 class="release-notes-list__unread"
-                                aria-label="?쎌? ?딆? 理쒖떊 由대━利?
+                                aria-label="읽지 않은 최신 릴리즈"
                               ></span>`
                             : nothing}
                           <strong>v${release.version}</strong>
                           ${isLatest
-                            ? html`<span class="release-notes-list__latest">理쒖떊</span>`
+                            ? html`<span class="release-notes-list__latest">최신</span>`
                             : nothing}
                         </span>
                         <span class="release-notes-list__title">${release.title}</span>
@@ -1367,7 +1367,7 @@ export function renderReleaseNotesDialog(state: AppViewState) {
                     `;
                   })
                 : state.releaseNotesLoading
-                  ? html`<div class="release-notes-list__empty">紐⑸줉??遺덈윭?ㅻ뒗 以묒엯?덈떎.</div>`
+                  ? html`<div class="release-notes-list__empty">목록을 불러오는 중입니다.</div>`
                   : nothing}
             </div>
           </aside>
@@ -1378,26 +1378,26 @@ export function renderReleaseNotesDialog(state: AppViewState) {
               @click=${() => state.handleReleaseNotesBackToList()}
             >
               <span aria-hidden="true">${icons.arrowLeft}</span>
-              由대━利?紐⑸줉
+              릴리즈 목록
             </button>
             ${selectedRelease
               ? html`
                   <div class="release-notes-detail__meta">
                     <span>${selectedRelease.date}</span>
                     ${selectedIsLatest
-                      ? html`<span class="release-notes-list__latest">理쒖떊</span>`
+                      ? html`<span class="release-notes-list__latest">최신</span>`
                       : nothing}
                   </div>
                 `
               : nothing}
             <div class="md-preview-dialog__body release-notes-detail__content sidebar-markdown">
               ${state.releaseNotesLoading
-                ? html`<p>由대━利??명듃瑜?遺덈윭?ㅻ뒗 以묒엯?덈떎.</p>`
+                ? html`<p>릴리즈 노트를 불러오는 중입니다.</p>`
                 : state.releaseNotesError
                   ? html`<p class="release-notes-detail__error">${state.releaseNotesError}</p>`
                   : selectedMarkdown
                     ? unsafeHTML(toSanitizedMarkdownHtml(selectedMarkdown))
-                    : html`<p>No release notes available.</p>`}
+                    : html`<p>표시할 릴리즈 노트가 없습니다.</p>`}
             </div>
           </section>
         </div>
@@ -1405,7 +1405,7 @@ export function renderReleaseNotesDialog(state: AppViewState) {
           ${state.employeeMode && hasEmployeeSession && selectedIsLatest && latestIsUnread
             ? html`
                 <button class="btn" type="button" @click=${() => state.handleCloseReleaseNotes()}>
-                  ${state.releaseNotesAutoMode ? "Auto close" : "Close"}
+                  ${state.releaseNotesAutoMode ? "나중에" : "닫기"}
                 </button>
                 <button
                   class="btn primary"
@@ -1413,7 +1413,7 @@ export function renderReleaseNotesDialog(state: AppViewState) {
                   ?disabled=${state.releaseNotesReadSubmitting || !selectedMarkdown}
                   @click=${() => state.handleConfirmReleaseNotes()}
                 >
-                  ${state.releaseNotesReadSubmitting ? "???以?.." : "?뺤씤"}
+                  ${state.releaseNotesReadSubmitting ? "저장 중..." : "확인"}
                 </button>
               `
             : html`
@@ -1422,7 +1422,7 @@ export function renderReleaseNotesDialog(state: AppViewState) {
                   type="button"
                   @click=${() => state.handleCloseReleaseNotes()}
                 >
-                  ?リ린
+                  닫기
                 </button>
               `}
         </div>
@@ -2014,11 +2014,11 @@ export function renderApp(state: AppViewState) {
               @click=${() => {
                 state.paletteOpen = !state.paletteOpen;
               }}
-              title="Search or jump to??(?쁊)"
+              title="Search or jump to... (⌘K)"
               aria-label="Open command palette"
             >
               <span class="topbar-search__label">${t("common.search")}</span>
-              <kbd class="topbar-search__kbd">?쁊</kbd>
+              <kbd class="topbar-search__kbd">⌘K</kbd>
             </button>
             ${resolveWorkspaceVocUrl(state)
               ? html`
@@ -3046,9 +3046,9 @@ export function renderApp(state: AppViewState) {
                       typeof window === "undefined"
                         ? true
                         : window.confirm(
-                            slug
-                              ? "???ㅽ궗??workspace?먯꽌 ?쒓굅?⑸땲?? ?ㅼ떆 ?ъ슜?섎젮硫?Skill Hub?먯꽌 ?ㅼ떆 ?ㅼ튂?댁빞 ?⑸땲??"
-                              : "???ㅽ궗??workspace?먯꽌 ?꾩쟾????젣?⑸땲?? ?섎룎由????놁뒿?덈떎.",
+	                            slug
+	                              ? "이 스킬을 workspace에서 제거합니다. 다시 사용하려면 Skill Hub에서 다시 설치해야 합니다."
+	                              : "이 스킬을 workspace에서 완전히 삭제합니다. 되돌릴 수 없습니다.",
                           );
                     if (!confirmed) {
                       return Promise.resolve();
@@ -3197,7 +3197,7 @@ export function renderApp(state: AppViewState) {
                   if (
                     typeof window !== "undefined" &&
                     !window.confirm(
-                      "???ㅽ궗??workspace?먯꽌 ?쒓굅?⑸땲?? ?ㅼ떆 ?ъ슜?섎젮硫?Skill Hub?먯꽌 ?ㅼ떆 ?ㅼ튂?댁빞 ?⑸땲??",
+	                      "이 스킬을 workspace에서 제거합니다. 다시 사용하려면 Skill Hub에서 다시 설치해야 합니다.",
                     )
                   ) {
                     return;
@@ -3219,7 +3219,7 @@ export function renderApp(state: AppViewState) {
                   if (
                     typeof window !== "undefined" &&
                     !window.confirm(
-                      "???ㅽ궗??Skill Hub?먯꽌 ?꾩쟾????젣?⑸땲?? ?뚰겕?ㅽ럹?댁뒪 蹂듭궗蹂몄? ?좎??섎ŉ ?ㅼ떆 諛쒗뻾?????덉뒿?덈떎.",
+	                      "이 스킬을 Skill Hub에서 완전히 삭제합니다. 워크스페이스 복사본은 유지되며 다시 발행할 수 있습니다.",
                     )
                   ) {
                     return;
@@ -3393,8 +3393,8 @@ export function renderApp(state: AppViewState) {
                           (entry) => entry.skillName === state.skillHubEditorSkillName,
                         );
                         if (!publishEntry || publishEntry.disabled) {
-                          state.skillHubEditorError =
-                            "諛쒗뻾 ?곹깭媛 蹂寃쎈릺?덉뒿?덈떎. Skill Hub瑜??덈줈怨좎묠?댁＜?몄슂.";
+	                          state.skillHubEditorError =
+	                            "발행 상태가 변경되었습니다. Skill Hub를 새로고침해주세요.";
                           return;
                         }
                         await publishWorkspaceSkillWithPrompts(state, publishEntry, prompts, {

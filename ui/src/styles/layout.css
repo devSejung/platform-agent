@@ -668,6 +668,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: 0;
   scrollbar-width: none;
 }
@@ -1050,6 +1051,11 @@
 .employee-chat-sessions__new svg {
   width: 12px;
   height: 12px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .employee-chat-sessions__search {
@@ -1086,6 +1092,7 @@
   flex: 1 1 auto;
   gap: 4px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 1px 3px 1px 0;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--muted) 52%, transparent) color-mix(in srgb, var(--bg-muted) 45%, transparent);
@@ -1140,6 +1147,10 @@
   color: var(--text-strong);
   cursor: default;
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--card-foreground) 8%, transparent);
+}
+
+.employee-chat-session--menu-open {
+  z-index: 5;
 }
 
 .employee-chat-session__select {
@@ -1223,11 +1234,12 @@
 }
 
 .employee-chat-session__menu {
-  grid-column: 2 / 5;
-  z-index: 4;
+  position: absolute;
+  top: 34px;
+  right: 8px;
+  z-index: 6;
   min-width: 86px;
   display: grid;
-  justify-self: end;
   gap: 2px;
   padding: 4px;
   border: 1px solid var(--border);
@@ -1727,7 +1739,7 @@
 .content--employee-layout.content--chat {
   display: grid;
   gap: 20px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .content--employee-layout.content--chat > .chat {

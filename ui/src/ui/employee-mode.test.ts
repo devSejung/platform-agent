@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import "../styles.css";
 import type { OpenClawApp } from "./app.ts";
 import "./app.ts";
@@ -794,4 +794,3 @@ describe("employee mode", () => {
     expect(app.textContent).toContain("Review accounts, roles, and membership assignments.");
   });
 });
-

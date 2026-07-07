@@ -6,6 +6,7 @@ import {
   EMPLOYEE_CHAT_ATTACHMENTS_UPLOAD_PATH,
   type EmployeeChatAttachmentUploadResponse,
 } from "../../../../src/gateway/employee-chat-attachments-contract.ts";
+import { i18n } from "../../i18n/index.ts";
 import type {
   CompactionStatus as CompactionIndicatorStatus,
   FallbackStatus as FallbackIndicatorStatus,
@@ -1451,6 +1452,7 @@ const WELCOME_SUGGESTIONS = [
 ];
 
 function renderWelcomeState(props: ChatProps): TemplateResult {
+  const english = i18n.getLocale() === "en";
   const name = props.assistantName || "Assistant";
   const avatar = resolveAgentAvatarUrl({
     identity: {
@@ -1464,10 +1466,10 @@ function renderWelcomeState(props: ChatProps): TemplateResult {
   const displayName = props.employeeMode ? "PlatformClaw" : name;
   const suggestions = props.employeeMode
     ? [
-        "오늘 해야 할 일을 정리해줘",
-        "방금 대화한 내용을 요약해줘",
-        "보낼 답장을 초안으로 만들어줘",
-        "다음 단계 업무를 추천해줘",
+        english ? "Help me organize today's work" : "오늘 해야 할 일을 정리해줘",
+        english ? "Summarize what we just discussed" : "방금 대화한 내용을 요약해줘",
+        english ? "Draft the reply I should send" : "보낼 답장을 초안으로 만들어줘",
+        english ? "Recommend the next work steps" : "다음 단계 업무를 추천해줘",
       ]
     : WELCOME_SUGGESTIONS;
 
@@ -1487,13 +1489,17 @@ function renderWelcomeState(props: ChatProps): TemplateResult {
       <div class="agent-chat__badges">
         <span class="agent-chat__badge"
           ><img src=${logoUrl} alt="" /> ${props.employeeMode
-            ? "PlatformClaw Workspace"
+            ? english
+              ? "PlatformClaw Workspace"
+              : "PlatformClaw 워크스페이스"
             : "Ready to chat"}</span
         >
       </div>
       <p class="agent-chat__hint">
         ${props.employeeMode
-          ? "업무 관련 질문, 요약, 초안 작성, 다음 단계 정리까지 자연스럽게 요청할 수 있습니다."
+          ? english
+            ? "You can naturally ask for work help, summaries, draft writing, and next-step planning."
+            : "업무 관련 질문, 요약, 초안 작성, 다음 단계 정리까지 자연스럽게 요청할 수 있습니다."
           : html`Type a message below &middot; <kbd>/</kbd> for commands`}
       </p>
       <div class="agent-chat__suggestions">

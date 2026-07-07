@@ -161,7 +161,7 @@ describe("employee mode", () => {
     expect(app.querySelector(".topbar-skillhub-link--active")).not.toBeNull();
   });
 
-  it("shows the employee VOC shortcut when the surface config provides a URL", async () => {
+  it("opens the employee VOC modal from the topbar shortcut", async () => {
     const app = mountConnectedEmployeeApp();
     app.employeeProfile = {
       employeeId: "eon",
@@ -169,18 +169,19 @@ describe("employee mode", () => {
       department: "Ops",
       agentId: "eon",
     };
-    app.employeeUi = {
-      ...app.employeeUi,
-      vocUrl: "https://voc.company.example/intake",
-    };
     app.connected = true;
     app.requestUpdate();
     await app.updateComplete;
 
-    const link = app.querySelector<HTMLAnchorElement>(".topbar-voc-link");
-    expect(link).not.toBeNull();
-    expect(link?.href).toBe("https://voc.company.example/intake");
-    expect(link?.getAttribute("aria-label")).toBe("불만 접수");
+    const button = app.querySelector<HTMLButtonElement>(".topbar-voc-link");
+    expect(button).not.toBeNull();
+    expect(button?.getAttribute("aria-label")).toBe("VOC");
+    button?.click();
+    await app.updateComplete;
+
+    expect(app.employeeVocModalOpen).toBe(true);
+    expect(app.querySelector(".employee-voc-dialog")).not.toBeNull();
+    expect(app.textContent).toContain("VOC 등록");
   });
 
   it("renders non-chat employee destinations inside the right workspace rail", async () => {

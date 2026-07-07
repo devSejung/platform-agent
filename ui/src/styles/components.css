@@ -7360,6 +7360,76 @@ details[open] > .ov-expandable-toggle::after {
   padding: 16px 20px 24px;
 }
 
+.employee-voc-dialog__panel {
+  width: min(640px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 72px));
+  margin: clamp(40px, 10vh, 96px) auto;
+}
+
+.employee-voc-dialog__header {
+  align-items: flex-start;
+}
+
+.employee-voc-dialog__title {
+  font-size: 18px;
+}
+
+.employee-voc-dialog__subtitle {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.employee-voc-dialog__body {
+  display: grid;
+  gap: 14px;
+}
+
+.employee-voc-dialog__field {
+  display: grid;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.employee-voc-dialog__field input,
+.employee-voc-dialog__field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--text);
+  padding: 11px 13px;
+  font: inherit;
+  resize: vertical;
+  outline: none;
+  transition:
+    border-color var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease;
+}
+
+.employee-voc-dialog__field textarea {
+  min-height: 180px;
+}
+
+.employee-voc-dialog__field input:focus,
+.employee-voc-dialog__field textarea:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.employee-voc-dialog__message {
+  margin: 0;
+}
+
+.employee-voc-dialog__actions {
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
 .skillhub-transfer-dialog__panel {
   width: min(640px, calc(100vw - 40px));
   min-height: 0;

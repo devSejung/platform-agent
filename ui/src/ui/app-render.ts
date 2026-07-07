@@ -457,14 +457,6 @@ function resolveWorkspaceDocsUrl(state: AppViewState): string | null {
   return configDocsUrl ?? state.employeeUi.docsUrl;
 }
 
-function resolveWorkspaceVocUrl(state: AppViewState): string | null {
-  const configVocUrl = trimStringOrNull(
-    (state.configSnapshot?.config as { gateway?: { controlUi?: { vocUrl?: unknown } } } | null)
-      ?.gateway?.controlUi?.vocUrl,
-  );
-  return configVocUrl ?? state.employeeUi.vocUrl;
-}
-
 function renderEmployeeLoginNotice(state: AppViewState) {
   if (!state.employeeMode || !state.employeeLoginNotice) {
     return nothing;
@@ -569,9 +561,9 @@ function renderEmployeeIdentitySummary(state: AppViewState, navCollapsed: boolea
 
 function formatEmployeeDateTime(value: unknown): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return "기록 없음";
+    return t("employeeHeartbeat.noRecord");
   }
-  return new Intl.DateTimeFormat("ko-KR", {
+  return new Intl.DateTimeFormat(i18n.getLocale() === "en" ? "en-US" : "ko-KR", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(value);
@@ -579,19 +571,26 @@ function formatEmployeeDateTime(value: unknown): string {
 
 function formatEmployeeRelative(value: unknown): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return "아직 기록이 없습니다.";
+    return t("employeeHeartbeat.noHistoryYet");
   }
   const diffMs = Date.now() - value;
+  const english = i18n.getLocale() === "en";
   const absMinutes = Math.max(1, Math.round(Math.abs(diffMs) / 60_000));
   if (absMinutes < 60) {
-    return `${absMinutes}분 ${diffMs >= 0 ? "전" : "후"}`;
+    return english
+      ? `${absMinutes} minute${absMinutes === 1 ? "" : "s"} ${diffMs >= 0 ? "ago" : "from now"}`
+      : `${absMinutes}분 ${diffMs >= 0 ? "전" : "후"}`;
   }
   const absHours = Math.round(absMinutes / 60);
   if (absHours < 24) {
-    return `${absHours}시간 ${diffMs >= 0 ? "전" : "후"}`;
+    return english
+      ? `${absHours} hour${absHours === 1 ? "" : "s"} ${diffMs >= 0 ? "ago" : "from now"}`
+      : `${absHours}시간 ${diffMs >= 0 ? "전" : "후"}`;
   }
   const absDays = Math.round(absHours / 24);
-  return `${absDays}일 ${diffMs >= 0 ? "전" : "후"}`;
+  return english
+    ? `${absDays} day${absDays === 1 ? "" : "s"} ${diffMs >= 0 ? "ago" : "from now"}`
+    : `${absDays}일 ${diffMs >= 0 ? "전" : "후"}`;
 }
 
 function isEmployeeChatSessionRowVisible(state: AppViewState, row: GatewaySessionRow): boolean {
@@ -1431,6 +1430,136 @@ export function renderReleaseNotesDialog(state: AppViewState) {
   `;
 }
 
+function renderEmployeeVocDialog(state: AppViewState) {
+  if (!state.employeeVocModalOpen) {
+    return nothing;
+  }
+  const english = state.settings.locale === "en";
+  const title = english ? "VOC Registration" : "VOC 등록";
+  const description = english
+    ? "This is the PlatformClaw VOC registration page."
+    : "PlatformClaw VOC 등록 페이지입니다.";
+  const titleLabel = english ? "Title" : "제목";
+  const bodyLabel = english ? "Details" : "내용";
+  const titlePlaceholder = english ? "Please enter a title" : "제목을 입력해주세요";
+  const bodyPlaceholder = english
+    ? "- Pain points\n- Things that would be nice to improve\n- Features that would be nice to add"
+    : "- 불편한 점\n- 개선되면 좋을 만한 점\n- 기능 추가되면 좋을 것 같은 점";
+  const submitLabel = state.employeeVocSubmitting
+    ? english
+      ? "Submitting..."
+      : "등록 중..."
+    : english
+      ? "Register"
+      : "등록";
+  const cancelLabel = english ? "Cancel" : "취소";
+  const successPrefix = english ? "VOC has been registered:" : "VOC가 등록되었습니다:";
+  const ensureOpen = (el?: Element) => {
+    if (!(el instanceof HTMLDialogElement) || el.matches(":modal")) {
+      return;
+    }
+    try {
+      if (el.open) {
+        el.removeAttribute("open");
+      }
+      el.showModal();
+    } catch {
+      el.setAttribute("open", "");
+    }
+  };
+
+  return html`
+    <dialog
+      class="md-preview-dialog employee-voc-dialog"
+      ${ref(ensureOpen)}
+      @click=${(event: Event) => {
+        const dialog = event.currentTarget as HTMLDialogElement;
+        if (event.target === dialog) {
+          dialog.close();
+        }
+      }}
+      @close=${() => {
+        state.employeeVocModalOpen = false;
+      }}
+    >
+      <div class="md-preview-dialog__panel employee-voc-dialog__panel">
+        <div class="md-preview-dialog__header employee-voc-dialog__header">
+          <div>
+            <div class="md-preview-dialog__title employee-voc-dialog__title">${title}</div>
+            <div class="employee-voc-dialog__subtitle">${description}</div>
+          </div>
+        </div>
+        <div class="md-preview-dialog__body employee-voc-dialog__body">
+          <label class="employee-voc-dialog__field">
+            <span>${titleLabel}</span>
+            <input
+              type="text"
+              maxlength="200"
+              .value=${state.employeeVocTitle}
+              placeholder=${titlePlaceholder}
+              ?disabled=${state.employeeVocSubmitting}
+              @input=${(event: Event) => {
+                state.employeeVocTitle = (event.target as HTMLInputElement).value;
+                state.employeeVocError = null;
+              }}
+            />
+          </label>
+          <label class="employee-voc-dialog__field">
+            <span>${bodyLabel}</span>
+            <textarea
+              rows="8"
+              maxlength="8000"
+              .value=${state.employeeVocBody}
+              placeholder=${bodyPlaceholder}
+              ?disabled=${state.employeeVocSubmitting}
+              @input=${(event: Event) => {
+                state.employeeVocBody = (event.target as HTMLTextAreaElement).value;
+                state.employeeVocError = null;
+              }}
+            ></textarea>
+          </label>
+          ${state.employeeVocError
+            ? html`<div class="callout danger employee-voc-dialog__message">
+                ${state.employeeVocError}
+              </div>`
+            : nothing}
+          ${state.employeeVocResult
+            ? html`<div class="callout success employee-voc-dialog__message">
+                ${successPrefix}
+                <a
+                  href=${state.employeeVocResult.issueUrl}
+                  target=${EXTERNAL_LINK_TARGET}
+                  rel=${buildExternalLinkRel()}
+                  >${state.employeeVocResult.issueKey}</a
+                >
+              </div>`
+            : nothing}
+          <div class="md-preview-dialog__actions employee-voc-dialog__actions">
+            <button
+              type="button"
+              class="btn"
+              ?disabled=${state.employeeVocSubmitting}
+              @click=${() => {
+                state.employeeVocModalOpen = false;
+              }}
+            >
+              ${cancelLabel}
+            </button>
+            <button
+              type="button"
+              class="btn primary"
+              ?disabled=${state.employeeVocSubmitting}
+              @click=${() => void state.handleEmployeeVocSubmit()}
+            >
+              ${submitLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+  `;
+}
+
 export function renderApp(state: AppViewState) {
   const updatableState = state as AppViewState & { requestUpdate?: () => void };
   const requestHostUpdate =
@@ -2020,18 +2149,20 @@ export function renderApp(state: AppViewState) {
               <span class="topbar-search__label">${t("common.search")}</span>
               <kbd class="topbar-search__kbd">⌘K</kbd>
             </button>
-            ${resolveWorkspaceVocUrl(state)
+            ${state.employeeMode
               ? html`
-                  <a
-                    href=${resolveWorkspaceVocUrl(state)!}
+                  <button
+                    type="button"
                     class="topbar-voc-link topbar-voc-link--report"
-                    target="_blank"
-                    rel=${buildExternalLinkRel()}
-                    title="불만 접수"
-                    aria-label="불만 접수"
+                    title="VOC"
+                    aria-label="VOC"
+                    @click=${() => {
+                      state.employeeVocModalOpen = true;
+                      state.employeeVocError = null;
+                    }}
                   >
                     <span class="topbar-voc-link__icon" aria-hidden="true">${icons.headset}</span>
-                  </a>
+                  </button>
                 `
               : nothing}
             <a
@@ -4540,6 +4671,7 @@ export function renderApp(state: AppViewState) {
           : nothing}
       </main>
       ${renderExecApprovalPrompt(state)} ${renderGatewayUrlConfirmation(state)}
+      ${renderEmployeeVocDialog(state)}
       ${renderReleaseNotesDialog(state)}
     </div>
   `;

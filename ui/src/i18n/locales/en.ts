@@ -603,6 +603,8 @@ export const en: TranslationMap = {
     deliveryTarget: "Delivery target",
     noCadence: "No cadence",
     none: "none",
+    noRecord: "No record",
+    noHistoryYet: "No history yet.",
     noChannelHistory: "No channel history",
     heartbeatOn: "heartbeat on",
     heartbeatOff: "heartbeat off",

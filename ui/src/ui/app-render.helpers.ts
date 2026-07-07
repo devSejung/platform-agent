@@ -2,7 +2,7 @@ import { html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
 import { repeat } from "lit/directives/repeat.js";
 import { buildAgentMainSessionKey } from "../../../src/routing/session-key.js";
-import { t } from "../i18n/index.ts";
+import { i18n, t } from "../i18n/index.ts";
 import { refreshChat, refreshChatAvatar } from "./app-chat.ts";
 import { syncUrlWithSessionKey } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
@@ -113,6 +113,7 @@ function requestQueuedMessageDiscardConfirmation(): Promise<boolean> {
   if (typeof document === "undefined") {
     return Promise.resolve(true);
   }
+  const english = i18n.getLocale() === "en";
 
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
@@ -131,11 +132,15 @@ function requestQueuedMessageDiscardConfirmation(): Promise<boolean> {
     const title = document.createElement("div");
     title.id = "chat-session-leave-confirm-title";
     title.className = "exec-approval-title";
-    title.textContent = "전송 대기 중인 메시지가 있습니다";
+    title.textContent = english
+      ? "You have a queued message"
+      : "전송 대기 중인 메시지가 있습니다";
 
     const subtitle = document.createElement("div");
     subtitle.className = "exec-approval-sub";
-    subtitle.textContent = "현재 대화에 아직 전송되지 않은 메시지가 있습니다.";
+    subtitle.textContent = english
+      ? "This conversation still has a message that has not been sent yet."
+      : "현재 대화에 아직 전송되지 않은 메시지가 있습니다.";
 
     headerText.append(title, subtitle);
     header.append(headerText);
@@ -143,7 +148,9 @@ function requestQueuedMessageDiscardConfirmation(): Promise<boolean> {
     const body = document.createElement("div");
     body.className = "callout danger";
     body.style.marginTop = "12px";
-    body.textContent = "다른 대화로 이동하면 이 메시지는 전송되지 않습니다. 이동하시겠습니까?";
+    body.textContent = english
+      ? "If you move to another conversation, this message will not be sent. Continue?"
+      : "다른 대화로 이동하면 이 메시지는 전송되지 않습니다. 이동하시겠습니까?";
 
     const actions = document.createElement("div");
     actions.className = "exec-approval-actions";
@@ -151,12 +158,12 @@ function requestQueuedMessageDiscardConfirmation(): Promise<boolean> {
     const cancel = document.createElement("button");
     cancel.className = "btn";
     cancel.type = "button";
-    cancel.textContent = "취소";
+    cancel.textContent = english ? "Cancel" : "취소";
 
     const leave = document.createElement("button");
     leave.className = "btn danger";
     leave.type = "button";
-    leave.textContent = "이동";
+    leave.textContent = english ? "Leave" : "이동";
 
     const cleanup = (value: boolean) => {
       overlay.remove();

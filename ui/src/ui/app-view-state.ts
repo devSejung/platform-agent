@@ -72,6 +72,12 @@ export type AppViewState = {
     announcementLinkLabel: string | null;
     announcementLinkUrl: string | null;
   };
+  employeeVocModalOpen: boolean;
+  employeeVocTitle: string;
+  employeeVocBody: string;
+  employeeVocSubmitting: boolean;
+  employeeVocError: string | null;
+  employeeVocResult: { issueKey: string; issueUrl: string } | null;
   employeeProfile: {
     employeeId: string | null;
     name: string | null;

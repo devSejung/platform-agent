@@ -39,6 +39,7 @@ import {
 import { handleOpenAiEmbeddingsHttpRequest } from "./embeddings-http.js";
 import { handleEmployeeChatAttachmentsHttpRequest } from "./employee-chat-attachments.js";
 import { handleEmployeeReleaseNotesHttpRequest } from "./employee-release-notes.js";
+import { handleEmployeeVocHttpRequest } from "./employee-voc.js";
 import {
   handleEmployeeAdSsoRequest,
   handleEmployeeBootstrapRequest,
@@ -1057,6 +1058,16 @@ export function createGatewayHttpServer(opts: {
             req,
             res,
             config: configSnapshot,
+            readJsonBody,
+          }),
+      });
+
+      requestStages.push({
+        name: "employee-voc",
+        run: () =>
+          handleEmployeeVocHttpRequest({
+            req,
+            res,
             readJsonBody,
           }),
       });

@@ -288,7 +288,9 @@
     linear-gradient(180deg, color-mix(in srgb, #0f7c72 12%, var(--bg-elevated)), var(--bg-elevated));
   color: #0f7c72;
   text-decoration: none;
+  appearance: none;
   box-sizing: border-box;
+  cursor: pointer;
   transition:
     border-color var(--duration-fast) ease,
     background var(--duration-fast) ease,

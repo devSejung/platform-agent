@@ -76,6 +76,7 @@ import {
   submitEmployeeAdSso,
   submitEmployeeLogin,
 } from "./controllers/employee-login.ts";
+import { submitEmployeeVoc } from "./controllers/employee-voc.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
 import type { GroupDetail, GroupEntry, GroupScopeOption } from "./controllers/groups.ts";
@@ -213,6 +214,12 @@ export class OpenClawApp extends LitElement {
     announcementLinkLabel: null as string | null,
     announcementLinkUrl: null as string | null,
   };
+  @state() employeeVocModalOpen = false;
+  @state() employeeVocTitle = "";
+  @state() employeeVocBody = "";
+  @state() employeeVocSubmitting = false;
+  @state() employeeVocError: string | null = null;
+  @state() employeeVocResult: { issueKey: string; issueUrl: string } | null = null;
   @state() employeeProfile = {
     employeeId: null as string | null,
     name: null as string | null,
@@ -818,6 +825,10 @@ export class OpenClawApp extends LitElement {
 
   async handleEmployeeLogout() {
     await logoutEmployee(this as unknown as Parameters<typeof logoutEmployee>[0]);
+  }
+
+  async handleEmployeeVocSubmit() {
+    await submitEmployeeVoc(this as unknown as Parameters<typeof submitEmployeeVoc>[0]);
   }
 
   handleChatScroll(event: Event) {

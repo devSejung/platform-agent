@@ -606,6 +606,8 @@ export const ko: TranslationMap = {
     deliveryTarget: "전달 대상",
     noCadence: "주기 없음",
     none: "없음",
+    noRecord: "기록 없음",
+    noHistoryYet: "아직 기록이 없습니다.",
     noChannelHistory: "채널 기록 없음",
     heartbeatOn: "heartbeat 켜짐",
     heartbeatOff: "heartbeat 꺼짐",

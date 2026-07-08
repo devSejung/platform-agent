@@ -72,16 +72,16 @@ export function buildCoWorkerFieldValue(coWorkers: readonly string[]) {
 function buildVocDescription(params: {
   body: string;
   reporterName?: string;
-  reporterKnoxId: string;
+  reporterEmployeeId: string;
 }) {
-  const reporterLabel = params.reporterName?.trim() || params.reporterKnoxId;
+  const reporterLabel = params.reporterName?.trim() || params.reporterEmployeeId;
   return [
     params.body,
     "",
     "---",
     "Submitted from PlatformClaw VOC",
     `Reporter: ${reporterLabel}`,
-    `Reporter Knox ID: ${params.reporterKnoxId}`,
+    `Reporter Employee ID: ${params.reporterEmployeeId}`,
     "Created via: Employee Web UI",
     `Parent: ${VOC_JIRA_CONFIG.parentIssueKey}`,
     `Component: ${VOC_JIRA_CONFIG.componentName}`,
@@ -91,10 +91,10 @@ function buildVocDescription(params: {
 export function buildVocJiraPayload(params: {
   title: string;
   body: string;
-  reporterKnoxId: string;
+  reporterEmployeeId: string;
   reporterName?: string;
 }): JiraVocPayload {
-  const coWorkers = dedupe([...VOC_JIRA_CONFIG.coWorkerDefaults, params.reporterKnoxId]);
+  const coWorkers = dedupe([...VOC_JIRA_CONFIG.coWorkerDefaults, params.reporterEmployeeId]);
   return {
     fields: {
       project: { key: VOC_JIRA_CONFIG.projectKey },
@@ -102,7 +102,7 @@ export function buildVocJiraPayload(params: {
       summary: params.title,
       description: buildVocDescription({
         body: params.body,
-        reporterKnoxId: params.reporterKnoxId,
+        reporterEmployeeId: params.reporterEmployeeId,
         reporterName: params.reporterName,
       }),
       issuetype: { name: VOC_JIRA_CONFIG.issueTypeName },
@@ -199,8 +199,8 @@ export async function handleEmployeeVocHttpRequest(params: {
     return true;
   }
 
-  const reporterKnoxId = session.employeeId?.trim();
-  if (!reporterKnoxId) {
+  const reporterEmployeeId = session.employeeId?.trim();
+  if (!reporterEmployeeId) {
     sendJson(params.res, 400, { ok: false, error: "VOC 등록에 실패했습니다." });
     return true;
   }
@@ -209,7 +209,7 @@ export async function handleEmployeeVocHttpRequest(params: {
     const payload = buildVocJiraPayload({
       title,
       body,
-      reporterKnoxId,
+      reporterEmployeeId,
       reporterName: session.name,
     });
     const result = await createVocJiraIssue(payload);

@@ -267,6 +267,12 @@ export function setThemeMode(
 
 export async function refreshActiveTab(host: SettingsHost) {
   if (host.employeeMode) {
+    await loadSessions(host as unknown as OpenClawApp, {
+      activeMinutes: 0,
+      limit: 0,
+      includeGlobal: false,
+      includeUnknown: false,
+    });
     if (
       host.tab !== "chat" &&
       host.tab !== "dashboard" &&

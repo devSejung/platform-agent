@@ -605,6 +605,12 @@ function isEmployeeChatSessionRowVisible(state: AppViewState, row: GatewaySessio
   return parseAgentSessionKey(key)?.agentId === agentId;
 }
 
+function isEmployeeMainChatSessionRow(state: AppViewState, row: GatewaySessionRow): boolean {
+  const agentId = state.employeeProfile?.agentId?.trim();
+  const parsed = parseAgentSessionKey(row.key?.trim() ?? "");
+  return Boolean(agentId && parsed?.agentId === agentId && parsed.rest === "main");
+}
+
 function formatEmployeeSessionMeta(
   row: GatewaySessionRow,
   defaults: NonNullable<AppViewState["sessionsResult"]>["defaults"] | undefined,
@@ -844,6 +850,14 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
       const name = formatEmployeeSessionTitle(row).toLowerCase();
       const meta = formatEmployeeSessionMeta(row, state.sessionsResult?.defaults).toLowerCase();
       return name.includes(query) || meta.includes(query);
+    })
+    .toSorted((left, right) => {
+      const leftMain = isEmployeeMainChatSessionRow(state, left);
+      const rightMain = isEmployeeMainChatSessionRow(state, right);
+      if (leftMain === rightMain) {
+        return 0;
+      }
+      return leftMain ? -1 : 1;
     });
   const count = rows.length;
   const english = state.settings.locale === "en";

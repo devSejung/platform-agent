@@ -279,6 +279,43 @@ describe("employee mode", () => {
     expect(sidebarSessions?.textContent).not.toContain("Alpha Plan");
   });
 
+  it("pins the employee main chat session at the top of the recent session list", async () => {
+    const app = mountConnectedEmployeeApp();
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.sessionKey = "agent:eon:dashboard:active";
+    app.sessionsResult = createSessionsResult([
+      {
+        key: "agent:eon:dashboard:newer",
+        kind: "direct",
+        label: "Newer dashboard",
+        updatedAt: Date.now(),
+      },
+      { key: "agent:minji:main", kind: "direct", label: "Other main", updatedAt: Date.now() },
+      {
+        key: "agent:eon:dashboard:active",
+        kind: "direct",
+        label: "Active dashboard",
+        updatedAt: Date.now() - 1_000,
+      },
+      { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() - 60_000 },
+    ]);
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const rows = Array.from(app.querySelectorAll(".employee-chat-session"));
+    expect(rows.map((row) => row.textContent ?? "")).toHaveLength(3);
+    expect(rows[0]?.textContent).toContain("Main");
+    expect(rows[1]?.textContent).toContain("Newer dashboard");
+    expect(rows[2]?.textContent).toContain("Active dashboard");
+    expect(app.querySelector(".employee-chat-sessions")?.textContent).not.toContain("Other main");
+  });
+
   it("shows active employee sessions with a right-side live indicator", async () => {
     const app = mountConnectedEmployeeApp();
     app.employeeProfile = {

@@ -1793,18 +1793,24 @@
 /* Content header */
 .content-header {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   padding: 4px 8px;
-  overflow: hidden;
+  overflow: visible;
+  flex-wrap: wrap;
   transform-origin: top center;
   transition:
     opacity var(--shell-focus-duration) var(--shell-focus-ease),
     transform var(--shell-focus-duration) var(--shell-focus-ease),
     max-height var(--shell-focus-duration) var(--shell-focus-ease),
     padding var(--shell-focus-duration) var(--shell-focus-ease);
-  max-height: 80px;
+  max-height: 180px;
+}
+
+.content-header > div:first-child {
+  flex: 1 1 320px;
+  min-width: 0;
 }
 
 .shell--chat-focus .content-header {
@@ -1829,12 +1835,20 @@
   font-weight: 400;
   margin-top: 4px;
   letter-spacing: -0.005em;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 .page-meta {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-self: flex-start;
 }
 
 .dreaming-header-controls {

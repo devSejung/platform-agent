@@ -20459,6 +20459,12 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 description:
                   "Optional docs/help URL rendered in the web UI sidebar. Leave empty to hide the Docs shortcut entirely.",
               },
+              vocUrl: {
+                type: "string",
+                title: "Employee VOC URL",
+                description:
+                  "Optional employee VOC/intake URL rendered in the employee UI. Leave empty to hide the VOC shortcut entirely.",
+              },
               announcementTitle: {
                 type: "string",
                 title: "Employee Announcement Title",
@@ -23942,6 +23948,12 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       label: "Workspace Docs URL",
       help: "Optional docs/help URL rendered in the web UI sidebar. Leave empty to hide the Docs shortcut entirely.",
       placeholder: "https://intranet.company.example/platformclaw/help",
+      tags: ["network"],
+    },
+    "gateway.controlUi.vocUrl": {
+      label: "Employee VOC URL",
+      help: "Optional employee VOC/intake URL rendered in the employee UI. Leave empty to hide the VOC shortcut entirely.",
+      placeholder: "https://intranet.company.example/platformclaw/voc",
       tags: ["network"],
     },
     "gateway.controlUi.announcementTitle": {

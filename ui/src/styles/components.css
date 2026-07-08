@@ -7430,6 +7430,28 @@ details[open] > .ov-expandable-toggle::after {
   padding-top: 4px;
 }
 
+@media (max-width: 720px) {
+  .employee-voc-dialog {
+    width: 100vw;
+    height: 100dvh;
+  }
+
+  .employee-voc-dialog__panel {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 24px);
+    margin: max(12px, env(safe-area-inset-top)) auto max(12px, env(safe-area-inset-bottom));
+  }
+
+  .employee-voc-dialog__body {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .employee-voc-dialog__field textarea {
+    min-height: 150px;
+  }
+}
+
 .skillhub-transfer-dialog__panel {
   width: min(640px, calc(100vw - 40px));
   min-height: 0;

@@ -457,6 +457,14 @@ function resolveWorkspaceDocsUrl(state: AppViewState): string | null {
   return configDocsUrl ?? state.employeeUi.docsUrl;
 }
 
+function resolveWorkspaceVocUrl(state: AppViewState): string | null {
+  const configVocUrl = trimStringOrNull(
+    (state.configSnapshot?.config as { gateway?: { controlUi?: { vocUrl?: unknown } } } | null)
+      ?.gateway?.controlUi?.vocUrl,
+  );
+  return configVocUrl ?? state.employeeUi.vocUrl;
+}
+
 function renderEmployeeLoginNotice(state: AppViewState) {
   if (!state.employeeMode || !state.employeeLoginNotice) {
     return nothing;
@@ -1455,21 +1463,27 @@ function renderEmployeeVocDialog(state: AppViewState) {
   const cancelLabel = english ? "Cancel" : "취소";
   const successPrefix = english ? "VOC has been registered:" : "VOC가 등록되었습니다:";
   const ensureOpen = (el?: Element) => {
-    if (!(el instanceof HTMLDialogElement) || el.matches(":modal")) {
+    if (!(el instanceof HTMLDialogElement)) {
       return;
     }
-    try {
-      if (el.open) {
-        el.removeAttribute("open");
+    queueMicrotask(() => {
+      if (!el.isConnected || el.matches(":modal")) {
+        return;
       }
-      el.showModal();
-    } catch {
-      el.setAttribute("open", "");
-    }
+      try {
+        if (el.open) {
+          el.removeAttribute("open");
+        }
+        el.showModal();
+      } catch {
+        el.setAttribute("open", "");
+      }
+    });
   };
 
   return html`
     <dialog
+      open
       class="md-preview-dialog employee-voc-dialog"
       ${ref(ensureOpen)}
       @click=${(event: Event) => {
@@ -1596,6 +1610,7 @@ export function renderApp(state: AppViewState) {
   const chatDisabledReason = state.connected ? null : t("chat.disconnected");
   const isChat = state.tab === "chat";
   const docsUrl = resolveWorkspaceDocsUrl(state);
+  const vocUrl = state.employeeMode ? resolveWorkspaceVocUrl(state) : null;
   const employeeAnnouncement = resolveEmployeeAnnouncement(state.employeeMode, state.employeeUi);
   const showEmployeeAnnouncement =
     employeeAnnouncement && !isEmployeeAnnouncementDismissed(employeeAnnouncement);
@@ -1738,7 +1753,9 @@ export function renderApp(state: AppViewState) {
           sending: state.chatSending,
           compactionStatus: state.compactionStatus,
           runPhaseStatus:
-            state.employeeMode && state.runPhaseStatus?.phase === "running" && !state.runPhaseStatus.runId
+            state.employeeMode &&
+            state.runPhaseStatus?.phase === "running" &&
+            !state.runPhaseStatus.runId
               ? null
               : state.runPhaseStatus,
           fallbackStatus: state.fallbackStatus,
@@ -2151,18 +2168,38 @@ export function renderApp(state: AppViewState) {
             </button>
             ${state.employeeMode
               ? html`
-                  <button
-                    type="button"
-                    class="topbar-voc-link topbar-voc-link--report"
-                    title="VOC"
-                    aria-label="VOC"
-                    @click=${() => {
-                      state.employeeVocModalOpen = true;
-                      state.employeeVocError = null;
-                    }}
-                  >
-                    <span class="topbar-voc-link__icon" aria-hidden="true">${icons.headset}</span>
-                  </button>
+                  ${vocUrl
+                    ? html`
+                        <a
+                          href=${vocUrl}
+                          class="topbar-voc-link topbar-voc-link--report"
+                          target=${EXTERNAL_LINK_TARGET}
+                          rel=${buildExternalLinkRel()}
+                          title="VOC"
+                          aria-label="VOC"
+                        >
+                          <span class="topbar-voc-link__icon" aria-hidden="true"
+                            >${icons.headset}</span
+                          >
+                        </a>
+                      `
+                    : html`
+                        <button
+                          type="button"
+                          class="topbar-voc-link topbar-voc-link--report"
+                          title="VOC"
+                          aria-label="VOC"
+                          @click=${() => {
+                            state.employeeVocModalOpen = true;
+                            state.employeeVocError = null;
+                            state.employeeVocResult = null;
+                          }}
+                        >
+                          <span class="topbar-voc-link__icon" aria-hidden="true"
+                            >${icons.headset}</span
+                          >
+                        </button>
+                      `}
                 `
               : nothing}
             <a
@@ -2268,7 +2305,8 @@ export function renderApp(state: AppViewState) {
                     const isGroupCollapsed =
                       state.settings.navGroupsCollapsed[group.label] ?? false;
                     const hasActiveTab = group.tabs.some((tab) => tab === state.tab);
-                    const showItems = isChatGroup || navCollapsed || hasActiveTab || !isGroupCollapsed;
+                    const showItems =
+                      isChatGroup || navCollapsed || hasActiveTab || !isGroupCollapsed;
 
                     return html`
                       <section
@@ -2280,28 +2318,30 @@ export function renderApp(state: AppViewState) {
                           ? isChatGroup
                             ? html`
                                 <div class="nav-section__label nav-section__label--static">
-                                  <span class="nav-section__label-text">${t(`nav.${group.label}`)}</span>
+                                  <span class="nav-section__label-text"
+                                    >${t(`nav.${group.label}`)}</span
+                                  >
                                 </div>
                               `
                             : html`
-                              <button
-                                class="nav-section__label"
-                                @click=${() => {
-                                  const next = { ...state.settings.navGroupsCollapsed };
-                                  next[group.label] = !isGroupCollapsed;
-                                  state.applySettings({
-                                    ...state.settings,
-                                    navGroupsCollapsed: next,
-                                  });
-                                }}
-                                aria-expanded=${showItems}
-                              >
-                                <span class="nav-section__label-text"
-                                  >${t(`nav.${group.label}`)}</span
+                                <button
+                                  class="nav-section__label"
+                                  @click=${() => {
+                                    const next = { ...state.settings.navGroupsCollapsed };
+                                    next[group.label] = !isGroupCollapsed;
+                                    state.applySettings({
+                                      ...state.settings,
+                                      navGroupsCollapsed: next,
+                                    });
+                                  }}
+                                  aria-expanded=${showItems}
                                 >
-                                <span class="nav-section__chevron"> ${icons.chevronDown} </span>
-                              </button>
-                            `
+                                  <span class="nav-section__label-text"
+                                    >${t(`nav.${group.label}`)}</span
+                                  >
+                                  <span class="nav-section__chevron"> ${icons.chevronDown} </span>
+                                </button>
+                              `
                           : nothing}
                         <div class="nav-section__items">
                           ${isChatGroup
@@ -3177,9 +3217,9 @@ export function renderApp(state: AppViewState) {
                       typeof window === "undefined"
                         ? true
                         : window.confirm(
-	                            slug
-	                              ? "이 스킬을 workspace에서 제거합니다. 다시 사용하려면 Skill Hub에서 다시 설치해야 합니다."
-	                              : "이 스킬을 workspace에서 완전히 삭제합니다. 되돌릴 수 없습니다.",
+                            slug
+                              ? "이 스킬을 workspace에서 제거합니다. 다시 사용하려면 Skill Hub에서 다시 설치해야 합니다."
+                              : "이 스킬을 workspace에서 완전히 삭제합니다. 되돌릴 수 없습니다.",
                           );
                     if (!confirmed) {
                       return Promise.resolve();
@@ -3328,7 +3368,7 @@ export function renderApp(state: AppViewState) {
                   if (
                     typeof window !== "undefined" &&
                     !window.confirm(
-	                      "이 스킬을 workspace에서 제거합니다. 다시 사용하려면 Skill Hub에서 다시 설치해야 합니다.",
+                      "이 스킬을 workspace에서 제거합니다. 다시 사용하려면 Skill Hub에서 다시 설치해야 합니다.",
                     )
                   ) {
                     return;
@@ -3350,7 +3390,7 @@ export function renderApp(state: AppViewState) {
                   if (
                     typeof window !== "undefined" &&
                     !window.confirm(
-	                      "이 스킬을 Skill Hub에서 완전히 삭제합니다. 워크스페이스 복사본은 유지되며 다시 발행할 수 있습니다.",
+                      "이 스킬을 Skill Hub에서 완전히 삭제합니다. 워크스페이스 복사본은 유지되며 다시 발행할 수 있습니다.",
                     )
                   ) {
                     return;
@@ -3524,8 +3564,8 @@ export function renderApp(state: AppViewState) {
                           (entry) => entry.skillName === state.skillHubEditorSkillName,
                         );
                         if (!publishEntry || publishEntry.disabled) {
-	                          state.skillHubEditorError =
-	                            "발행 상태가 변경되었습니다. Skill Hub를 새로고침해주세요.";
+                          state.skillHubEditorError =
+                            "발행 상태가 변경되었습니다. Skill Hub를 새로고침해주세요.";
                           return;
                         }
                         await publishWorkspaceSkillWithPrompts(state, publishEntry, prompts, {
@@ -4671,8 +4711,7 @@ export function renderApp(state: AppViewState) {
           : nothing}
       </main>
       ${renderExecApprovalPrompt(state)} ${renderGatewayUrlConfirmation(state)}
-      ${renderEmployeeVocDialog(state)}
-      ${renderReleaseNotesDialog(state)}
+      ${renderEmployeeVocDialog(state)} ${renderReleaseNotesDialog(state)}
     </div>
   `;
 }

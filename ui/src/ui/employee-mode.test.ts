@@ -184,6 +184,33 @@ describe("employee mode", () => {
     expect(app.textContent).toContain("VOC 등록");
   });
 
+  it("keeps the configured employee VOC URL as an external shortcut", async () => {
+    const app = mountConnectedEmployeeApp();
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.employeeUi = {
+      ...app.employeeUi,
+      vocUrl: "https://voc.company.example/intake",
+    };
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const link = app.querySelector<HTMLAnchorElement>(".topbar-voc-link");
+    expect(link).not.toBeNull();
+    expect(link?.tagName).toBe("A");
+    expect(link?.href).toBe("https://voc.company.example/intake");
+    link?.click();
+    await app.updateComplete;
+
+    expect(app.employeeVocModalOpen).toBe(false);
+    expect(app.querySelector(".employee-voc-dialog")).toBeNull();
+  });
+
   it("renders non-chat employee destinations inside the right workspace rail", async () => {
     const app = mountConnectedEmployeeApp();
     app.employeeProfile = {

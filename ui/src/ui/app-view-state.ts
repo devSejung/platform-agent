@@ -563,6 +563,7 @@ export type AppViewState = {
     handleEmployeeLogin: () => Promise<void>;
     handleEmployeeAdSso: () => Promise<void>;
     handleEmployeeLogout: () => Promise<void>;
+    handleEmployeeVocSubmit: () => Promise<void>;
     handleConfigLoad: () => Promise<void>;
     handleConfigSave: () => Promise<void>;
     handleConfigApply: () => Promise<void>;

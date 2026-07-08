@@ -67,6 +67,47 @@ describe("handleEmployeeVocHttpRequest", () => {
     });
   });
 
+  it("allows enough JSON body bytes for the advertised Korean character limit", async () => {
+    const { res } = makeMockHttpResponse();
+    const readJsonBody = vi.fn(async () => ({
+      ok: true as const,
+      value: { title: "", body: "" },
+    }));
+
+    await handleEmployeeVocHttpRequest({
+      req: {
+        url: "/employee/voc",
+        method: "POST",
+        headers: {},
+      } as IncomingMessage,
+      res,
+      readJsonBody,
+    });
+
+    expect(readJsonBody).not.toHaveBeenCalled();
+
+    process.env.OPENCLAW_EMPLOYEE_AUTH_SECRET = "employee-test-secret";
+    const token = signEmployeeSessionToken(
+      {
+        employeeId: "eon",
+        agentId: "eon",
+      },
+      process.env.OPENCLAW_EMPLOYEE_AUTH_SECRET,
+    );
+
+    await handleEmployeeVocHttpRequest({
+      req: {
+        url: "/employee/voc",
+        method: "POST",
+        headers: { cookie: `openclaw_employee_session=${encodeURIComponent(token)}` },
+      } as IncomingMessage,
+      res,
+      readJsonBody,
+    });
+
+    expect(readJsonBody).toHaveBeenCalledWith(expect.anything(), 64 * 1024);
+  });
+
   it("creates a Jira sub-task and returns the issue URL", async () => {
     process.env.OPENCLAW_EMPLOYEE_AUTH_SECRET = "employee-test-secret";
     process.env.OPENCLAW_JIRA_VOC_ID = "jira-user";
@@ -141,9 +182,6 @@ describe("VOC Jira helpers", () => {
     expect(payload.fields.issuetype).toEqual({ name: "Sub-task" });
     expect(payload.fields.components).toEqual([{ name: "CLAW" }]);
     expect(payload.fields.assignee).toEqual({ name: "seungon.jung" });
-    expect(payload.fields.customfield_10733).toEqual([
-      { name: "hyeonho.jung" },
-      { name: "eon" },
-    ]);
+    expect(payload.fields.customfield_10733).toEqual([{ name: "hyeonho.jung" }, { name: "eon" }]);
   });
 });

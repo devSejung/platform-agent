@@ -1,10 +1,11 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { Buffer } from "node:buffer";
-import { readEmployeeSession } from "./employee-web-auth.js";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { EMPLOYEE_VOC_PATH } from "./employee-voc-contract.js";
+import { readEmployeeSession } from "./employee-web-auth.js";
 
 const MAX_VOC_TITLE_CHARS = 200;
 const MAX_VOC_BODY_CHARS = 8000;
+const MAX_VOC_JSON_BYTES = 64 * 1024;
 
 const VOC_JIRA_CONFIG = {
   jiraBaseUrl: "https://jira.samsungds.net",
@@ -93,10 +94,7 @@ export function buildVocJiraPayload(params: {
   reporterKnoxId: string;
   reporterName?: string;
 }): JiraVocPayload {
-  const coWorkers = dedupe([
-    ...VOC_JIRA_CONFIG.coWorkerDefaults,
-    params.reporterKnoxId,
-  ]);
+  const coWorkers = dedupe([...VOC_JIRA_CONFIG.coWorkerDefaults, params.reporterKnoxId]);
   return {
     fields: {
       project: { key: VOC_JIRA_CONFIG.projectKey },
@@ -143,14 +141,11 @@ export async function createVocJiraIssue(
   payload: JiraVocPayload,
   env: NodeJS.ProcessEnv = process.env,
 ) {
-  const response = await fetch(
-    `${VOC_JIRA_CONFIG.jiraBaseUrl}${VOC_JIRA_CONFIG.createIssuePath}`,
-    {
-      method: "POST",
-      headers: resolveJiraAuthHeaders(env),
-      body: JSON.stringify(payload),
-    },
-  );
+  const response = await fetch(`${VOC_JIRA_CONFIG.jiraBaseUrl}${VOC_JIRA_CONFIG.createIssuePath}`, {
+    method: "POST",
+    headers: resolveJiraAuthHeaders(env),
+    body: JSON.stringify(payload),
+  });
   let parsed: JiraCreateIssueResponse | null = null;
   try {
     parsed = (await response.json()) as JiraCreateIssueResponse;
@@ -190,7 +185,7 @@ export async function handleEmployeeVocHttpRequest(params: {
     return true;
   }
 
-  const parsed = await params.readJsonBody(params.req, 16 * 1024);
+  const parsed = await params.readJsonBody(params.req, MAX_VOC_JSON_BYTES);
   if (!parsed.ok || !parsed.value || typeof parsed.value !== "object") {
     sendJson(params.res, 400, { ok: false, error: "VOC 등록에 실패했습니다." });
     return true;

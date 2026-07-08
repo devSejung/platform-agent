@@ -184,7 +184,7 @@ describe("employee mode", () => {
     expect(app.textContent).toContain("VOC 등록");
   });
 
-  it("keeps the configured employee VOC URL as an external shortcut", async () => {
+  it("still opens the employee VOC modal even when a VOC URL is configured", async () => {
     const app = mountConnectedEmployeeApp();
     app.employeeProfile = {
       employeeId: "eon",
@@ -200,15 +200,14 @@ describe("employee mode", () => {
     app.requestUpdate();
     await app.updateComplete;
 
-    const link = app.querySelector<HTMLAnchorElement>(".topbar-voc-link");
-    expect(link).not.toBeNull();
-    expect(link?.tagName).toBe("A");
-    expect(link?.href).toBe("https://voc.company.example/intake");
-    link?.click();
+    const button = app.querySelector<HTMLButtonElement>(".topbar-voc-link");
+    expect(button).not.toBeNull();
+    expect(button?.tagName).toBe("BUTTON");
+    button?.click();
     await app.updateComplete;
 
-    expect(app.employeeVocModalOpen).toBe(false);
-    expect(app.querySelector(".employee-voc-dialog")).toBeNull();
+    expect(app.employeeVocModalOpen).toBe(true);
+    expect(app.querySelector(".employee-voc-dialog")).not.toBeNull();
   });
 
   it("renders non-chat employee destinations inside the right workspace rail", async () => {

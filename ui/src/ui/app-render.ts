@@ -457,14 +457,6 @@ function resolveWorkspaceDocsUrl(state: AppViewState): string | null {
   return configDocsUrl ?? state.employeeUi.docsUrl;
 }
 
-function resolveWorkspaceVocUrl(state: AppViewState): string | null {
-  const configVocUrl = trimStringOrNull(
-    (state.configSnapshot?.config as { gateway?: { controlUi?: { vocUrl?: unknown } } } | null)
-      ?.gateway?.controlUi?.vocUrl,
-  );
-  return configVocUrl ?? state.employeeUi.vocUrl;
-}
-
 function renderEmployeeLoginNotice(state: AppViewState) {
   if (!state.employeeMode || !state.employeeLoginNotice) {
     return nothing;
@@ -1610,7 +1602,6 @@ export function renderApp(state: AppViewState) {
   const chatDisabledReason = state.connected ? null : t("chat.disconnected");
   const isChat = state.tab === "chat";
   const docsUrl = resolveWorkspaceDocsUrl(state);
-  const vocUrl = state.employeeMode ? resolveWorkspaceVocUrl(state) : null;
   const employeeAnnouncement = resolveEmployeeAnnouncement(state.employeeMode, state.employeeUi);
   const showEmployeeAnnouncement =
     employeeAnnouncement && !isEmployeeAnnouncementDismissed(employeeAnnouncement);
@@ -2168,38 +2159,19 @@ export function renderApp(state: AppViewState) {
             </button>
             ${state.employeeMode
               ? html`
-                  ${vocUrl
-                    ? html`
-                        <a
-                          href=${vocUrl}
-                          class="topbar-voc-link topbar-voc-link--report"
-                          target=${EXTERNAL_LINK_TARGET}
-                          rel=${buildExternalLinkRel()}
-                          title="VOC"
-                          aria-label="VOC"
-                        >
-                          <span class="topbar-voc-link__icon" aria-hidden="true"
-                            >${icons.headset}</span
-                          >
-                        </a>
-                      `
-                    : html`
-                        <button
-                          type="button"
-                          class="topbar-voc-link topbar-voc-link--report"
-                          title="VOC"
-                          aria-label="VOC"
-                          @click=${() => {
-                            state.employeeVocModalOpen = true;
-                            state.employeeVocError = null;
-                            state.employeeVocResult = null;
-                          }}
-                        >
-                          <span class="topbar-voc-link__icon" aria-hidden="true"
-                            >${icons.headset}</span
-                          >
-                        </button>
-                      `}
+                  <button
+                    type="button"
+                    class="topbar-voc-link topbar-voc-link--report"
+                    title="VOC"
+                    aria-label="VOC"
+                    @click=${() => {
+                      state.employeeVocModalOpen = true;
+                      state.employeeVocError = null;
+                      state.employeeVocResult = null;
+                    }}
+                  >
+                    <span class="topbar-voc-link__icon" aria-hidden="true">${icons.headset}</span>
+                  </button>
                 `
               : nothing}
             <a

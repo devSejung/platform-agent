@@ -1,4 +1,5 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import { buildExecCredentialRuntimeContext } from "../credentials/index.js";
 import {
   addDurableCommandApproval,
   type ExecAsk,
@@ -386,6 +387,16 @@ export async function processGatewayAllowlist(
           scopeKey: params.scopeKey,
           sessionKey: params.notifySessionKey ?? params.sessionKey,
           timeoutSec: effectiveTimeout,
+          // PlatformClaw Phase 3: delayed approval follow-up runs execute on the
+          // gateway host, so they can use the same local SDK credential runtime.
+          credentialRuntimeContext: buildExecCredentialRuntimeContext({
+            runId: "pending",
+            agentId: params.agentId,
+            sessionKey: params.sessionKey,
+            messageProvider: params.turnSourceChannel,
+            currentChannelId: params.turnSourceTo,
+            accountId: params.turnSourceAccountId,
+          }),
         });
       } catch {
         await sendExecApprovalFollowupResult(

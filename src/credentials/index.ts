@@ -5,11 +5,16 @@ export {
   encryptCredentialValue,
   loadCredentialMasterKey,
 } from "./encryption.js";
+export { buildExecCredentialRuntimeContext } from "./exec-runtime-context.js";
 export {
   clearRuntimeSecretRedactionRegistryForTest,
   redactRegisteredRuntimeSecrets,
   registerRuntimeSecretForRedaction,
 } from "./redaction-registry.js";
+export {
+  startRuntimeCredentialHttpServer,
+  stopRuntimeCredentialHttpServerForTest,
+} from "./runtime-credential-http.js";
 export {
   resolveRuntimeCredential,
   type CredentialRuntimeContext,

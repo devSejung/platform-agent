@@ -2,6 +2,12 @@ import path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import {
+  registerRuntimeSecretForRedaction,
+  redactRegisteredRuntimeSecrets,
+  startRuntimeCredentialHttpServer,
+  type CredentialRuntimeContext,
+} from "../credentials/index.js";
+import {
   DEFAULT_EXEC_APPROVAL_TIMEOUT_MS,
   resolveExecApprovalAllowedDecisions,
   type ExecHost,
@@ -539,6 +545,7 @@ export async function runExecProcess(opts: {
   sessionKey?: string;
   timeoutSec: number | null;
   onUpdate?: (partialResult: AgentToolResult<ExecToolDetails>) => void;
+  credentialRuntimeContext?: CredentialRuntimeContext | null;
 }): Promise<ExecProcessHandle> {
   const startedAt = Date.now();
   const sessionId = createSessionSlug();
@@ -548,6 +555,27 @@ export async function runExecProcess(opts: {
     ...opts.env,
     OPENCLAW_SHELL: "exec",
   };
+  let credentialRuntimeToken: string | null = null;
+  const revokeCredentialRuntimeToken = async () => {
+    if (!credentialRuntimeToken) {
+      return;
+    }
+    const credentialRuntime = await startRuntimeCredentialHttpServer();
+    credentialRuntime.revokeSession(credentialRuntimeToken);
+    credentialRuntimeToken = null;
+  };
+  if (opts.credentialRuntimeContext) {
+    const credentialRuntime = await startRuntimeCredentialHttpServer();
+    credentialRuntimeToken = credentialRuntime.registerSession({
+      ...opts.credentialRuntimeContext,
+      runId: sessionId,
+    });
+    registerRuntimeSecretForRedaction(credentialRuntimeToken);
+    shellRuntimeEnv.PLATFORMCLAW_RUNTIME_CREDENTIAL_ENDPOINT = credentialRuntime.endpoint;
+    shellRuntimeEnv.PLATFORMCLAW_RUNTIME_CREDENTIAL_TOKEN = credentialRuntimeToken;
+    shellRuntimeEnv.PLATFORMCLAW_RUN_ID = sessionId;
+    shellRuntimeEnv.PLATFORMCLAW_SKILL_ID = opts.credentialRuntimeContext.skillId;
+  }
 
   const session: ProcessSession = {
     id: sessionId,
@@ -611,7 +639,7 @@ export async function runExecProcess(opts: {
     if (mode) {
       session.cursorKeyMode = mode;
     }
-    const str = sanitizeBinaryOutput(raw);
+    const str = redactRegisteredRuntimeSecrets(sanitizeBinaryOutput(raw));
     for (const chunk of chunkString(str)) {
       appendOutput(session, "stdout", chunk);
       emitUpdate();
@@ -619,7 +647,7 @@ export async function runExecProcess(opts: {
   };
 
   const handleStderr = (data: string) => {
-    const str = sanitizeBinaryOutput(data.toString());
+    const str = redactRegisteredRuntimeSecrets(sanitizeBinaryOutput(data.toString()));
     for (const chunk of chunkString(str)) {
       appendOutput(session, "stderr", chunk);
       emitUpdate();
@@ -760,11 +788,13 @@ export async function runExecProcess(opts: {
           onStderr: handleStderr,
         });
       } catch (retryErr) {
+        await revokeCredentialRuntimeToken();
         markExited(session, null, null, "failed");
         maybeNotifyOnExit(session, "failed");
         throw retryErr;
       }
     } else {
+      await revokeCredentialRuntimeToken();
       markExited(session, null, null, "failed");
       maybeNotifyOnExit(session, "failed");
       throw err;
@@ -807,6 +837,9 @@ export async function runExecProcess(opts: {
         aggregated: session.aggregated.trim(),
         durationMs: Date.now() - startedAt,
       });
+    })
+    .finally(async () => {
+      await revokeCredentialRuntimeToken();
     });
 
   return {

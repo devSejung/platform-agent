@@ -128,10 +128,13 @@ the decrypted value with the runtime redaction registry before returning it to
 in-process Runtime/SDK code. Browser and Control UI Gateway methods remain
 metadata-only and must not expose plaintext credentials.
 
-The Python SDK transport must be wired only after the Runtime can provide a
-trusted per-run context/token. It must not call `credentials.*` Control UI
-methods, and SDK requests must not include `ownerId`, `accountId`, `roomId`, or
-`systemId` as credential owner input.
+The Python SDK transport is wired for gateway-host exec processes only. Runtime
+injects a local loopback endpoint plus a per-run token, not plaintext
+credentials. Sandbox and node-host executions intentionally do not receive the
+endpoint yet; they need an explicit socket or network bridge before this can be
+enabled safely. The SDK must not call `credentials.*` Control UI methods, and
+SDK requests must not include `ownerId`, `accountId`, `roomId`, or `systemId` as
+credential owner input.
 
 ## Docker Policy
 
@@ -398,25 +401,26 @@ Implemented foundation:
    in-process Runtime/SDK code.
 5. Apply the runtime redaction registry to generic logging redaction and
    node-host `system.run` stdout/stderr/event output.
-
-Remaining implementation order:
-
-1. Add a Runtime credential endpoint that is not exposed to browser clients.
-2. Pass only Runtime-owned context to the endpoint: run id, skill id, runtime
-   token, and internally resolved credential scope.
-3. Deny SDK requests that include owner id, account id, room id, or system id.
-4. Resolve scope from the run context:
-   - Web and DM: current authenticated account.
-   - Group room: deny personal credentials by default.
-   - Cron: automation owner account only when the owner is known.
-5. Register decrypted values with run-scoped redaction before returning them to
-   the SDK.
-6. Add the Docker-bundled Python SDK import surface:
+6. Add a gateway-host Runtime credential HTTP transport bound to loopback with a
+   per-run bearer token.
+7. Add the Docker-bundled Python SDK import surface:
 
    ```python
    from platformclaw import credentials
    token = credentials.get("jira.default")
    ```
+
+Remaining implementation order:
+
+1. Add a sandbox/node-host bridge for SDK credential lookup. Do not reuse the
+   browser Gateway protocol and do not expose plaintext credential lookup to
+   browser clients.
+2. Resolve scope from the run context:
+   - Web and DM: current authenticated account.
+   - Group room: deny personal credentials by default.
+   - Cron: automation owner account only when the owner is known.
+3. Add credential grants/permissions once Skill identity is available as a
+   first-class runtime value instead of using agent id as the temporary skill id.
 
 Phase 3 must not use env injection as the primary path and must not let Skill or
 LLM input choose credential owner.

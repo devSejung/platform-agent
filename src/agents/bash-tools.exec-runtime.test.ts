@@ -16,6 +16,9 @@ let detectCursorKeyMode: typeof import("./bash-tools.exec-runtime.js").detectCur
 let emitExecSystemEvent: typeof import("./bash-tools.exec-runtime.js").emitExecSystemEvent;
 let formatExecFailureReason: typeof import("./bash-tools.exec-runtime.js").formatExecFailureReason;
 let resolveExecTarget: typeof import("./bash-tools.exec-runtime.js").resolveExecTarget;
+let runExecProcess: typeof import("./bash-tools.exec-runtime.js").runExecProcess;
+let clearRuntimeSecretRedactionRegistryForTest: typeof import("../credentials/index.js").clearRuntimeSecretRedactionRegistryForTest;
+let registerRuntimeSecretForRedaction: typeof import("../credentials/index.js").registerRuntimeSecretForRedaction;
 
 beforeAll(async () => {
   ({
@@ -24,7 +27,10 @@ beforeAll(async () => {
     emitExecSystemEvent,
     formatExecFailureReason,
     resolveExecTarget,
+    runExecProcess,
   } = await import("./bash-tools.exec-runtime.js"));
+  ({ clearRuntimeSecretRedactionRegistryForTest, registerRuntimeSecretForRedaction } =
+    await import("../credentials/index.js"));
 });
 
 describe("detectCursorKeyMode", () => {
@@ -361,6 +367,32 @@ describe("formatExecFailureReason", () => {
         timeoutSec: 45,
       }),
     ).toBe("Command not found");
+  });
+});
+
+describe("runExecProcess redaction", () => {
+  beforeEach(() => {
+    clearRuntimeSecretRedactionRegistryForTest();
+  });
+
+  it("redacts registered runtime secrets from captured output", async () => {
+    registerRuntimeSecretForRedaction("runtime-secret-token-1234567890");
+
+    const run = await runExecProcess({
+      command: "printf '%s' 'runtime-secret-token-1234567890'",
+      workdir: process.cwd(),
+      env: process.env as Record<string, string>,
+      usePty: false,
+      warnings: [],
+      maxOutput: 1000,
+      pendingMaxOutput: 1000,
+      notifyOnExit: false,
+      timeoutSec: 5,
+    });
+
+    const outcome = await run.promise;
+    expect(outcome.aggregated).toContain("runtim…7890");
+    expect(outcome.aggregated).not.toContain("runtime-secret-token-1234567890");
   });
 });
 

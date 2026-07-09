@@ -171,6 +171,8 @@ COPY --from=runtime-assets --chown=node:node /app/${OPENCLAW_BUNDLED_PLUGIN_DIR}
 COPY --from=runtime-assets --chown=node:node /app/skills ./skills
 COPY --from=runtime-assets --chown=node:node /app/docs ./docs
 COPY --from=runtime-assets --chown=node:node /app/qa ./qa
+# PlatformClaw Phase 3: bundle the official Python SDK for trusted Skill code.
+COPY --from=runtime-assets --chown=node:node /app/sdk ./sdk
 
 # Keep pnpm available in the runtime image for container-local workflows.
 # Use a shared Corepack home so the non-root `node` user does not need a
@@ -252,6 +254,8 @@ RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
  && chmod 755 /app/openclaw.mjs
 
 ENV NODE_ENV=production
+# PlatformClaw Phase 3: make `from platformclaw import credentials` available.
+ENV PYTHONPATH=/app/sdk/python
 
 # Security hardening: Run as non-root user
 # The node:24-bookworm image includes a 'node' user (uid 1000)

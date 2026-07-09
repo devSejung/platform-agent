@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import { buildExecCredentialRuntimeContext } from "../credentials/index.js";
 import { analyzeShellCommand } from "../infra/exec-approvals-analysis.js";
 import {
   type ExecHost,
@@ -1716,6 +1717,20 @@ export function createExecTool(
         scopeKey: defaults?.scopeKey,
         sessionKey: notifySessionKey,
         timeoutSec: effectiveTimeout,
+        // PlatformClaw Phase 3: expose the Python SDK credential runtime only
+        // for gateway-host exec. Sandbox/node need an explicit socket/network
+        // bridge before they can safely receive this endpoint.
+        credentialRuntimeContext:
+          host === "gateway"
+            ? buildExecCredentialRuntimeContext({
+                runId: "pending",
+                agentId,
+                sessionKey: defaults?.sessionKey,
+                messageProvider: defaults?.messageProvider,
+                currentChannelId: defaults?.currentChannelId,
+                accountId: defaults?.accountId,
+              })
+            : null,
         onUpdate,
       });
 

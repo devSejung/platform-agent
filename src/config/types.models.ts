@@ -34,8 +34,18 @@ type SupportedThinkingFormat =
   | "openrouter"
   | "qwen-chat-template";
 
+export const MODEL_THINKING_FORMATS = [
+  "openai",
+  "openrouter",
+  "qwen",
+  "qwen-chat-template",
+  "zai",
+] as const satisfies readonly SupportedThinkingFormat[];
+
 export type ModelCompatConfig = SupportedOpenAICompatFields & {
   thinkingFormat?: SupportedThinkingFormat;
+  supportedReasoningEfforts?: string[];
+  reasoningEffortMap?: Record<string, string>;
   supportsTools?: boolean;
   requiresStringContent?: boolean;
   strictMessageKeys?: boolean;
@@ -69,6 +79,7 @@ export type ModelDefinitionConfig = {
    */
   contextTokens?: number;
   maxTokens: number;
+  params?: Record<string, unknown>;
   headers?: Record<string, string>;
   compat?: ModelCompatConfig;
 };
@@ -79,6 +90,7 @@ export type ModelProviderConfig = {
   auth?: ModelProviderAuthMode;
   api?: ModelApi;
   injectNumCtxForOpenAICompat?: boolean;
+  params?: Record<string, unknown>;
   headers?: Record<string, SecretInput>;
   authHeader?: boolean;
   request?: ConfiguredModelProviderRequest;

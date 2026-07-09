@@ -321,6 +321,10 @@ describe("applyExtraParamsToAgent", () => {
       params.applyProvider,
       params.applyModelId,
       params.extraParamsOverride,
+      undefined,
+      undefined,
+      undefined,
+      params.model as never,
     );
     const context: Context = { messages: [] };
     void agent.streamFn?.(params.model, context, params.options ?? {});
@@ -1977,6 +1981,33 @@ describe("applyExtraParamsToAgent", () => {
       } as unknown as Model<"openai-responses">,
     });
     expect(payload.store).toBe(true);
+  });
+
+  it("forwards resolved model chat_template_kwargs params to OpenAI-compatible payloads", () => {
+    const payload = runResponsesPayloadMutationCase({
+      applyProvider: "corp-openai",
+      applyModelId: "Qwen3.6-27B",
+      model: {
+        api: "openai-completions",
+        provider: "corp-openai",
+        id: "Qwen3.6-27B",
+        baseUrl: "http://127.0.0.1:8000/v1",
+        params: {
+          chat_template_kwargs: {
+            enable_thinking: false,
+            force_nonempty_content: true,
+          },
+        },
+      } as unknown as Model<"openai-completions">,
+      payload: {
+        messages: [],
+      },
+    });
+
+    expect(payload.chat_template_kwargs).toEqual({
+      enable_thinking: false,
+      force_nonempty_content: true,
+    });
   });
 
   it("keeps disabled OpenAI reasoning payloads on native Responses routes", () => {

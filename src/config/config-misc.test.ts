@@ -538,6 +538,8 @@ describe("model compat config schema", () => {
                 compat: {
                   supportsUsageInStreaming: true,
                   supportsStrictMode: false,
+                  supportedReasoningEfforts: ["off", "low", "medium", "high"],
+                  reasoningEffortMap: { xhigh: "high" },
                   requiresStringContent: true,
                   thinkingFormat: "qwen",
                   requiresToolResultName: true,
@@ -545,6 +547,45 @@ describe("model compat config schema", () => {
                   requiresThinkingAsText: false,
                   requiresMistralToolIds: false,
                   requiresOpenAiAnthropicToolPayload: true,
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(res.success).toBe(true);
+  });
+
+  it("accepts provider and model params for OpenAI-compatible vLLM profiles", () => {
+    const res = OpenClawSchema.safeParse({
+      models: {
+        providers: {
+          "corp-openai": {
+            baseUrl: "http://127.0.0.1:8000/v1",
+            api: "openai-completions",
+            params: {
+              extra_body: { guided_decoding_backend: "xgrammar" },
+            },
+            models: [
+              {
+                id: "Qwen3.6-27B",
+                name: "Qwen3.6 27B",
+                reasoning: true,
+                input: ["text"],
+                contextWindow: 1_000_000,
+                maxTokens: 8192,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                params: {
+                  chat_template_kwargs: {
+                    enable_thinking: false,
+                    force_nonempty_content: true,
+                  },
+                },
+                compat: {
+                  thinkingFormat: "qwen-chat-template",
+                  supportsStrictMode: false,
                 },
               },
             ],

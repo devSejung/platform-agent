@@ -8,7 +8,7 @@ import {
 } from "../secrets/ref-contract.js";
 import { normalizeStringEntries } from "../shared/string-normalization.js";
 import type { ModelCompatConfig } from "./types.models.js";
-import { MODEL_APIS } from "./types.models.js";
+import { MODEL_APIS, MODEL_THINKING_FORMATS } from "./types.models.js";
 import { createAllowDenyChannelRulesSchema } from "./zod-schema.allowdeny.js";
 import { sensitive } from "./zod-schema.sensitive.js";
 
@@ -195,15 +195,9 @@ export const ModelCompatSchema = z
     maxTokensField: z
       .union([z.literal("max_completion_tokens"), z.literal("max_tokens")])
       .optional(),
-    thinkingFormat: z
-      .union([
-        z.literal("openai"),
-        z.literal("openrouter"),
-        z.literal("zai"),
-        z.literal("qwen"),
-        z.literal("qwen-chat-template"),
-      ])
-      .optional(),
+    thinkingFormat: z.enum(MODEL_THINKING_FORMATS).optional(),
+    supportedReasoningEfforts: z.array(z.string().min(1)).optional(),
+    reasoningEffortMap: z.record(z.string().min(1), z.string().min(1)).optional(),
     requiresToolResultName: z.boolean().optional(),
     requiresAssistantAfterToolResult: z.boolean().optional(),
     requiresThinkingAsText: z.boolean().optional(),
@@ -312,6 +306,7 @@ export const ModelDefinitionSchema = z
     contextWindow: z.number().positive().optional(),
     contextTokens: z.number().int().positive().optional(),
     maxTokens: z.number().positive().optional(),
+    params: z.record(z.string(), z.unknown()).optional(),
     headers: z.record(z.string(), z.string()).optional(),
     compat: ModelCompatSchema,
   })
@@ -326,6 +321,7 @@ export const ModelProviderSchema = z
       .optional(),
     api: ModelApiSchema.optional(),
     injectNumCtxForOpenAICompat: z.boolean().optional(),
+    params: z.record(z.string(), z.unknown()).optional(),
     headers: z.record(z.string(), SecretInputSchema.register(sensitive)).optional(),
     authHeader: z.boolean().optional(),
     request: ConfiguredModelProviderRequestSchema,

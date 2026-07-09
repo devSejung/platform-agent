@@ -364,6 +364,46 @@ describe("resolveModel", () => {
     expect(result.model?.maxTokens).toBe(32768);
   });
 
+  it("applies provider and model params to configured OpenAI-compatible models", () => {
+    const cfg = {
+      models: {
+        providers: {
+          "corp-openai": {
+            baseUrl: "http://127.0.0.1:8000/v1",
+            api: "openai-completions",
+            params: { extra_body: { guided_decoding_backend: "xgrammar" } },
+            models: [
+              {
+                ...makeModel("Qwen3.6-27B"),
+                params: {
+                  chat_template_kwargs: {
+                    enable_thinking: false,
+                    force_nonempty_content: true,
+                  },
+                },
+                compat: { thinkingFormat: "qwen-chat-template" },
+              },
+            ],
+          },
+        },
+      },
+    } as unknown as OpenClawConfig;
+
+    const result = resolveModelForTest("corp-openai", "Qwen3.6-27B", "/tmp/agent", cfg);
+
+    expect(result.error).toBeUndefined();
+    expect((result.model as { params?: Record<string, unknown> } | undefined)?.params).toEqual({
+      extra_body: { guided_decoding_backend: "xgrammar" },
+      chat_template_kwargs: {
+        enable_thinking: false,
+        force_nonempty_content: true,
+      },
+    });
+    expect(result.model?.compat).toEqual(
+      expect.objectContaining({ thinkingFormat: "qwen-chat-template" }),
+    );
+  });
+
   it("propagates reasoning from matching configured fallback model", () => {
     const cfg = {
       models: {

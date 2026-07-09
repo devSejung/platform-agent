@@ -254,6 +254,20 @@ function resolveConfiguredProviderConfig(
   return findNormalizedProviderValue(configuredProviders, provider);
 }
 
+function readModelParams(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+function mergeModelParams(
+  ...entries: Array<Record<string, unknown> | undefined>
+): Record<string, unknown> | undefined {
+  const merged = Object.assign({}, ...entries.filter(Boolean));
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 function applyConfiguredProviderOverrides(params: {
   provider: string;
   discoveredModel: ProviderRuntimeModel;
@@ -281,10 +295,18 @@ function applyConfiguredProviderOverrides(params: {
   const configuredHeaders = sanitizeModelHeaders(configuredModel?.headers, {
     stripSecretRefMarkers: true,
   });
+  const discoveredModelParams = (discoveredModel as { params?: unknown }).params;
+  const providerParams = (providerConfig as { params?: unknown }).params;
+  const mergedParams = mergeModelParams(
+    readModelParams(discoveredModelParams),
+    readModelParams(providerParams),
+    readModelParams(configuredModel?.params),
+  );
   if (
     !configuredModel &&
     !providerConfig.baseUrl &&
     !providerConfig.api &&
+    !mergedParams &&
     !providerHeaders &&
     !providerRequest
   ) {
@@ -334,6 +356,7 @@ function applyConfiguredProviderOverrides(params: {
       contextWindow: configuredModel?.contextWindow ?? discoveredModel.contextWindow,
       contextTokens: configuredModel?.contextTokens ?? discoveredModel.contextTokens,
       maxTokens: configuredModel?.maxTokens ?? discoveredModel.maxTokens,
+      ...(mergedParams ? { params: mergedParams } : {}),
       headers: requestConfig.headers,
       compat: configuredModel?.compat ?? discoveredModel.compat,
     },
@@ -532,8 +555,17 @@ function resolveConfiguredFallbackModel(params: {
           configuredModel?.maxTokens ??
           providerConfig?.models?.[0]?.maxTokens ??
           DEFAULT_CONTEXT_TOKENS,
+        ...(() => {
+          const providerParams = (providerConfig as { params?: unknown } | undefined)?.params;
+          const mergedParams = mergeModelParams(
+            readModelParams(providerParams),
+            readModelParams(configuredModel?.params),
+          );
+          return mergedParams ? { params: mergedParams } : {};
+        })(),
         headers: requestConfig.headers,
-      } as Model<Api>,
+        ...(configuredModel?.compat ? { compat: configuredModel.compat } : {}),
+      } as unknown as Model<Api>,
       providerRequest,
     ),
     runtimeHooks,

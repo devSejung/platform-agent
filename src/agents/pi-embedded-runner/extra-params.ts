@@ -34,6 +34,20 @@ const providerRuntimeDeps = {
   ...defaultProviderRuntimeDeps,
 };
 
+function readModelParams(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+function mergeExtraParams(
+  ...entries: Array<Record<string, unknown> | undefined>
+): Record<string, unknown> | undefined {
+  const merged = Object.assign({}, ...entries.filter(Boolean));
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 export const __testing = {
   setProviderRuntimeDepsForTest(
     deps: Partial<typeof defaultProviderRuntimeDeps> | undefined,
@@ -348,6 +362,89 @@ function createParallelToolCallsWrapper(
   };
 }
 
+function sanitizeExtraBodyRecord(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(sanitizeExtraParamsRecord(value) ?? {}).filter(
+      ([, entry]) => entry !== undefined,
+    ),
+  );
+}
+
+function resolveExtraBodyParam(rawExtraBody: unknown): Record<string, unknown> | undefined {
+  if (rawExtraBody === undefined || rawExtraBody === null) {
+    return undefined;
+  }
+  if (typeof rawExtraBody !== "object" || Array.isArray(rawExtraBody)) {
+    const summary = typeof rawExtraBody === "string" ? rawExtraBody : typeof rawExtraBody;
+    log.warn(`ignoring invalid extra_body param: ${summary}`);
+    return undefined;
+  }
+  const extraBody = sanitizeExtraBodyRecord(rawExtraBody as Record<string, unknown>);
+  return Object.keys(extraBody).length > 0 ? extraBody : undefined;
+}
+
+function resolveChatTemplateKwargsParam(
+  rawChatTemplateKwargs: unknown,
+): Record<string, unknown> | undefined {
+  if (rawChatTemplateKwargs === undefined || rawChatTemplateKwargs === null) {
+    return undefined;
+  }
+  if (typeof rawChatTemplateKwargs !== "object" || Array.isArray(rawChatTemplateKwargs)) {
+    const summary =
+      typeof rawChatTemplateKwargs === "string"
+        ? rawChatTemplateKwargs
+        : typeof rawChatTemplateKwargs;
+    log.warn(`ignoring invalid chat_template_kwargs param: ${summary}`);
+    return undefined;
+  }
+  const chatTemplateKwargs = sanitizeExtraBodyRecord(
+    rawChatTemplateKwargs as Record<string, unknown>,
+  );
+  return Object.keys(chatTemplateKwargs).length > 0 ? chatTemplateKwargs : undefined;
+}
+
+function createOpenAICompletionsChatTemplateKwargsWrapper(params: {
+  baseStreamFn: StreamFn | undefined;
+  configured: Record<string, unknown>;
+}): StreamFn {
+  const underlying = params.baseStreamFn ?? streamSimple;
+  return (model, context, options) => {
+    if (model.api !== "openai-completions") {
+      return underlying(model, context, options);
+    }
+    return streamWithPayloadPatch(underlying, model, context, options, (payloadObj) => {
+      const existing = payloadObj.chat_template_kwargs;
+      if (existing && typeof existing === "object" && !Array.isArray(existing)) {
+        payloadObj.chat_template_kwargs = {
+          ...(existing as Record<string, unknown>),
+          ...params.configured,
+        };
+        return;
+      }
+      payloadObj.chat_template_kwargs = params.configured;
+    });
+  };
+}
+
+function createOpenAICompletionsExtraBodyWrapper(
+  baseStreamFn: StreamFn | undefined,
+  extraBody: Record<string, unknown>,
+): StreamFn {
+  const underlying = baseStreamFn ?? streamSimple;
+  return (model, context, options) => {
+    if (model.api !== "openai-completions") {
+      return underlying(model, context, options);
+    }
+    return streamWithPayloadPatch(underlying, model, context, options, (payloadObj) => {
+      const collisions = Object.keys(extraBody).filter((key) => Object.hasOwn(payloadObj, key));
+      if (collisions.length > 0) {
+        log.warn(`extra_body overwriting request payload keys: ${collisions.join(", ")}`);
+      }
+      Object.assign(payloadObj, extraBody);
+    });
+  };
+}
+
 type ApplyExtraParamsContext = {
   agent: { streamFn?: StreamFn };
   cfg: OpenClawConfig | undefined;
@@ -386,6 +483,26 @@ function applyPrePluginStreamWrappers(ctx: ApplyExtraParamsContext): void {
       `normalizing thinking=off to thinking=null for SiliconFlow compatibility (${ctx.provider}/${ctx.modelId})`,
     );
     ctx.agent.streamFn = createSiliconFlowThinkingWrapper(ctx.agent.streamFn);
+  }
+
+  const chatTemplateKwargs = resolveChatTemplateKwargsParam(
+    ctx.effectiveExtraParams.chat_template_kwargs,
+  );
+  if (chatTemplateKwargs) {
+    ctx.agent.streamFn = createOpenAICompletionsChatTemplateKwargsWrapper({
+      baseStreamFn: ctx.agent.streamFn,
+      configured: chatTemplateKwargs,
+    });
+  }
+
+  const rawExtraBody = resolveAliasedParamValue(
+    [ctx.effectiveExtraParams, ctx.override],
+    "extra_body",
+    "extraBody",
+  );
+  const extraBody = resolveExtraBodyParam(rawExtraBody);
+  if (extraBody) {
+    ctx.agent.streamFn = createOpenAICompletionsExtraBodyWrapper(ctx.agent.streamFn, extraBody);
   }
 }
 
@@ -460,6 +577,8 @@ export function applyExtraParamsToAgent(
     modelId,
     agentId,
   });
+  const modelParams = readModelParams((model as { params?: unknown } | undefined)?.params);
+  const baseExtraParams = mergeExtraParams(modelParams, resolvedExtraParams);
   const override =
     extraParamsOverride && Object.keys(extraParamsOverride).length > 0
       ? Object.fromEntries(
@@ -473,7 +592,7 @@ export function applyExtraParamsToAgent(
     extraParamsOverride,
     thinkingLevel,
     agentId,
-    resolvedExtraParams,
+    resolvedExtraParams: baseExtraParams,
   });
   const wrapperContext: ApplyExtraParamsContext = {
     agent,
@@ -485,7 +604,7 @@ export function applyExtraParamsToAgent(
     thinkingLevel,
     model,
     effectiveExtraParams,
-    resolvedExtraParams,
+    resolvedExtraParams: baseExtraParams,
     override,
   };
 

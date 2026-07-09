@@ -20,6 +20,7 @@ export type InlineProviderConfig = {
   baseUrl?: string;
   api?: ModelDefinitionConfig["api"];
   models?: ModelDefinitionConfig[];
+  params?: Record<string, unknown>;
   headers?: unknown;
   authHeader?: boolean;
   request?: ModelProviderConfig["request"];
@@ -119,6 +120,20 @@ function resolveInlineProviderTransport(params: { api?: Api | null; baseUrl?: st
   };
 }
 
+function readModelParams(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+function mergeModelParams(
+  ...entries: Array<Record<string, unknown> | undefined>
+): Record<string, unknown> | undefined {
+  const merged = Object.assign({}, ...entries.filter(Boolean));
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 export function buildInlineProviderModels(
   providers: Record<string, InlineProviderConfig>,
 ): InlineModelEntry[] {
@@ -139,6 +154,7 @@ export function buildInlineProviderModels(
       const modelHeaders = sanitizeModelHeaders((model as InlineModelEntry).headers, {
         stripSecretRefMarkers: true,
       });
+      const params = mergeModelParams(readModelParams(entry?.params), readModelParams(model.params));
       const requestConfig = resolveProviderRequestConfig({
         provider: trimmed,
         api: transport.api ?? model.api,
@@ -163,6 +179,7 @@ export function buildInlineProviderModels(
           baseUrl: requestConfig.baseUrl ?? transport.baseUrl,
           api: requestConfig.api ?? model.api,
           headers: requestConfig.headers,
+          ...(params ? { params } : {}),
         },
         providerRequest,
       );

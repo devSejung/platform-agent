@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { redactRegisteredRuntimeSecrets } from "../credentials/redaction-registry.js";
 import { GatewayClient } from "../gateway/client.js";
 import {
   ensureExecApprovals,
@@ -266,9 +267,9 @@ async function runCommand(
         exitCode,
         timedOut,
         success: exitCode === 0 && !timedOut && !error,
-        stdout,
-        stderr,
-        error: error ?? null,
+        stdout: redactRegisteredRuntimeSecrets(stdout),
+        stderr: redactRegisteredRuntimeSecrets(stderr),
+        error: error ? redactRegisteredRuntimeSecrets(error) : null,
         truncated,
       });
     };
@@ -334,7 +335,7 @@ function buildExecEventPayload(payload: ExecEventPayload): ExecEventPayload {
     return payload;
   }
   const { text } = truncateOutput(trimmed, OUTPUT_EVENT_TAIL);
-  return { ...payload, output: text };
+  return { ...payload, output: redactRegisteredRuntimeSecrets(text) };
 }
 
 async function sendExecFinishedEvent(

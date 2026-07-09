@@ -1,4 +1,5 @@
 import type { OpenClawConfig } from "../config/config.js";
+import { redactRegisteredRuntimeSecrets } from "../credentials/redaction-registry.js";
 import { compileConfigRegex } from "../security/config-regex.js";
 import { resolveNodeRequireFromMeta } from "./node-require.js";
 import { replacePatternBounded } from "./redact-bounded.js";
@@ -129,13 +130,13 @@ export function redactSensitiveText(text: string, options?: RedactOptions): stri
   }
   const resolved = options ?? resolveConfigRedaction();
   if (normalizeMode(resolved.mode) === "off") {
-    return text;
+    return redactRegisteredRuntimeSecrets(text);
   }
   const patterns = resolvePatterns(resolved.patterns);
   if (!patterns.length) {
-    return text;
+    return redactRegisteredRuntimeSecrets(text);
   }
-  return redactText(text, patterns);
+  return redactRegisteredRuntimeSecrets(redactText(text, patterns));
 }
 
 export function redactToolDetail(detail: string): string {

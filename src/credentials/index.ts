@@ -5,6 +5,17 @@ export {
   encryptCredentialValue,
   loadCredentialMasterKey,
 } from "./encryption.js";
+export {
+  clearRuntimeSecretRedactionRegistryForTest,
+  redactRegisteredRuntimeSecrets,
+  registerRuntimeSecretForRedaction,
+} from "./redaction-registry.js";
+export {
+  resolveRuntimeCredential,
+  type CredentialRuntimeContext,
+  type RuntimeCredentialRequest,
+  type RuntimeCredentialResolution,
+} from "./runtime-credential-resolver.js";
 export { SQLiteCredentialService } from "./sqlite-credential-service.js";
 export type {
   CreateCredentialDefinitionInput,

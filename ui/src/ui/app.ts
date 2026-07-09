@@ -36,6 +36,7 @@ import {
 } from "./app-lifecycle.ts";
 import { renderApp } from "./app-render.ts";
 import {
+  clampEmployeeContentScroll as clampEmployeeContentScrollInternal,
   exportLogs as exportLogsInternal,
   handleChatScroll as handleChatScrollInternal,
   handleLogsScroll as handleLogsScrollInternal,
@@ -842,6 +843,12 @@ export class OpenClawApp extends LitElement {
     handleLogsScrollInternal(
       this as unknown as Parameters<typeof handleLogsScrollInternal>[0],
       event,
+    );
+  }
+
+  handleContentScroll() {
+    clampEmployeeContentScrollInternal(
+      this as unknown as Parameters<typeof clampEmployeeContentScrollInternal>[0],
     );
   }
 

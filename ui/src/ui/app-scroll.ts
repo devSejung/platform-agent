@@ -30,16 +30,9 @@ export function scheduleChatScroll(host: ScrollHost, force = false, smooth = fal
   const pickScrollTarget = () => {
     const container = queryHost(host, ".chat-thread") as HTMLElement | null;
     if (container) {
-      const overflowY = getComputedStyle(container).overflowY;
-      const canScroll =
-        overflowY === "auto" ||
-        overflowY === "scroll" ||
-        container.scrollHeight - container.clientHeight > 1;
-      if (canScroll) {
-        return container;
-      }
+      return container;
     }
-    return (document.scrollingElement ?? document.documentElement) as HTMLElement | null;
+    return null;
   };
   // Wait for Lit render to complete, then scroll
   void host.updateComplete.then(() => {
@@ -143,6 +136,32 @@ export function handleLogsScroll(host: ScrollHost, event: Event) {
   }
   const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
   host.logsAtBottom = distanceFromBottom < 80;
+}
+
+export function clampEmployeeContentScroll(host: Partial<ScrollHost>) {
+  const content = queryHost(host, ".content.content--employee-layout") as HTMLElement | null;
+  if (!content || content.classList.contains("content--chat")) {
+    return;
+  }
+
+  let maxBottom = 0;
+  for (const child of Array.from(content.children)) {
+    if (!(child instanceof HTMLElement)) {
+      continue;
+    }
+    if (child.classList.contains("employee-tools-panel") || child.tagName === "STYLE") {
+      continue;
+    }
+    if (child.offsetParent === null) {
+      continue;
+    }
+    maxBottom = Math.max(maxBottom, child.offsetTop + child.getBoundingClientRect().height);
+  }
+
+  const maxScrollTop = Math.max(0, Math.ceil(maxBottom - content.clientHeight + 16));
+  if (content.scrollTop > maxScrollTop) {
+    content.scrollTop = maxScrollTop;
+  }
 }
 
 export function resetChatScroll(host: ScrollHost) {

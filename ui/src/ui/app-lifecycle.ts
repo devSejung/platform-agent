@@ -13,7 +13,12 @@ import {
   startRequestStatusPolling,
   stopRequestStatusPolling,
 } from "./app-polling.ts";
-import { observeTopbar, scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
+import {
+  clampEmployeeContentScroll,
+  observeTopbar,
+  scheduleChatScroll,
+  scheduleLogsScroll,
+} from "./app-scroll.ts";
 import {
   applySettingsFromUrl,
   attachThemeListener,
@@ -166,5 +171,16 @@ export function handleUpdated(host: LifecycleHost, changed: Map<PropertyKey, unk
         changed.has("tab") || changed.has("logsAutoFollow"),
       );
     }
+  }
+  if (
+    host.employeeMode &&
+    host.tab !== "chat" &&
+    (changed.has("tab") || changed.has("connected"))
+  ) {
+    void host.updateComplete.then(() => {
+      requestAnimationFrame(() => {
+        clampEmployeeContentScroll(host as unknown as Parameters<typeof clampEmployeeContentScroll>[0]);
+      });
+    });
   }
 }

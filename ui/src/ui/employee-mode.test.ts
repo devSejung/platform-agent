@@ -31,6 +31,10 @@ async function flushEmployeeApp(app: OpenClawApp) {
   await app.updateComplete;
 }
 
+function nextFrame() {
+  return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 describe("employee mode", () => {
   it("falls back to employee mode from the /employee route even without the inline mode flag", async () => {
     delete window.__OPENCLAW_UI_MODE__;
@@ -230,6 +234,41 @@ describe("employee mode", () => {
     expect(toolsPanel?.textContent).toContain("Cron Jobs");
     expect(toolsPanel?.textContent).toContain("Heartbeat");
     expect(toolsPanel?.textContent).toContain("Groups");
+  });
+
+  it("returns to chat when clicking the active session from an employee workspace tab", async () => {
+    const app = mountConnectedEmployeeApp("/employee/files");
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.sessionKey = "agent:eon:main";
+    app.tab = "files";
+    app.sessionsResult = createSessionsResult([
+      { key: "agent:eon:main", kind: "direct", label: "Main", updatedAt: Date.now() },
+    ]);
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const content = app.querySelector<HTMLElement>(".content");
+    expect(content).not.toBeNull();
+    if (content) {
+      content.scrollTop = 240;
+    }
+
+    const selectedButton = app.querySelector<HTMLButtonElement>(".employee-chat-session__select");
+    expect(selectedButton).not.toBeNull();
+    expect(selectedButton?.disabled).toBe(false);
+
+    selectedButton?.click();
+    await app.updateComplete;
+    await nextFrame();
+
+    expect(app.tab).toBe("chat");
+    expect(content?.scrollTop).toBe(0);
   });
 
   it("filters the employee chat session list without exposing raw session keys", async () => {

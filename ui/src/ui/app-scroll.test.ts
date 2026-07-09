@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { handleChatScroll, scheduleChatScroll, resetChatScroll } from "./app-scroll.ts";
+import {
+  clampEmployeeContentScroll,
+  handleChatScroll,
+  scheduleChatScroll,
+  resetChatScroll,
+} from "./app-scroll.ts";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -201,6 +206,32 @@ describe("scheduleChatScroll", () => {
 
     expect(host.chatNewMessagesBelow).toBe(true);
   });
+
+  it("does not fall back to document scrolling when the chat thread is unavailable", async () => {
+    const documentScroller = { scrollTop: 180, scrollHeight: 2400, clientHeight: 800 };
+    Object.defineProperty(document, "scrollingElement", {
+      configurable: true,
+      get: () => documentScroller,
+    });
+    const host = {
+      updateComplete: Promise.resolve(),
+      querySelector: vi.fn().mockReturnValue(null),
+      style: { setProperty: vi.fn() } as unknown as CSSStyleDeclaration,
+      chatScrollFrame: null as number | null,
+      chatScrollTimeout: null as number | null,
+      chatHasAutoScrolled: false,
+      chatUserNearBottom: true,
+      chatNewMessagesBelow: false,
+      logsScrollFrame: null as number | null,
+      logsAtBottom: true,
+      topbarObserver: null as ResizeObserver | null,
+    };
+
+    scheduleChatScroll(host, true);
+    await host.updateComplete;
+
+    expect(documentScroller.scrollTop).toBe(180);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -271,5 +302,48 @@ describe("resetChatScroll", () => {
 
     expect(host.chatHasAutoScrolled).toBe(false);
     expect(host.chatUserNearBottom).toBe(true);
+  });
+});
+
+describe("clampEmployeeContentScroll", () => {
+  it("clamps employee non-chat scrolling to the visible content bottom", () => {
+    const content = document.createElement("main");
+    content.className = "content content--employee-layout";
+
+    const tools = document.createElement("section");
+    tools.className = "employee-tools-panel";
+    const header = document.createElement("section");
+    header.className = "content-header";
+    const panel = document.createElement("section");
+    panel.className = "workspace-files-page";
+
+    Object.defineProperty(content, "clientHeight", { configurable: true, get: () => 900 });
+    let scrollTop = 820;
+    Object.defineProperty(content, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = value;
+      },
+    });
+
+    Object.defineProperty(header, "offsetTop", { configurable: true, get: () => 40 });
+    Object.defineProperty(tools, "offsetTop", { configurable: true, get: () => 56 });
+    Object.defineProperty(panel, "offsetTop", { configurable: true, get: () => 120 });
+
+    header.getBoundingClientRect = () => ({ height: 58 }) as DOMRect;
+    tools.getBoundingClientRect = () => ({ height: 940 }) as DOMRect;
+    panel.getBoundingClientRect = () => ({ height: 560 }) as DOMRect;
+
+    document.body.append(content);
+    content.append(tools, header, panel);
+
+    clampEmployeeContentScroll({
+      querySelector: vi.fn().mockImplementation((selector: string) =>
+        selector === ".content.content--employee-layout" ? content : null,
+      ),
+    });
+
+    expect(scrollTop).toBe(0);
   });
 });

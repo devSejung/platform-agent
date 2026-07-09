@@ -96,7 +96,16 @@ type SettingsHost = {
   dreamDiaryError: string | null;
   dreamDiaryPath: string | null;
   dreamDiaryContent: string | null;
+  querySelector?: (selectors: string) => Element | null;
 };
+
+function resetPrimaryContentScroll(host: SettingsHost) {
+  const content = host.querySelector?.(".content");
+  if (!(content instanceof HTMLElement)) {
+    return;
+  }
+  content.scrollTop = 0;
+}
 
 export function applySettings(host: SettingsHost, next: UiSettings) {
   const normalized = {
@@ -588,6 +597,8 @@ function applyTabSelection(
 
   if (next === "chat") {
     host.chatHasAutoScrolled = false;
+    queueMicrotask(() => resetPrimaryContentScroll(host));
+    requestAnimationFrame(() => resetPrimaryContentScroll(host));
   }
   if (next === "logs") {
     startLogsPolling(host as unknown as Parameters<typeof startLogsPolling>[0]);

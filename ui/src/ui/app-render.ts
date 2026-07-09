@@ -997,7 +997,7 @@ function renderEmployeeChatSessionList(state: AppViewState, tab: Tab, navCollaps
                         <button
                           type="button"
                           class="employee-chat-session__select"
-                          ?disabled=${selected}
+                          ?disabled=${selected && state.tab === "chat"}
                           @click=${async () => {
                             closeEmployeeChatSessionActionMenu(state);
                             if (await switchChatSession(state, row.key)) {
@@ -2415,6 +2415,7 @@ export function renderApp(state: AppViewState) {
         employeeUtilityGroups.length > 0
           ? "content--employee-layout"
           : ""}"
+        @scroll=${() => state.handleContentScroll()}
       >
         ${renderEmployeeLoginNotice(state)}
         ${showEmployeeAnnouncement

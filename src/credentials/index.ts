@@ -25,12 +25,16 @@ export { SQLiteCredentialService } from "./sqlite-credential-service.js";
 export type {
   CreateCredentialDefinitionInput,
   CredentialDefinition,
+  CredentialGrant,
+  CredentialGrantCheckInput,
   CredentialMetadata,
   CredentialOwnerPolicy,
   CredentialOwnerType,
   CredentialScope,
   CredentialService,
   GetCredentialInput,
+  GrantCredentialInput,
+  RevokeCredentialGrantInput,
   ResolvedCredential,
   UpsertCredentialInput,
 } from "./types.js";

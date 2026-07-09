@@ -7,6 +7,8 @@ import {
 } from "./encryption.js";
 import type {
   CredentialDefinition,
+  CredentialGrant,
+  CredentialGrantCheckInput,
   CredentialMetadata,
   CredentialOwnerPolicy,
   CredentialOwnerType,
@@ -14,6 +16,8 @@ import type {
   CredentialService,
   CreateCredentialDefinitionInput,
   GetCredentialInput,
+  GrantCredentialInput,
+  RevokeCredentialGrantInput,
   ResolvedCredential,
   UpsertCredentialInput,
 } from "./types.js";
@@ -47,6 +51,17 @@ type CredentialRow = {
   updated_at: string;
   last_used_at: string | null;
   expires_at: string | null;
+  revoked_at: string | null;
+};
+
+type CredentialGrantRow = {
+  id: string;
+  definition_id: string;
+  definition_key: string;
+  skill_id: string;
+  permission: string;
+  granted_by_account_id: string;
+  created_at: string;
   revoked_at: string | null;
 };
 
@@ -159,6 +174,19 @@ function rowToMetadata(row: CredentialRow): CredentialMetadata {
     updatedAt: row.updated_at,
     lastUsedAt: row.last_used_at,
     expiresAt: row.expires_at,
+    revokedAt: row.revoked_at,
+  };
+}
+
+function rowToGrant(row: CredentialGrantRow): CredentialGrant {
+  return {
+    id: row.id,
+    definitionId: row.definition_id,
+    definitionKey: row.definition_key,
+    skillId: row.skill_id,
+    permission: row.permission,
+    grantedByAccountId: row.granted_by_account_id,
+    createdAt: row.created_at,
     revokedAt: row.revoked_at,
   };
 }
@@ -381,6 +409,80 @@ export class SQLiteCredentialService implements CredentialService {
       .run(now, now, definition.id, scope.ownerType, scope.ownerId);
   }
 
+  async grantCredential(input: GrantCredentialInput): Promise<CredentialGrant> {
+    const definition = this.requireDefinitionRowByKey(input.definitionKey);
+    const skillId = trimRequired(input.skillId, "skillId");
+    const permission = trimRequired(input.permission, "permission");
+    const grantedByAccountId = trimRequired(input.grantedByAccountId, "grantedByAccountId");
+    const now = new Date().toISOString();
+    const { db } = getPlatformClawDatabase(this.env);
+    const existing = this.getGrantRow({
+      definitionId: definition.id,
+      skillId,
+      permission,
+      includeRevoked: true,
+    });
+    if (existing) {
+      db.prepare(
+        `UPDATE credential_grants
+            SET granted_by_account_id = @granted_by_account_id,
+                created_at = @created_at,
+                revoked_at = NULL
+          WHERE id = @id`,
+      ).run({
+        id: existing.id,
+        granted_by_account_id: grantedByAccountId,
+        created_at: now,
+      });
+      return rowToGrant(this.requireGrantRow({ definitionId: definition.id, skillId, permission }));
+    }
+    db.prepare(
+      `INSERT INTO credential_grants (
+         id, definition_id, skill_id, permission, granted_by_account_id, created_at, revoked_at
+       ) VALUES (
+         @id, @definition_id, @skill_id, @permission, @granted_by_account_id, @created_at, NULL
+       )`,
+    ).run({
+      id: randomUUID(),
+      definition_id: definition.id,
+      skill_id: skillId,
+      permission,
+      granted_by_account_id: grantedByAccountId,
+      created_at: now,
+    });
+    return rowToGrant(this.requireGrantRow({ definitionId: definition.id, skillId, permission }));
+  }
+
+  async revokeCredentialGrant(input: RevokeCredentialGrantInput): Promise<void> {
+    const definition = this.requireDefinitionRowByKey(input.definitionKey);
+    const skillId = trimRequired(input.skillId, "skillId");
+    const permission = trimRequired(input.permission, "permission");
+    const now = new Date().toISOString();
+    getPlatformClawDatabase(this.env)
+      .db.prepare(
+        `UPDATE credential_grants
+            SET revoked_at = ?
+          WHERE definition_id = ?
+            AND skill_id = ?
+            AND permission = ?
+            AND revoked_at IS NULL`,
+      )
+      .run(now, definition.id, skillId, permission);
+  }
+
+  async hasCredentialGrant(input: CredentialGrantCheckInput): Promise<boolean> {
+    const definition = this.requireDefinitionRowByKey(input.definitionKey);
+    const skillId = trimRequired(input.skillId, "skillId");
+    const permission = trimRequired(input.permission, "permission");
+    return (
+      this.getGrantRow({
+        definitionId: definition.id,
+        skillId,
+        permission,
+      }) !== null
+    );
+  }
+
   private normalizeScope(scope: CredentialScope): CredentialScope {
     return {
       ownerType: normalizeOwnerType(scope.ownerType),
@@ -446,6 +548,45 @@ export class SQLiteCredentialService implements CredentialService {
     const row = this.getCredentialRow(params);
     if (!row) {
       throw new Error("Credential was not found for the current scope.");
+    }
+    return row;
+  }
+
+  private getGrantRow(params: {
+    definitionId: string;
+    skillId: string;
+    permission: string;
+    includeRevoked?: boolean;
+  }): CredentialGrantRow | null {
+    const revokedClause = params.includeRevoked ? "" : "AND g.revoked_at IS NULL";
+    const { db } = getPlatformClawDatabase(this.env);
+    const row = db
+      .prepare(
+        `SELECT g.id, g.definition_id, d.credential_key AS definition_key,
+                g.skill_id, g.permission, g.granted_by_account_id, g.created_at, g.revoked_at
+           FROM credential_grants g
+           JOIN credential_definitions d ON d.id = g.definition_id
+          WHERE g.definition_id = ?
+            AND g.skill_id = ?
+            AND g.permission = ?
+            ${revokedClause}
+            AND d.archived_at IS NULL
+          LIMIT 1`,
+      )
+      .get(params.definitionId, params.skillId, params.permission) as
+      | CredentialGrantRow
+      | undefined;
+    return row ?? null;
+  }
+
+  private requireGrantRow(params: {
+    definitionId: string;
+    skillId: string;
+    permission: string;
+  }): CredentialGrantRow {
+    const row = this.getGrantRow(params);
+    if (!row) {
+      throw new Error("Credential grant was not found.");
     }
     return row;
   }

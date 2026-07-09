@@ -55,6 +55,53 @@ describe("resolveRuntimeCredential", () => {
     expect(redactRegisteredRuntimeSecrets(result.value)).toBe("jira-s…7890");
   });
 
+  it("enforces runtime-supplied required permissions when provided", async () => {
+    const service = {
+      hasCredentialGrant: vi.fn(async () => false),
+      getCredential: vi.fn(async () => resolvedCredential("jira-secret-token-1234567890")),
+    } as unknown as CredentialService;
+
+    await expect(
+      resolveRuntimeCredential(
+        { definitionKey: "jira.default", requiredPermission: "jira.write" },
+        {
+          runId: "run-1",
+          skillId: "jira",
+          effectiveOwnerType: "account",
+          effectiveOwnerId: "account-1",
+        },
+        { service },
+      ),
+    ).rejects.toThrow("Credential grant is required");
+
+    expect(service.hasCredentialGrant).toHaveBeenCalledWith({
+      definitionKey: "jira.default",
+      skillId: "jira",
+      permission: "jira.write",
+    });
+    expect(service.getCredential).not.toHaveBeenCalled();
+  });
+
+  it("resolves after the runtime-supplied permission grant passes", async () => {
+    const service = {
+      hasCredentialGrant: vi.fn(async () => true),
+      getCredential: vi.fn(async () => resolvedCredential("jira-secret-token-1234567890")),
+    } as unknown as CredentialService;
+
+    await expect(
+      resolveRuntimeCredential(
+        { definitionKey: "jira.default", requiredPermission: "jira.write" },
+        {
+          runId: "run-1",
+          skillId: "jira",
+          effectiveOwnerType: "account",
+          effectiveOwnerId: "account-1",
+        },
+        { service },
+      ),
+    ).resolves.toMatchObject({ value: "jira-secret-token-1234567890" });
+  });
+
   it("rejects missing runtime owner context", async () => {
     await expect(
       resolveRuntimeCredential(

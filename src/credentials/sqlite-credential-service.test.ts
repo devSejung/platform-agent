@@ -228,4 +228,56 @@ describe("SQLiteCredentialService", () => {
       }),
     ).rejects.toThrow("Credential was not found");
   });
+
+  it("grants and revokes skill credential permissions", async () => {
+    const service = new SQLiteCredentialService({ env });
+    await service.createDefinition({
+      key: "jira.default",
+      label: "Jira Token",
+      type: "jira_token",
+      ownerPolicy: "account",
+    });
+
+    await expect(
+      service.hasCredentialGrant({
+        definitionKey: "jira.default",
+        skillId: "jira",
+        permission: "jira.write",
+      }),
+    ).resolves.toBe(false);
+
+    const grant = await service.grantCredential({
+      definitionKey: "jira.default",
+      skillId: "jira",
+      permission: "jira.write",
+      grantedByAccountId: "admin-1",
+    });
+    expect(grant).toMatchObject({
+      definitionKey: "jira.default",
+      skillId: "jira",
+      permission: "jira.write",
+      grantedByAccountId: "admin-1",
+      revokedAt: null,
+    });
+    await expect(
+      service.hasCredentialGrant({
+        definitionKey: "jira.default",
+        skillId: "jira",
+        permission: "jira.write",
+      }),
+    ).resolves.toBe(true);
+
+    await service.revokeCredentialGrant({
+      definitionKey: "jira.default",
+      skillId: "jira",
+      permission: "jira.write",
+    });
+    await expect(
+      service.hasCredentialGrant({
+        definitionKey: "jira.default",
+        skillId: "jira",
+        permission: "jira.write",
+      }),
+    ).resolves.toBe(false);
+  });
 });

@@ -42,6 +42,17 @@ export type ResolvedCredential = CredentialMetadata & {
   value: string;
 };
 
+export type CredentialGrant = {
+  id: string;
+  definitionId: string;
+  definitionKey: string;
+  skillId: string;
+  permission: string;
+  grantedByAccountId: string;
+  createdAt: string;
+  revokedAt: string | null;
+};
+
 export type CreateCredentialDefinitionInput = {
   key: string;
   label: string;
@@ -67,6 +78,25 @@ export type GetCredentialInput = {
   scope: CredentialScope;
 };
 
+export type GrantCredentialInput = {
+  definitionKey: string;
+  skillId: string;
+  permission: string;
+  grantedByAccountId: string;
+};
+
+export type RevokeCredentialGrantInput = {
+  definitionKey: string;
+  skillId: string;
+  permission: string;
+};
+
+export type CredentialGrantCheckInput = {
+  definitionKey: string;
+  skillId: string;
+  permission: string;
+};
+
 export interface CredentialService {
   createDefinition(input: CreateCredentialDefinitionInput): Promise<CredentialDefinition>;
   archiveDefinition(key: string): Promise<void>;
@@ -75,4 +105,7 @@ export interface CredentialService {
   listCredentials(scope: CredentialScope): Promise<CredentialMetadata[]>;
   getCredential(input: GetCredentialInput): Promise<ResolvedCredential>;
   revokeCredential(input: GetCredentialInput): Promise<void>;
+  grantCredential(input: GrantCredentialInput): Promise<CredentialGrant>;
+  revokeCredentialGrant(input: RevokeCredentialGrantInput): Promise<void>;
+  hasCredentialGrant(input: CredentialGrantCheckInput): Promise<boolean>;
 }

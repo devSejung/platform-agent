@@ -1,7 +1,7 @@
 # PlatformClaw Credential SDK Policy
 
 Date: 2026-07-10
-Status: Phase 0-2 implemented, Phase 3 foundation implemented
+Status: Phase 0-2 implemented, Phase 3 SDK transport and grant foundation implemented
 
 ## Goal
 
@@ -203,10 +203,22 @@ credentials
   last_used_at
   expires_at
   revoked_at
+
+credential_grants
+  id
+  definition_id
+  skill_id
+  permission
+  granted_by_account_id
+  created_at
+  revoked_at
 ```
 
 `credential_definitions` answers "what kinds of token can be configured?"
 `credentials` answers "what encrypted value exists for this owner scope?"
+`credential_grants` answers "which Skill permission is approved for this
+credential definition?" It does not store plaintext and does not choose
+credential owner.
 
 ## Encryption Policy
 
@@ -322,6 +334,9 @@ interface CredentialService {
   listCredentials(scope): Promise<CredentialMetadata[]>;
   getCredential(input): Promise<ResolvedCredential>;
   revokeCredential(input): Promise<void>;
+  grantCredential(input): Promise<CredentialGrant>;
+  revokeCredentialGrant(input): Promise<void>;
+  hasCredentialGrant(input): Promise<boolean>;
 }
 ```
 
@@ -410,6 +425,10 @@ Implemented foundation:
    token = credentials.get("jira.default")
    ```
 
+8. Add `credential_grants` storage and `CredentialService` grant methods.
+9. Enforce grants in `resolveRuntimeCredential(...)` when Runtime supplies
+   `requiredPermission`.
+
 Remaining implementation order:
 
 1. Add a sandbox/node-host bridge for SDK credential lookup. Do not reuse the
@@ -419,8 +438,10 @@ Remaining implementation order:
    - Web and DM: current authenticated account.
    - Group room: deny personal credentials by default.
    - Cron: automation owner account only when the owner is known.
-3. Add credential grants/permissions once Skill identity is available as a
-   first-class runtime value instead of using agent id as the temporary skill id.
+3. Wire Skill manifest/tool metadata so Runtime, not SDK input, supplies
+   `requiredPermission`.
+4. Replace the temporary `agentId ?? "exec"` skill id with first-class Skill
+   identity before making grants mandatory for every SDK lookup.
 
 Phase 3 must not use env injection as the primary path and must not let Skill or
 LLM input choose credential owner.

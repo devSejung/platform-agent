@@ -177,6 +177,18 @@ function ensureSchema(db: DatabaseSync) {
       UNIQUE(definition_id, owner_type, owner_id)
     );
 
+    CREATE TABLE IF NOT EXISTS credential_grants (
+      id TEXT PRIMARY KEY,
+      definition_id TEXT NOT NULL,
+      skill_id TEXT NOT NULL,
+      permission TEXT NOT NULL,
+      granted_by_account_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      revoked_at TEXT,
+      FOREIGN KEY (definition_id) REFERENCES credential_definitions(id),
+      UNIQUE(definition_id, skill_id, permission)
+    );
+
     CREATE UNIQUE INDEX IF NOT EXISTS groups_level1_name_uq
       ON groups(name)
       WHERE group_level = 1;
@@ -187,6 +199,10 @@ function ensureSchema(db: DatabaseSync) {
 
     CREATE INDEX IF NOT EXISTS credentials_owner_lookup_idx
       ON credentials(owner_type, owner_id, definition_id)
+      WHERE revoked_at IS NULL;
+
+    CREATE INDEX IF NOT EXISTS credential_grants_lookup_idx
+      ON credential_grants(definition_id, skill_id, permission)
       WHERE revoked_at IS NULL;
   `);
 

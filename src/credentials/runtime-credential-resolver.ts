@@ -52,7 +52,20 @@ export async function resolveRuntimeCredential(
 ): Promise<RuntimeCredentialResolution> {
   assertRuntimeContext(context);
   const definitionKey = normalizeRequired(input.definitionKey, "definitionKey");
+  const requiredPermission = input.requiredPermission?.trim() || null;
   const service = opts.service ?? new SQLiteCredentialService();
+  if (requiredPermission) {
+    const allowed = await service.hasCredentialGrant({
+      definitionKey,
+      skillId: context.skillId,
+      permission: requiredPermission,
+    });
+    if (!allowed) {
+      throw new Error(
+        `Credential grant is required for "${context.skillId}" to use "${definitionKey}" with "${requiredPermission}".`,
+      );
+    }
+  }
   const resolved = await service.getCredential({
     definitionKey,
     scope: {

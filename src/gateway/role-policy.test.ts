@@ -31,6 +31,12 @@ describe("gateway role policy", () => {
     expect(isRoleAuthorizedForMethod("employee", "sessions.delete")).toBe(true);
     expect(isRoleAuthorizedForMethod("employee", "sessions.compact")).toBe(true);
     expect(isRoleAuthorizedForMethod("employee", "sessions.steer")).toBe(true);
+    expect(isRoleAuthorizedForMethod("employee", "credentials.status")).toBe(true);
+    expect(isRoleAuthorizedForMethod("employee", "credentials.definitions.list")).toBe(true);
+    expect(isRoleAuthorizedForMethod("employee", "credentials.definitions.delete")).toBe(true);
+    expect(isRoleAuthorizedForMethod("employee", "credentials.list")).toBe(true);
+    expect(isRoleAuthorizedForMethod("employee", "credentials.upsert")).toBe(true);
+    expect(isRoleAuthorizedForMethod("employee", "credentials.revoke")).toBe(true);
     expect(isRoleAuthorizedForMethod("employee", "agents.list")).toBe(false);
     expect(isRoleAuthorizedForMethod("employee", "node.list")).toBe(false);
   });

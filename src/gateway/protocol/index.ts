@@ -83,6 +83,20 @@ import {
   ConfigSetParamsSchema,
   type ConnectParams,
   ConnectParamsSchema,
+  type CredentialDefinitionsListParams,
+  CredentialDefinitionsListParamsSchema,
+  type CredentialDefinitionDeleteParams,
+  CredentialDefinitionDeleteParamsSchema,
+  type CredentialDefinitionsUpsertParams,
+  CredentialDefinitionsUpsertParamsSchema,
+  type CredentialRevokeParams,
+  CredentialRevokeParamsSchema,
+  type CredentialsStatusParams,
+  CredentialsStatusParamsSchema,
+  type CredentialsListParams,
+  CredentialsListParamsSchema,
+  type CredentialUpsertParams,
+  CredentialUpsertParamsSchema,
   type CronAddParams,
   CronAddParamsSchema,
   type CronJob,
@@ -448,8 +462,9 @@ export const validateSessionsCompactionRestoreParams = ajv.compile<SessionsCompa
 );
 export const validateSessionsUsageParams =
   ajv.compile<SessionsUsageParams>(SessionsUsageParamsSchema);
-export const validateDashboardSummaryParams =
-  ajv.compile<DashboardSummaryParams>(DashboardSummaryParamsSchema);
+export const validateDashboardSummaryParams = ajv.compile<DashboardSummaryParams>(
+  DashboardSummaryParamsSchema,
+);
 export const validateConfigGetParams = ajv.compile<ConfigGetParams>(ConfigGetParamsSchema);
 export const validateConfigSetParams = ajv.compile<ConfigSetParams>(ConfigSetParamsSchema);
 export const validateConfigApplyParams = ajv.compile<ConfigApplyParams>(ConfigApplyParamsSchema);
@@ -460,6 +475,25 @@ export const validateConfigSchemaLookupParams = ajv.compile<ConfigSchemaLookupPa
 );
 export const validateConfigSchemaLookupResult = ajv.compile<ConfigSchemaLookupResult>(
   ConfigSchemaLookupResultSchema,
+);
+export const validateCredentialDefinitionsListParams = ajv.compile<CredentialDefinitionsListParams>(
+  CredentialDefinitionsListParamsSchema,
+);
+export const validateCredentialsStatusParams = ajv.compile<CredentialsStatusParams>(
+  CredentialsStatusParamsSchema,
+);
+export const validateCredentialDefinitionsUpsertParams =
+  ajv.compile<CredentialDefinitionsUpsertParams>(CredentialDefinitionsUpsertParamsSchema);
+export const validateCredentialDefinitionDeleteParams =
+  ajv.compile<CredentialDefinitionDeleteParams>(CredentialDefinitionDeleteParamsSchema);
+export const validateCredentialsListParams = ajv.compile<CredentialsListParams>(
+  CredentialsListParamsSchema,
+);
+export const validateCredentialUpsertParams = ajv.compile<CredentialUpsertParams>(
+  CredentialUpsertParamsSchema,
+);
+export const validateCredentialRevokeParams = ajv.compile<CredentialRevokeParams>(
+  CredentialRevokeParamsSchema,
 );
 export const validateWizardStartParams = ajv.compile<WizardStartParams>(WizardStartParamsSchema);
 export const validateWizardNextParams = ajv.compile<WizardNextParams>(WizardNextParamsSchema);
@@ -691,6 +725,13 @@ export {
   ConfigSchemaLookupParamsSchema,
   ConfigSchemaResponseSchema,
   ConfigSchemaLookupResultSchema,
+  CredentialDefinitionsListParamsSchema,
+  CredentialDefinitionDeleteParamsSchema,
+  CredentialDefinitionsUpsertParamsSchema,
+  CredentialsStatusParamsSchema,
+  CredentialRevokeParamsSchema,
+  CredentialsListParamsSchema,
+  CredentialUpsertParamsSchema,
   WizardStartParamsSchema,
   WizardNextParamsSchema,
   WizardCancelParamsSchema,
@@ -814,6 +855,13 @@ export type {
   ConfigPatchParams,
   ConfigSchemaParams,
   ConfigSchemaResponse,
+  CredentialDefinitionsListParams,
+  CredentialDefinitionDeleteParams,
+  CredentialDefinitionsUpsertParams,
+  CredentialsStatusParams,
+  CredentialRevokeParams,
+  CredentialsListParams,
+  CredentialUpsertParams,
   WizardStartParams,
   WizardNextParams,
   WizardCancelParams,

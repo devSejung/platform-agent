@@ -3,6 +3,7 @@ export * from "./schema/accounts-groups.js";
 export * from "./schema/agents-models-skills.js";
 export * from "./schema/channels.js";
 export * from "./schema/config.js";
+export * from "./schema/credentials.js";
 export * from "./schema/cron.js";
 export * from "./schema/dashboard.js";
 export * from "./schema/error-codes.js";

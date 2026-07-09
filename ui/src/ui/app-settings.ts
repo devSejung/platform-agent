@@ -18,6 +18,11 @@ import { loadAgents } from "./controllers/agents.ts";
 import { loadChannels } from "./controllers/channels.ts";
 import { loadConfig, loadConfigSchema } from "./controllers/config.ts";
 import {
+  loadCredentialDefinitions,
+  loadCredentials,
+  loadCredentialStatus,
+} from "./controllers/credentials.ts";
+import {
   loadCronJobs,
   loadCronModelSuggestions,
   loadCronRuns,
@@ -290,6 +295,7 @@ export async function refreshActiveTab(host: SettingsHost) {
       host.tab !== "heartbeat" &&
       host.tab !== "skills" &&
       host.tab !== "skillHub" &&
+      host.tab !== "credentials" &&
       host.tab !== "groups" &&
       host.tab !== "admin"
     ) {
@@ -336,6 +342,13 @@ export async function refreshActiveTab(host: SettingsHost) {
       }
       await loadSkillHub(host as unknown as OpenClawApp);
       await loadSkillHubWorkspacePublish(host as unknown as OpenClawApp);
+    }
+    if (host.tab === "credentials") {
+      await Promise.all([
+        loadCredentialStatus(host as unknown as OpenClawApp),
+        loadCredentialDefinitions(host as unknown as OpenClawApp),
+        loadCredentials(host as unknown as OpenClawApp),
+      ]);
     }
     if (host.tab === "groups") {
       await loadGroups(host as unknown as OpenClawApp);

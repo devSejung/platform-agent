@@ -7894,6 +7894,322 @@ details[open] > .ov-expandable-toggle::after {
   display: inline;
 }
 
+/* ===========================================
+   Credentials
+   =========================================== */
+
+.credentials-view {
+  display: grid;
+  gap: 20px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.credentials-page-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.credentials-main-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, var(--brand, #26796b) 22%);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.credentials-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.credentials-icon-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.credentials-warning {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--warning) 42%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--warning-subtle) 72%, var(--card) 28%);
+  color: var(--text);
+}
+
+.credentials-warning__icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warning) 18%, var(--card));
+  color: var(--warning);
+  font-weight: 900;
+}
+
+.credentials-warning span:last-child {
+  display: grid;
+  gap: 4px;
+}
+
+.credentials-card-grid {
+  --credentials-card-width: 420px;
+  --credentials-card-gap: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--credentials-card-gap);
+  justify-content: center;
+  width: 100%;
+  max-width: calc((var(--credentials-card-width) * 4) + (var(--credentials-card-gap) * 3));
+  margin: 0 auto;
+}
+
+.credentials-card {
+  display: flex;
+  flex: 0 0 var(--credentials-card-width);
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+  width: 100%;
+  min-height: 220px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.credentials-card--registered {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  background: color-mix(in srgb, var(--ok-subtle) 34%, var(--card) 66%);
+}
+
+.credentials-add-card {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  flex: 0 0 var(--credentials-card-width);
+  width: var(--credentials-card-width);
+  min-height: 220px;
+  padding: 16px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 42%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--accent-subtle) 48%, var(--card) 52%);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.credentials-add-card:hover {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.credentials-add-card span {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius: 12px;
+  background: var(--card);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.credentials-add-card strong {
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.credentials-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.credentials-card__header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.credentials-card-more .skillhub-more__menu {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+
+.credentials-card__identity {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.credentials-card__avatar {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--secondary);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.credentials-card__titleblock {
+  min-width: 0;
+}
+
+.credentials-card__titleblock h3 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.credentials-card__chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.credentials-definition-description {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.credentials-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.credentials-meta-grid div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--card) 78%, var(--secondary) 22%);
+}
+
+.credentials-meta-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.credentials-meta-grid strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.credentials-card__form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 0.55fr);
+  align-items: end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.credentials-card__form input,
+.credentials-definition-form input,
+.credentials-definition-form select,
+.credentials-definition-form textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.credentials-card__actions {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.credentials-status {
+  font-weight: 750;
+  background: var(--secondary);
+}
+
+.credentials-status--ok {
+  border-color: color-mix(in srgb, var(--ok) 34%, var(--border));
+  color: var(--ok);
+}
+
+.credentials-status--missing {
+  border-color: color-mix(in srgb, var(--muted) 26%, var(--border));
+  color: var(--muted);
+}
+
+.credentials-status--expired {
+  border-color: color-mix(in srgb, var(--danger) 36%, var(--border));
+  color: var(--danger);
+}
+
+.credentials-status--warning {
+  border-color: color-mix(in srgb, var(--warning) 36%, var(--border));
+  color: var(--warning);
+}
+
+.credentials-definition-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+  width: 100%;
+  max-width: none;
+}
+
+.credentials-definition-form__wide {
+  grid-column: 1 / -1;
+}
+
+.credentials-definition-form textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+
+.credentials-definition-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.credentials-definition-dialog__panel {
+  width: min(720px, calc(100vw - 32px));
+}
+
 @media (max-width: 640px) {
   .md-preview-dialog__panel {
     width: calc(100vw - 16px);
@@ -7908,6 +8224,39 @@ details[open] > .ov-expandable-toggle::after {
 
   .md-preview-dialog__body {
     padding: 14px 12px 20px;
+  }
+
+  .credentials-card__form,
+  .credentials-definition-form,
+  .credentials-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .credentials-card,
+  .credentials-add-card {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .credentials-card__actions,
+  .credentials-definition-form__actions {
+    justify-content: flex-start;
+  }
+
+  .credentials-definition-form__wide {
+    grid-column: auto;
+  }
+
+  .credentials-definition-form__actions {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .credentials-card__header,
+  .credentials-card__header-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

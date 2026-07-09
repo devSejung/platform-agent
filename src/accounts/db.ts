@@ -145,6 +145,38 @@ function ensureSchema(db: DatabaseSync) {
       FOREIGN KEY (actor_account_id) REFERENCES accounts(id)
     );
 
+    CREATE TABLE IF NOT EXISTS credential_definitions (
+      id TEXT PRIMARY KEY,
+      credential_key TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      type TEXT NOT NULL,
+      description TEXT,
+      description_en TEXT,
+      usage_hint TEXT,
+      owner_policy TEXT NOT NULL CHECK (owner_policy IN ('account', 'room', 'system', 'mixed')),
+      rotation_days INTEGER CHECK (rotation_days IS NULL OR rotation_days > 0),
+      required INTEGER NOT NULL DEFAULT 0 CHECK (required IN (0, 1)),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      archived_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS credentials (
+      id TEXT PRIMARY KEY,
+      definition_id TEXT NOT NULL,
+      owner_type TEXT NOT NULL CHECK (owner_type IN ('account', 'room', 'system')),
+      owner_id TEXT NOT NULL,
+      encrypted_value TEXT NOT NULL,
+      encryption_version INTEGER NOT NULL DEFAULT 1 CHECK (encryption_version > 0),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_used_at TEXT,
+      expires_at TEXT,
+      revoked_at TEXT,
+      FOREIGN KEY (definition_id) REFERENCES credential_definitions(id),
+      UNIQUE(definition_id, owner_type, owner_id)
+    );
+
     CREATE UNIQUE INDEX IF NOT EXISTS groups_level1_name_uq
       ON groups(name)
       WHERE group_level = 1;
@@ -152,11 +184,15 @@ function ensureSchema(db: DatabaseSync) {
     CREATE UNIQUE INDEX IF NOT EXISTS groups_level2_parent_name_uq
       ON groups(parent_group_id, name)
       WHERE group_level = 2;
+
+    CREATE INDEX IF NOT EXISTS credentials_owner_lookup_idx
+      ON credentials(owner_type, owner_id, definition_id)
+      WHERE revoked_at IS NULL;
   `);
 
-  const accountColumns = db
-    .prepare(`PRAGMA table_info(accounts)`)
-    .all() as Array<{ name?: string }>;
+  const accountColumns = db.prepare(`PRAGMA table_info(accounts)`).all() as Array<{
+    name?: string;
+  }>;
   const accountColumnNames = new Set(
     accountColumns
       .map((column) => (typeof column.name === "string" ? column.name.trim() : ""))
@@ -165,11 +201,29 @@ function ensureSchema(db: DatabaseSync) {
   if (!accountColumnNames.has("timezone")) {
     db.exec(`ALTER TABLE accounts ADD COLUMN timezone TEXT`);
   }
+
+  const credentialDefinitionColumns = db
+    .prepare(`PRAGMA table_info(credential_definitions)`)
+    .all() as Array<{
+    name?: string;
+  }>;
+  const credentialDefinitionColumnNames = new Set(
+    credentialDefinitionColumns
+      .map((column) => (typeof column.name === "string" ? column.name.trim() : ""))
+      .filter(Boolean),
+  );
+  if (!credentialDefinitionColumnNames.has("description_en")) {
+    db.exec(`ALTER TABLE credential_definitions ADD COLUMN description_en TEXT`);
+  }
+  if (!credentialDefinitionColumnNames.has("usage_hint")) {
+    db.exec(`ALTER TABLE credential_definitions ADD COLUMN usage_hint TEXT`);
+  }
 }
 
-export function getPlatformClawDatabase(
-  env: NodeJS.ProcessEnv = process.env,
-): { db: DatabaseSync; path: string } {
+export function getPlatformClawDatabase(env: NodeJS.ProcessEnv = process.env): {
+  db: DatabaseSync;
+  path: string;
+} {
   const pathname = resolvePlatformClawSqlitePath(env);
   if (cachedDb && cachedDb.path === pathname) {
     return cachedDb;

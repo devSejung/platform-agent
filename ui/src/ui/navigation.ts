@@ -1,4 +1,4 @@
-import { t } from "../i18n/index.ts";
+import { i18n, t } from "../i18n/index.ts";
 import type { IconName } from "./icons.js";
 import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
 
@@ -31,7 +31,7 @@ export const EMPLOYEE_TAB_GROUPS = [
   },
   {
     label: "workspace",
-    tabs: ["files", "skills"],
+    tabs: ["files", "skills", "credentials"],
   },
   {
     label: "automation",
@@ -56,6 +56,7 @@ export type Tab =
   | "heartbeat"
   | "skills"
   | "skillHub"
+  | "credentials"
   | "groups"
   | "admin"
   | "nodes"
@@ -83,6 +84,7 @@ const TAB_PATHS: Record<Tab, string> = {
   heartbeat: "/heartbeat",
   skills: "/skills",
   skillHub: "/skill-hub",
+  credentials: "/credentials",
   groups: "/groups",
   admin: "/admin",
   nodes: "/nodes",
@@ -214,6 +216,8 @@ export function iconForTab(tab: Tab): IconName {
       return "zap";
     case "skillHub":
       return "package";
+    case "credentials":
+      return "shield";
     case "groups":
       return "users";
     case "admin":
@@ -257,6 +261,7 @@ export function titleForTab(tab: Tab) {
     heartbeat: "Heartbeat",
     skills: "Skills",
     skillHub: "Skill Hub",
+    credentials: i18n.getLocale() === "ko" ? "Credentials" : "Credentials",
     groups: "Groups",
     admin: "Admin",
     nodes: "Nodes",
@@ -289,6 +294,11 @@ export function subtitleForTab(tab: Tab) {
   }
   if (tab === "groups") {
     return "Browse groups, parts, and managed memberships.";
+  }
+  if (tab === "credentials") {
+    return i18n.getLocale() === "ko"
+      ? "내 Credential 값을 등록하고 승인된 Credential 유형을 관리합니다."
+      : "Manage credential values and approved credential types.";
   }
   if (tab === "admin") {
     return "Review accounts, roles, and membership assignments.";

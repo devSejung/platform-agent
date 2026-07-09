@@ -70,6 +70,12 @@ import {
   refreshVisibleToolsEffectiveForCurrentSession as refreshVisibleToolsEffectiveForCurrentSessionInternal,
 } from "./controllers/agents.ts";
 import { loadAssistantIdentity as loadAssistantIdentityInternal } from "./controllers/assistant-identity.ts";
+import type {
+  CredentialDefinition,
+  CredentialMetadata,
+  CredentialOwnerPolicy,
+  CredentialStatus,
+} from "./controllers/credentials.ts";
 import type { DevicePairingList } from "./controllers/devices.ts";
 import type { DreamingStatus } from "./controllers/dreaming.ts";
 import {
@@ -636,6 +642,45 @@ export class OpenClawApp extends LitElement {
   @state() skillHubTransferReason = "";
   @state() skillHubTransferLoading = false;
   @state() skillHubTransferError: string | null = null;
+
+  @state() credentialStatusLoading = false;
+  @state() credentialStatus: CredentialStatus | null = null;
+  @state() credentialStatusError: string | null = null;
+  @state() credentialDefinitionsLoading = false;
+  @state() credentialDefinitions: CredentialDefinition[] = [];
+  @state() credentialDefinitionsError: string | null = null;
+  @state() credentialsLoading = false;
+  @state() credentials: CredentialMetadata[] = [];
+  @state() credentialsError: string | null = null;
+  @state() credentialsMessage: { kind: "success" | "error"; text: string } | null = null;
+  @state() credentialValueDrafts: Record<string, string> = {};
+  @state() credentialExpiresAtDrafts: Record<string, string> = {};
+  @state() credentialSavingKey: string | null = null;
+  @state() credentialRevokingKey: string | null = null;
+  @state() credentialDefinitionDraft: {
+    key: string;
+    label: string;
+    type: string;
+    description: string;
+    descriptionEn: string;
+    usageHint: string;
+    ownerPolicy: CredentialOwnerPolicy;
+    rotationDays: string;
+    required: boolean;
+  } = {
+    key: "",
+    label: "",
+    type: "api_token",
+    description: "",
+    descriptionEn: "",
+    usageHint: "",
+    ownerPolicy: "account",
+    rotationDays: "",
+    required: false,
+  };
+  @state() credentialDefinitionSaving = false;
+  @state() credentialDefinitionDeletingKey: string | null = null;
+  @state() credentialDefinitionModalOpen = false;
 
   @state() groupsLoading = false;
   @state() groupsEntries: GroupEntry[] = [];

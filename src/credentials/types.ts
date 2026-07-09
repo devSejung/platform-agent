@@ -1,0 +1,78 @@
+export type CredentialOwnerType = "account" | "room" | "system";
+
+export type CredentialOwnerPolicy = CredentialOwnerType | "mixed";
+
+export type CredentialScope = {
+  ownerType: CredentialOwnerType;
+  ownerId: string;
+};
+
+export type CredentialDefinition = {
+  id: string;
+  key: string;
+  label: string;
+  type: string;
+  description: string | null;
+  descriptionEn: string | null;
+  usageHint: string | null;
+  ownerPolicy: CredentialOwnerPolicy;
+  rotationDays: number | null;
+  required: boolean;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+};
+
+export type CredentialMetadata = {
+  id: string;
+  definitionId: string;
+  definitionKey: string;
+  type: string;
+  ownerType: CredentialOwnerType;
+  ownerId: string;
+  encryptionVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+};
+
+export type ResolvedCredential = CredentialMetadata & {
+  value: string;
+};
+
+export type CreateCredentialDefinitionInput = {
+  key: string;
+  label: string;
+  type: string;
+  description?: string | null;
+  descriptionEn?: string | null;
+  usageHint?: string | null;
+  ownerPolicy?: CredentialOwnerPolicy;
+  rotationDays?: number | null;
+  required?: boolean;
+};
+
+export type UpsertCredentialInput = {
+  definitionKey: string;
+  ownerType: CredentialOwnerType;
+  ownerId: string;
+  value: string;
+  expiresAt?: string | null;
+};
+
+export type GetCredentialInput = {
+  definitionKey: string;
+  scope: CredentialScope;
+};
+
+export interface CredentialService {
+  createDefinition(input: CreateCredentialDefinitionInput): Promise<CredentialDefinition>;
+  archiveDefinition(key: string): Promise<void>;
+  listDefinitions(): Promise<CredentialDefinition[]>;
+  upsertCredential(input: UpsertCredentialInput): Promise<CredentialMetadata>;
+  listCredentials(scope: CredentialScope): Promise<CredentialMetadata[]>;
+  getCredential(input: GetCredentialInput): Promise<ResolvedCredential>;
+  revokeCredential(input: GetCredentialInput): Promise<void>;
+}

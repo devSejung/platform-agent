@@ -9,6 +9,12 @@ import type { ArtifactFocusItem } from "./chat/artifact-focus-viewer.ts";
 import type { ChatMessageCache } from "./chat/session-message-cache.ts";
 import type { AccountDirectoryEntry } from "./controllers/accounts.ts";
 import type { AdminAccountDetail, AdminAccountEntry } from "./controllers/admin-accounts.ts";
+import type {
+  CredentialDefinition,
+  CredentialMetadata,
+  CredentialOwnerPolicy,
+  CredentialStatus,
+} from "./controllers/credentials.ts";
 import type { CronModelSuggestionsState, CronState } from "./controllers/cron.ts";
 import type { DevicePairingList } from "./controllers/devices.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
@@ -440,6 +446,34 @@ export type AppViewState = {
     skillHubTransferReason: string;
     skillHubTransferLoading: boolean;
     skillHubTransferError: string | null;
+    credentialStatusLoading: boolean;
+    credentialStatus: CredentialStatus | null;
+    credentialStatusError: string | null;
+    credentialDefinitionsLoading: boolean;
+    credentialDefinitions: CredentialDefinition[];
+    credentialDefinitionsError: string | null;
+    credentialsLoading: boolean;
+    credentials: CredentialMetadata[];
+    credentialsError: string | null;
+    credentialsMessage: { kind: "success" | "error"; text: string } | null;
+    credentialValueDrafts: Record<string, string>;
+    credentialExpiresAtDrafts: Record<string, string>;
+    credentialSavingKey: string | null;
+    credentialRevokingKey: string | null;
+    credentialDefinitionDraft: {
+      key: string;
+      label: string;
+      type: string;
+      description: string;
+      descriptionEn: string;
+      usageHint: string;
+      ownerPolicy: CredentialOwnerPolicy;
+      rotationDays: string;
+      required: boolean;
+    };
+    credentialDefinitionSaving: boolean;
+    credentialDefinitionDeletingKey: string | null;
+    credentialDefinitionModalOpen: boolean;
     groupsLoading: boolean;
     groupsEntries: GroupEntry[];
     groupsError: string | null;

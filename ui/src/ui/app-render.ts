@@ -49,6 +49,15 @@ import {
   removeConfigFormValue,
 } from "./controllers/config.ts";
 import {
+  deleteCredentialDefinitionAction,
+  loadCredentialDefinitions,
+  loadCredentials,
+  loadCredentialStatus,
+  revokeCredentialAction,
+  upsertCredentialAction,
+  upsertCredentialDefinitionAction,
+} from "./controllers/credentials.ts";
+import {
   loadCronRuns,
   loadMoreCronJobs,
   loadMoreCronRuns,
@@ -226,6 +235,7 @@ const lazyNodes = createLazy(() => import("./views/nodes.ts"));
 const lazySessions = createLazy(() => import("./views/sessions.ts"));
 const lazySkills = createLazy(() => import("./views/skills.ts"));
 const lazySkillHub = createLazy(() => import("./views/skill-hub.ts"));
+const lazyCredentials = createLazy(() => import("./views/credentials.ts"));
 const lazyGroups = createLazy(() => import("./views/groups.ts"));
 const lazyAdmin = createLazy(() => import("./views/admin.ts"));
 
@@ -3735,6 +3745,180 @@ export function renderApp(state: AppViewState) {
                       state.skillHubTransferLoading = false;
                     }
                   })();
+                },
+              }),
+            )
+          : nothing}
+        ${state.tab === "credentials"
+          ? lazyRender(lazyCredentials, (m) =>
+              m.renderCredentials({
+                statusLoading: state.credentialStatusLoading,
+                encryptionReady: state.credentialStatus?.encryptionReady === true,
+                encryptionKeyName: state.credentialStatus?.keyName ?? "PLATFORMCLAW_MASTER_KEY",
+                statusError: state.credentialStatusError,
+                loading: state.credentialDefinitionsLoading,
+                definitions: state.credentialDefinitions,
+                definitionsError: state.credentialDefinitionsError,
+                credentialsLoading: state.credentialsLoading,
+                credentials: state.credentials,
+                credentialsError: state.credentialsError,
+                message: state.credentialsMessage,
+                valueDrafts: state.credentialValueDrafts,
+                expiresAtDrafts: state.credentialExpiresAtDrafts,
+                savingKey: state.credentialSavingKey,
+                revokingKey: state.credentialRevokingKey,
+                canManageDefinitions: Boolean(state.employeeAccountSummary?.hasAdminAccess),
+                definitionDraft: state.credentialDefinitionDraft,
+                definitionSaving: state.credentialDefinitionSaving,
+                definitionDeletingKey: state.credentialDefinitionDeletingKey,
+                definitionModalOpen: state.credentialDefinitionModalOpen,
+                onRefresh: () => {
+                  void Promise.all([
+                    loadCredentialStatus(state),
+                    loadCredentialDefinitions(state),
+                    loadCredentials(state),
+                  ]);
+                },
+                onValueDraftChange: (definitionKey, value) => {
+                  state.credentialValueDrafts = {
+                    ...state.credentialValueDrafts,
+                    [definitionKey]: value,
+                  };
+                },
+                onExpiresAtDraftChange: (definitionKey, value) => {
+                  state.credentialExpiresAtDrafts = {
+                    ...state.credentialExpiresAtDrafts,
+                    [definitionKey]: value,
+                  };
+                },
+                onSaveCredential: (definitionKey) => {
+                  const value = state.credentialValueDrafts[definitionKey]?.trim() ?? "";
+                  const expiresAt = state.credentialExpiresAtDrafts[definitionKey]?.trim() || null;
+                  if (!value) {
+                    return;
+                  }
+                  void (async () => {
+                    state.credentialSavingKey = definitionKey;
+                    try {
+                      await upsertCredentialAction(state, { definitionKey, value, expiresAt });
+                      const remainingValues = { ...state.credentialValueDrafts };
+                      delete remainingValues[definitionKey];
+                      state.credentialValueDrafts = remainingValues;
+                    } finally {
+                      state.credentialSavingKey = null;
+                    }
+                  })();
+                },
+                onRevokeCredential: (definitionKey) => {
+                  if (!window.confirm(`Revoke credential "${definitionKey}"?`)) {
+                    return;
+                  }
+                  void (async () => {
+                    state.credentialRevokingKey = definitionKey;
+                    try {
+                      await revokeCredentialAction(state, { definitionKey });
+                    } finally {
+                      state.credentialRevokingKey = null;
+                    }
+                  })();
+                },
+                onDefinitionDraftChange: (patch) => {
+                  state.credentialDefinitionDraft = {
+                    ...state.credentialDefinitionDraft,
+                    ...patch,
+                  };
+                },
+                onOpenDefinitionCreate: () => {
+                  state.credentialDefinitionDraft = {
+                    key: "",
+                    label: "",
+                    type: "api_token",
+                    description: "",
+                    descriptionEn: "",
+                    usageHint: "",
+                    ownerPolicy: "account",
+                    rotationDays: "",
+                    required: false,
+                  };
+                  state.credentialDefinitionModalOpen = true;
+                },
+                onCloseDefinitionModal: () => {
+                  state.credentialDefinitionModalOpen = false;
+                },
+                onSaveDefinition: () => {
+                  const draft = state.credentialDefinitionDraft;
+                  const parsedRotationDays = draft.rotationDays.trim()
+                    ? Number.parseInt(draft.rotationDays.trim(), 10)
+                    : null;
+                  const rotationDays =
+                    typeof parsedRotationDays === "number" &&
+                    Number.isInteger(parsedRotationDays) &&
+                    parsedRotationDays > 0
+                      ? parsedRotationDays
+                      : null;
+                  void (async () => {
+                    state.credentialDefinitionSaving = true;
+                    try {
+                      await upsertCredentialDefinitionAction(state, {
+                        key: draft.key,
+                        label: draft.label,
+                        type: draft.type,
+                        description: draft.description || null,
+                        descriptionEn: draft.descriptionEn || null,
+                        usageHint: draft.usageHint || null,
+                        ownerPolicy: draft.ownerPolicy,
+                        rotationDays,
+                        required: draft.required,
+                      });
+                      state.credentialDefinitionDraft = {
+                        key: "",
+                        label: "",
+                        type: "api_token",
+                        description: "",
+                        descriptionEn: "",
+                        usageHint: "",
+                        ownerPolicy: "account",
+                        rotationDays: "",
+                        required: false,
+                      };
+                      state.credentialDefinitionModalOpen = false;
+                    } finally {
+                      state.credentialDefinitionSaving = false;
+                    }
+                  })();
+                },
+                onDeleteDefinition: (definitionKey) => {
+                  const ok = window.confirm(
+                    i18n.getLocale() === "ko"
+                      ? `Credential 유형 "${definitionKey}"을 삭제할까요?`
+                      : `Delete credential type "${definitionKey}"?`,
+                  );
+                  if (!ok) {
+                    return;
+                  }
+                  void (async () => {
+                    state.credentialDefinitionDeletingKey = definitionKey;
+                    try {
+                      await deleteCredentialDefinitionAction(state, { key: definitionKey });
+                    } finally {
+                      state.credentialDefinitionDeletingKey = null;
+                    }
+                  })();
+                },
+                onUseDefinitionTemplate: (definition) => {
+                  state.credentialDefinitionDraft = {
+                    key: definition.key,
+                    label: definition.label,
+                    type: definition.type,
+                    description: definition.description ?? "",
+                    descriptionEn: definition.descriptionEn ?? "",
+                    usageHint: definition.usageHint ?? "",
+                    ownerPolicy: definition.ownerPolicy,
+                    rotationDays: definition.rotationDays ? String(definition.rotationDays) : "",
+                    required: definition.required,
+                  };
+                  state.credentialDefinitionModalOpen = true;
+                  requestHostUpdate?.();
                 },
               }),
             )

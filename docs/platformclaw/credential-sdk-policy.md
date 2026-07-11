@@ -18,6 +18,10 @@ from platformclaw import credentials
 token = credentials.get("jira.default")
 ```
 
+Credential names such as `jira.default` are opaque credential definition keys.
+The dot is only a naming convention for readability; SQLite and Runtime treat
+the value as a single string key.
+
 The SDK calls PlatformClaw Runtime. Runtime decides the credential scope from
 the current run context and returns only credentials allowed for that scope.
 
@@ -127,6 +131,25 @@ The resolver derives SQLite lookup scope only from Runtime context and registers
 the decrypted value with the runtime redaction registry before returning it to
 in-process Runtime/SDK code. Browser and Control UI Gateway methods remain
 metadata-only and must not expose plaintext credentials.
+
+Skills may optionally declare required credential keys in existing SKILL.md
+metadata:
+
+```json5
+{
+  openclaw: {
+    requires: {
+      credentials: ["jira.default"],
+    },
+  },
+}
+```
+
+When a gateway-host exec command references that Skill directory, Runtime checks
+that the current effective account has those credential values before spawning
+the process. Missing credentials stop the process and return a registration
+hint. Skills without `requires.credentials` keep the existing behavior and may
+still fail later if their code calls `credentials.get(...)` for a missing value.
 
 The Python SDK transport is wired for gateway-host exec processes only. Runtime
 injects a local loopback endpoint plus a per-run token, not plaintext
@@ -428,6 +451,8 @@ Implemented foundation:
 8. Add `credential_grants` storage and `CredentialService` grant methods.
 9. Enforce grants in `resolveRuntimeCredential(...)` when Runtime supplies
    `requiredPermission`.
+10. Add optional `metadata.openclaw.requires.credentials` parsing and
+    gateway-host Skill credential preflight.
 
 Remaining implementation order:
 

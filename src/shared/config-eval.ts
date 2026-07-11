@@ -46,6 +46,7 @@ export type RuntimeRequires = {
   anyBins?: string[];
   env?: string[];
   config?: string[];
+  credentials?: string[];
 };
 
 type RuntimeRequirementEvalParams = {

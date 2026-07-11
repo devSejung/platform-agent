@@ -593,6 +593,7 @@ export function buildWorkspaceSkillSnapshot(
       name: entry.skill.name,
       primaryEnv: entry.metadata?.primaryEnv,
       requiredEnv: entry.metadata?.requires?.env?.slice(),
+      requiredCredentials: entry.metadata?.requires?.credentials?.slice(),
     })),
     ...(skillFilter === undefined ? {} : { skillFilter }),
     resolvedSkills,

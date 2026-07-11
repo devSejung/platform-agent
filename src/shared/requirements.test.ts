@@ -75,7 +75,13 @@ describe("requirements helpers", () => {
     const res = evaluateRequirementsFromMetadata({
       always: false,
       metadata: {
-        requires: { bins: ["a"], anyBins: ["b"], env: ["E"], config: ["cfg.value"] },
+        requires: {
+          bins: ["a"],
+          anyBins: ["b"],
+          env: ["E"],
+          config: ["cfg.value"],
+          credentials: ["jira.default"],
+        },
         os: ["darwin"],
       },
       hasLocalBin: (bin) => bin === "a",
@@ -85,7 +91,9 @@ describe("requirements helpers", () => {
     });
 
     expect(res.required.bins).toEqual(["a"]);
+    expect(res.required.credentials).toEqual(["jira.default"]);
     expect(res.missing.config).toEqual(["cfg.value"]);
+    expect(res.missing.credentials).toEqual([]);
     expect(res.missing.os).toEqual(["darwin"]);
     expect(res.eligible).toBe(false);
   });
@@ -98,6 +106,7 @@ describe("requirements helpers", () => {
         anyBins: ["bun", "deno"],
         env: ["OPENAI_API_KEY"],
         config: ["browser.enabled", "gateway.enabled"],
+        credentials: ["jira.default"],
         os: ["darwin"],
       },
       hasLocalBin: () => false,
@@ -114,6 +123,7 @@ describe("requirements helpers", () => {
       anyBins: ["bun", "deno"],
       env: ["OPENAI_API_KEY"],
       config: ["browser.enabled"],
+      credentials: [],
       os: ["darwin"],
     });
     expect(res.configChecks).toEqual([
@@ -131,6 +141,7 @@ describe("requirements helpers", () => {
         anyBins: ["bun"],
         env: ["OPENAI_API_KEY"],
         config: ["browser.enabled"],
+        credentials: ["jira.default"],
         os: ["darwin"],
       },
       hasLocalBin: () => false,
@@ -139,7 +150,14 @@ describe("requirements helpers", () => {
       isConfigSatisfied: () => false,
     });
 
-    expect(res.missing).toEqual({ bins: [], anyBins: [], env: [], config: [], os: [] });
+    expect(res.missing).toEqual({
+      bins: [],
+      anyBins: [],
+      env: [],
+      config: [],
+      credentials: [],
+      os: [],
+    });
     expect(res.configChecks).toEqual([{ path: "browser.enabled", satisfied: false }]);
     expect(res.eligible).toBe(true);
   });
@@ -167,9 +185,17 @@ describe("requirements helpers", () => {
       anyBins: ["bun"],
       env: ["OPENAI_API_KEY"],
       config: [],
+      credentials: [],
       os: ["darwin"],
     });
-    expect(res.missing).toEqual({ bins: [], anyBins: [], env: [], config: [], os: [] });
+    expect(res.missing).toEqual({
+      bins: [],
+      anyBins: [],
+      env: [],
+      config: [],
+      credentials: [],
+      os: [],
+    });
     expect(res.eligible).toBe(true);
   });
 
@@ -187,6 +213,7 @@ describe("requirements helpers", () => {
       anyBins: [],
       env: [],
       config: [],
+      credentials: [],
       os: [],
     });
     expect(res.missing).toEqual({
@@ -194,6 +221,7 @@ describe("requirements helpers", () => {
       anyBins: [],
       env: [],
       config: [],
+      credentials: [],
       os: [],
     });
     expect(res.configChecks).toEqual([]);

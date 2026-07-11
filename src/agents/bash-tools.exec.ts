@@ -58,6 +58,7 @@ import {
   truncateMiddle,
 } from "./bash-tools.shared.js";
 import { assertSandboxPath } from "./sandbox-paths.js";
+import { preflightSkillCredentials } from "./skills/credential-preflight.js";
 import { EXEC_TOOL_DISPLAY_SUMMARY } from "./tool-description-presets.js";
 import { type AgentToolWithMeta, failedTextResult, textResult } from "./tools/common.js";
 
@@ -1696,6 +1697,24 @@ export function createExecTool(
         : (explicitTimeoutSec ?? defaultTimeoutSec);
       const getWarningText = () => (warnings.length ? `${warnings.join("\n")}\n\n` : "");
       const usePty = params.pty === true && !sandbox;
+
+      if (host === "gateway") {
+        // PlatformClaw Phase 4: Skill credential preflight is intentionally
+        // gateway-host only until sandbox/node-host SDK bridges exist.
+        const credentialPreflight = await preflightSkillCredentials({
+          command: params.command,
+          workdir,
+          workspaceDir: defaultWorkdir ?? workdir,
+          agentId,
+          accountId: defaults?.accountId,
+          sessionKey: defaults?.sessionKey,
+          messageProvider: defaults?.messageProvider,
+          currentChannelId: defaults?.currentChannelId,
+        });
+        if (!credentialPreflight.ok) {
+          throw new Error(credentialPreflight.message);
+        }
+      }
 
       // Preflight: catch a common model failure mode (shell syntax leaking into Python/JS sources)
       // before we execute and burn tokens in cron loops.

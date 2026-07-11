@@ -3,6 +3,7 @@ export type Requirements = {
   anyBins: string[];
   env: string[];
   config: string[];
+  credentials?: string[];
   os: string[];
 };
 
@@ -12,7 +13,7 @@ export type RequirementConfigCheck = {
 };
 
 export type RequirementsMetadata = {
-  requires?: Partial<Pick<Requirements, "bins" | "anyBins" | "env" | "config">>;
+  requires?: Partial<Pick<Requirements, "bins" | "anyBins" | "env" | "config" | "credentials">>;
   os?: string[];
 };
 
@@ -143,12 +144,13 @@ export function evaluateRequirements(
   const missingConfig = configChecks.filter((check) => !check.satisfied).map((check) => check.path);
 
   const missing = params.always
-    ? { bins: [], anyBins: [], env: [], config: [], os: [] }
+    ? { bins: [], anyBins: [], env: [], config: [], credentials: [], os: [] }
     : {
         bins: missingBins,
         anyBins: missingAnyBins,
         env: missingEnv,
         config: missingConfig,
+        credentials: [],
         os: missingOs,
       };
 
@@ -158,6 +160,7 @@ export function evaluateRequirements(
       missing.anyBins.length === 0 &&
       missing.env.length === 0 &&
       missing.config.length === 0 &&
+      (missing.credentials?.length ?? 0) === 0 &&
       missing.os.length === 0);
 
   return { missing, eligible, configChecks };
@@ -179,6 +182,7 @@ export function evaluateRequirementsFromMetadata(
     anyBins: params.metadata?.requires?.anyBins ?? [],
     env: params.metadata?.requires?.env ?? [],
     config: params.metadata?.requires?.config ?? [],
+    credentials: params.metadata?.requires?.credentials ?? [],
     os: params.metadata?.os ?? [],
   };
 

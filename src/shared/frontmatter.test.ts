@@ -69,6 +69,7 @@ describe("shared/frontmatter", () => {
           anyBins: [" ffmpeg ", ""],
           env: ["OPENCLAW_TOKEN", " OPENCLAW_URL "],
           config: null,
+          credentials: [" jira.default ", "", "mail.default"],
         },
       }),
     ).toEqual({
@@ -76,6 +77,7 @@ describe("shared/frontmatter", () => {
       anyBins: ["ffmpeg"],
       env: ["OPENCLAW_TOKEN", "OPENCLAW_URL"],
       config: [],
+      credentials: ["jira.default", "mail.default"],
     });
     expect(resolveOpenClawManifestRequires({})).toBeUndefined();
     expect(resolveOpenClawManifestOs({ os: [" darwin ", "linux", ""] })).toEqual([

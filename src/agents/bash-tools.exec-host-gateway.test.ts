@@ -193,7 +193,7 @@ describe("processGatewayAllowlist", () => {
     });
   });
 
-  it("still requires approval when allowlist execution plan is unavailable despite durable trust", async () => {
+  it("bypasses approval when allowlist execution plan is unavailable under PlatformClaw policy", async () => {
     const result = await processGatewayAllowlist({
       command: "echo ok",
       workdir: process.cwd(),
@@ -210,8 +210,8 @@ describe("processGatewayAllowlist", () => {
       pendingMaxOutput: 1000,
     });
 
-    expect(createAndRegisterDefaultExecApprovalRequestMock).toHaveBeenCalledTimes(1);
-    expect(result.pendingResult?.details.status).toBe("approval-pending");
+    expect(createAndRegisterDefaultExecApprovalRequestMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ execCommandOverride: undefined });
   });
 
   it("allows durable exact-command trust to bypass the synchronous allowlist miss", async () => {
@@ -248,7 +248,44 @@ describe("processGatewayAllowlist", () => {
     expect(result).toEqual({ execCommandOverride: undefined });
   });
 
-  it("keeps denying allowlist misses when durable trust does not match", async () => {
+  it("allows PlatformClaw gateway commands to bypass generic approval prompts", async () => {
+    resolveExecHostApprovalContextMock.mockReturnValue({
+      approvals: { allowlist: [], file: { version: 1, agents: {} } },
+      hostSecurity: "full",
+      hostAsk: "always",
+      askFallback: "deny",
+    });
+    evaluateShellAllowlistMock.mockReturnValue({
+      allowlistMatches: [],
+      analysisOk: false,
+      allowlistSatisfied: false,
+      segments: [{ resolution: null, argv: ["python", "random.py"] }],
+      segmentAllowlistEntries: [],
+    });
+    hasDurableExecApprovalMock.mockReturnValue(false);
+
+    const result = await processGatewayAllowlist({
+      command: "python random.py",
+      workdir: process.cwd(),
+      env: process.env as Record<string, string>,
+      pty: false,
+      defaultTimeoutSec: 30,
+      security: "allowlist",
+      ask: "always",
+      safeBins: new Set(),
+      safeBinProfiles: {},
+      warnings: [],
+      approvalRunningNoticeMs: 0,
+      maxOutput: 1000,
+      pendingMaxOutput: 1000,
+    });
+
+    expect(createAndRegisterDefaultExecApprovalRequestMock).not.toHaveBeenCalled();
+    expect(hasDurableExecApprovalMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ execCommandOverride: undefined });
+  });
+
+  it("allows allowlist misses under the temporary PlatformClaw gateway policy", async () => {
     evaluateShellAllowlistMock.mockReturnValue({
       allowlistMatches: [],
       analysisOk: false,
@@ -274,10 +311,11 @@ describe("processGatewayAllowlist", () => {
         maxOutput: 1000,
         pendingMaxOutput: 1000,
       }),
-    ).rejects.toThrow("exec denied: allowlist miss");
+    ).resolves.toEqual({ execCommandOverride: undefined });
+    expect(createAndRegisterDefaultExecApprovalRequestMock).not.toHaveBeenCalled();
   });
 
-  it("uses sessionKey for followups when notifySessionKey is absent", async () => {
+  it("does not create approval followups under the temporary PlatformClaw gateway policy", async () => {
     await processGatewayAllowlist({
       command: "echo ok",
       workdir: process.cwd(),
@@ -295,14 +333,11 @@ describe("processGatewayAllowlist", () => {
       sessionKey: "agent:main:telegram:direct:123",
     });
 
-    expect(buildExecApprovalFollowupTargetMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionKey: "agent:main:telegram:direct:123",
-      }),
-    );
+    expect(buildExecApprovalFollowupTargetMock).not.toHaveBeenCalled();
+    expect(createAndRegisterDefaultExecApprovalRequestMock).not.toHaveBeenCalled();
   });
 
-  it("denies timed-out inline-eval requests instead of auto-running them", async () => {
+  it("bypasses strict inline-eval approval under the temporary PlatformClaw gateway policy", async () => {
     resolveExecHostApprovalContextMock.mockReturnValue({
       approvals: { allowlist: [], file: { version: 1, agents: {} } },
       hostSecurity: "full",
@@ -338,17 +373,13 @@ describe("processGatewayAllowlist", () => {
       pendingMaxOutput: 1000,
     });
 
-    expect(result.pendingResult?.details.status).toBe("approval-pending");
-    await vi.waitFor(() => {
-      expect(sendExecApprovalFollowupResultMock).toHaveBeenCalledWith(
-        null,
-        "Exec denied (gateway id=req-1, approval-timeout): python3 -c 'print(1)'",
-      );
-    });
+    expect(result).toEqual({ execCommandOverride: undefined });
+    expect(createAndRegisterDefaultExecApprovalRequestMock).not.toHaveBeenCalled();
+    expect(sendExecApprovalFollowupResultMock).not.toHaveBeenCalled();
     expect(runExecProcessMock).not.toHaveBeenCalled();
   });
 
-  it("denies allowlist timeout fallback for strict inline-eval commands", async () => {
+  it("bypasses strict inline-eval allowlist fallback approval under the temporary policy", async () => {
     resolveExecHostApprovalContextMock.mockReturnValue({
       approvals: { allowlist: [], file: { version: 1, agents: {} } },
       hostSecurity: "allowlist",
@@ -384,13 +415,9 @@ describe("processGatewayAllowlist", () => {
       pendingMaxOutput: 1000,
     });
 
-    expect(result.pendingResult?.details.status).toBe("approval-pending");
-    await vi.waitFor(() => {
-      expect(sendExecApprovalFollowupResultMock).toHaveBeenCalledWith(
-        null,
-        "Exec denied (gateway id=req-1, approval-timeout): python3 -c 'print(1)'",
-      );
-    });
+    expect(result).toEqual({ execCommandOverride: undefined });
+    expect(createAndRegisterDefaultExecApprovalRequestMock).not.toHaveBeenCalled();
+    expect(sendExecApprovalFollowupResultMock).not.toHaveBeenCalled();
     expect(runExecProcessMock).not.toHaveBeenCalled();
   });
 });

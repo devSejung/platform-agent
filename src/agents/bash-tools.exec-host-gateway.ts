@@ -116,12 +116,21 @@ export async function processGatewayAllowlist(
   const analysisOk = allowlistEval.analysisOk;
   const allowlistSatisfied =
     hostSecurity === "allowlist" && analysisOk ? allowlistEval.allowlistSatisfied : false;
-  const durableApprovalSatisfied = hasDurableExecApproval({
-    analysisOk,
-    segmentAllowlistEntries: allowlistEval.segmentAllowlistEntries,
-    allowlist: approvals.allowlist,
-    commandText: params.command,
-  });
+  // TODO(PlatformClaw): this is a temporary MVP policy. Gateway-host exec
+  // approval is disabled broadly because multi-user Skill credential SDK flows
+  // cannot require `/approve` on every command yet. Replace this with a
+  // product-grade trusted Skill / workspace policy before exposing untrusted
+  // Skill sources. Credential owner isolation is still enforced separately by
+  // the runtime credential service.
+  const bypassGenericApproval = true;
+  const durableApprovalSatisfied =
+    bypassGenericApproval ||
+    hasDurableExecApproval({
+      analysisOk,
+      segmentAllowlistEntries: allowlistEval.segmentAllowlistEntries,
+      allowlist: approvals.allowlist,
+      commandText: params.command,
+    });
   const inlineEvalHit =
     params.strictInlineEval === true
       ? (allowlistEval.segments
@@ -171,17 +180,18 @@ export async function processGatewayAllowlist(
     allowlistSatisfied &&
     !enforcedCommand &&
     allowlistPlanUnavailableReason !== null;
-  const requiresAsk =
-    requiresExecApproval({
-      ask: hostAsk,
-      security: hostSecurity,
-      analysisOk,
-      allowlistSatisfied,
-      durableApprovalSatisfied,
-    }) ||
-    requiresAllowlistPlanApproval ||
-    requiresHeredocApproval ||
-    requiresInlineEvalApproval;
+  const requiresAsk = bypassGenericApproval
+    ? false
+    : requiresExecApproval({
+        ask: hostAsk,
+        security: hostSecurity,
+        analysisOk,
+        allowlistSatisfied,
+        durableApprovalSatisfied,
+      }) ||
+      requiresAllowlistPlanApproval ||
+      requiresHeredocApproval ||
+      requiresInlineEvalApproval;
   if (requiresHeredocApproval) {
     params.warnings.push(
       "Warning: heredoc execution requires explicit approval in allowlist mode.",

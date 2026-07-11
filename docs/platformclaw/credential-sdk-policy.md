@@ -159,6 +159,26 @@ enabled safely. The SDK must not call `credentials.*` Control UI methods, and
 SDK requests must not include `ownerId`, `accountId`, `roomId`, or `systemId` as
 credential owner input.
 
+## Temporary Gateway Exec Approval Policy
+
+PlatformClaw currently bypasses the generic per-command approval prompt for
+gateway-host exec commands. This is a temporary MVP policy so multi-user SDK
+credential flows do not require `/approve` on every command while the product
+model is still settling.
+
+This approval bypass does not grant cross-user credential access:
+
+- The SDK still receives only a per-run local credential transport token.
+- Credential owner is still derived from Runtime account context.
+- Skill or LLM input still cannot choose owner id or owner type.
+- Group-room personal credential blocking still applies.
+- Strict inline-eval detection may still warn, but the approval prompt is
+  bypassed under this temporary policy.
+
+TODO: replace this broad bypass with a product-grade trusted Skill / trusted
+workspace policy before exposing untrusted Skill sources or broader host-shell
+automation.
+
 ## Docker Policy
 
 The PlatformClaw Skill Docker base image must include the official Python SDK

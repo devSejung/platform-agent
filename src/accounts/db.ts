@@ -206,6 +206,20 @@ function ensureSchema(db: DatabaseSync) {
       UNIQUE(definition_id, skill_id, permission)
     );
 
+    CREATE TABLE IF NOT EXISTS credential_audit_logs (
+      id TEXT PRIMARY KEY,
+      credential_id TEXT,
+      definition_key TEXT NOT NULL,
+      owner_type TEXT NOT NULL CHECK (owner_type IN ('account', 'room', 'system')),
+      owner_id TEXT NOT NULL,
+      actor_account_id TEXT,
+      skill_id TEXT,
+      action TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      metadata_json TEXT,
+      FOREIGN KEY (credential_id) REFERENCES credentials(id)
+    );
+
     CREATE UNIQUE INDEX IF NOT EXISTS groups_level1_name_uq
       ON groups(name)
       WHERE group_level = 1;
@@ -221,6 +235,9 @@ function ensureSchema(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS credential_grants_lookup_idx
       ON credential_grants(definition_id, skill_id, permission)
       WHERE revoked_at IS NULL;
+
+    CREATE INDEX IF NOT EXISTS credential_audit_logs_lookup_idx
+      ON credential_audit_logs(owner_type, owner_id, definition_key, created_at);
   `);
 
   const accountColumns = db.prepare(`PRAGMA table_info(accounts)`).all() as Array<{

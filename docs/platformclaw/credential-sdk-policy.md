@@ -206,15 +206,20 @@ Examples:
 User or room credential records store the actual encrypted values for those
 definitions.
 
-The first SQLite model should use two tables:
+The current SQLite model uses four tables:
 
 - `credential_definitions`
 - `credentials`
+- `credential_grants`
+- `credential_audit_logs`
 
 `credential_definitions` stores admin-managed metadata such as key, label, type,
 localized descriptions, usage hint, owner policy, and rotation days.
 
 `credentials` stores encrypted credential values for an owner scope.
+`credential_grants` stores optional Skill permission grants.
+`credential_audit_logs` stores non-secret lookup events for operations and
+debugging.
 
 Current SQLite shape:
 
@@ -255,6 +260,18 @@ credential_grants
   granted_by_account_id
   created_at
   revoked_at
+
+credential_audit_logs
+  id
+  credential_id
+  definition_key
+  owner_type
+  owner_id
+  actor_account_id
+  skill_id
+  action
+  created_at
+  metadata_json
 ```
 
 `credential_definitions` answers "what kinds of token can be configured?"
@@ -262,6 +279,8 @@ credential_grants
 `credential_grants` answers "which Skill permission is approved for this
 credential definition?" It does not store plaintext and does not choose
 credential owner.
+`credential_audit_logs` answers "who tried to use which credential key and from
+which runtime context?" It must never store plaintext credential values.
 
 ## Encryption Policy
 

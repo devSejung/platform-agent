@@ -280,4 +280,52 @@ describe("SQLiteCredentialService", () => {
       }),
     ).resolves.toBe(false);
   });
+
+  it("writes credential audit logs without storing secret values", async () => {
+    const service = new SQLiteCredentialService({ env });
+    await service.createDefinition({
+      key: "jira.default",
+      label: "Jira Token",
+      type: "jira_token",
+      ownerPolicy: "account",
+    });
+    const credential = await service.upsertCredential({
+      definitionKey: "jira.default",
+      ownerType: "account",
+      ownerId: "user-a",
+      value: "jira-secret-token",
+    });
+
+    await service.auditCredential({
+      credentialId: credential.id,
+      definitionKey: "jira.default",
+      scope: { ownerType: "account", ownerId: "user-a" },
+      actorAccountId: "user-a",
+      skillId: "jira",
+      action: "runtime_get_success",
+      metadata: { runId: "run-1", note: "no secret here" },
+    });
+
+    const logs = await service.listCredentialAuditLogs({
+      scope: { ownerType: "account", ownerId: "user-a" },
+      definitionKey: "jira.default",
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({
+      credentialId: credential.id,
+      definitionKey: "jira.default",
+      ownerType: "account",
+      ownerId: "user-a",
+      actorAccountId: "user-a",
+      skillId: "jira",
+      action: "runtime_get_success",
+      metadata: { runId: "run-1", note: "no secret here" },
+    });
+
+    const { db } = getPlatformClawDatabase(env);
+    const row = db
+      .prepare(`SELECT metadata_json FROM credential_audit_logs WHERE credential_id = ?`)
+      .get(credential.id) as { metadata_json: string };
+    expect(row.metadata_json).not.toContain("jira-secret-token");
+  });
 });

@@ -23,7 +23,9 @@ export {
 } from "./runtime-credential-resolver.js";
 export { SQLiteCredentialService } from "./sqlite-credential-service.js";
 export type {
+  AuditCredentialInput,
   CreateCredentialDefinitionInput,
+  CredentialAuditLog,
   CredentialDefinition,
   CredentialGrant,
   CredentialGrantCheckInput,
@@ -34,6 +36,7 @@ export type {
   CredentialService,
   GetCredentialInput,
   GrantCredentialInput,
+  ListCredentialAuditLogsInput,
   RevokeCredentialGrantInput,
   ResolvedCredential,
   UpsertCredentialInput,

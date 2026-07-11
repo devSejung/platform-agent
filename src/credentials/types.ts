@@ -53,6 +53,19 @@ export type CredentialGrant = {
   revokedAt: string | null;
 };
 
+export type CredentialAuditLog = {
+  id: string;
+  credentialId: string | null;
+  definitionKey: string;
+  ownerType: CredentialOwnerType;
+  ownerId: string;
+  actorAccountId: string | null;
+  skillId: string | null;
+  action: string;
+  createdAt: string;
+  metadata: Record<string, unknown> | null;
+};
+
 export type CreateCredentialDefinitionInput = {
   key: string;
   label: string;
@@ -97,6 +110,22 @@ export type CredentialGrantCheckInput = {
   permission: string;
 };
 
+export type AuditCredentialInput = {
+  credentialId?: string | null;
+  definitionKey: string;
+  scope: CredentialScope;
+  actorAccountId?: string | null;
+  skillId?: string | null;
+  action: string;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type ListCredentialAuditLogsInput = {
+  scope?: CredentialScope;
+  definitionKey?: string | null;
+  limit?: number;
+};
+
 export interface CredentialService {
   createDefinition(input: CreateCredentialDefinitionInput): Promise<CredentialDefinition>;
   archiveDefinition(key: string): Promise<void>;
@@ -108,4 +137,6 @@ export interface CredentialService {
   grantCredential(input: GrantCredentialInput): Promise<CredentialGrant>;
   revokeCredentialGrant(input: RevokeCredentialGrantInput): Promise<void>;
   hasCredentialGrant(input: CredentialGrantCheckInput): Promise<boolean>;
+  auditCredential(input: AuditCredentialInput): Promise<void>;
+  listCredentialAuditLogs(input?: ListCredentialAuditLogsInput): Promise<CredentialAuditLog[]>;
 }

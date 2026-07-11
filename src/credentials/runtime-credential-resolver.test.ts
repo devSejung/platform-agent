@@ -30,8 +30,10 @@ describe("resolveRuntimeCredential", () => {
   });
 
   it("uses only runtime effective owner scope for lookup", async () => {
+    const auditCredential = vi.fn(async () => undefined);
     const service = {
       getCredential: vi.fn(async () => resolvedCredential("jira-secret-token-1234567890")),
+      auditCredential,
     } as unknown as CredentialService;
 
     const result = await resolveRuntimeCredential(
@@ -53,12 +55,24 @@ describe("resolveRuntimeCredential", () => {
     expect(result.value).toBe("jira-secret-token-1234567890");
     expect(result.credential).not.toHaveProperty("ownerId");
     expect(redactRegisteredRuntimeSecrets(result.value)).toBe("jira-s…7890");
+    expect(auditCredential).toHaveBeenCalledWith(
+      expect.objectContaining({
+        credentialId: "cred-1",
+        definitionKey: "jira.default",
+        scope: { ownerType: "account", ownerId: "account-1" },
+        actorAccountId: "actor-1",
+        skillId: "jira",
+        action: "runtime_get_success",
+      }),
+    );
   });
 
   it("enforces runtime-supplied required permissions when provided", async () => {
+    const auditCredential = vi.fn(async () => undefined);
     const service = {
       hasCredentialGrant: vi.fn(async () => false),
       getCredential: vi.fn(async () => resolvedCredential("jira-secret-token-1234567890")),
+      auditCredential,
     } as unknown as CredentialService;
 
     await expect(
@@ -80,17 +94,57 @@ describe("resolveRuntimeCredential", () => {
       permission: "jira.write",
     });
     expect(service.getCredential).not.toHaveBeenCalled();
+    expect(auditCredential).toHaveBeenCalledWith(
+      expect.objectContaining({
+        credentialId: undefined,
+        definitionKey: "jira.default",
+        scope: { ownerType: "account", ownerId: "account-1" },
+        skillId: "jira",
+        action: "runtime_get_failure",
+      }),
+    );
   });
 
   it("resolves after the runtime-supplied permission grant passes", async () => {
+    const auditCredential = vi.fn(async () => undefined);
     const service = {
       hasCredentialGrant: vi.fn(async () => true),
       getCredential: vi.fn(async () => resolvedCredential("jira-secret-token-1234567890")),
+      auditCredential,
     } as unknown as CredentialService;
 
     await expect(
       resolveRuntimeCredential(
         { definitionKey: "jira.default", requiredPermission: "jira.write" },
+        {
+          runId: "run-1",
+          skillId: "jira",
+          effectiveOwnerType: "account",
+          effectiveOwnerId: "account-1",
+        },
+        { service },
+      ),
+    ).resolves.toMatchObject({ value: "jira-secret-token-1234567890" });
+    expect(auditCredential).toHaveBeenCalledWith(
+      expect.objectContaining({
+        credentialId: "cred-1",
+        action: "runtime_get_success",
+        metadata: expect.objectContaining({ requiredPermission: "jira.write" }),
+      }),
+    );
+  });
+
+  it("does not fail credential resolution when audit storage fails", async () => {
+    const service = {
+      getCredential: vi.fn(async () => resolvedCredential("jira-secret-token-1234567890")),
+      auditCredential: vi.fn(async () => {
+        throw new Error("audit unavailable");
+      }),
+    } as unknown as CredentialService;
+
+    await expect(
+      resolveRuntimeCredential(
+        { definitionKey: "jira.default" },
         {
           runId: "run-1",
           skillId: "jira",

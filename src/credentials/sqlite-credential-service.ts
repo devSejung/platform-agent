@@ -6,6 +6,8 @@ import {
   encryptCredentialValue,
 } from "./encryption.js";
 import type {
+  AuditCredentialInput,
+  CredentialAuditLog,
   CredentialDefinition,
   CredentialGrant,
   CredentialGrantCheckInput,
@@ -17,6 +19,7 @@ import type {
   CreateCredentialDefinitionInput,
   GetCredentialInput,
   GrantCredentialInput,
+  ListCredentialAuditLogsInput,
   RevokeCredentialGrantInput,
   ResolvedCredential,
   UpsertCredentialInput,
@@ -63,6 +66,19 @@ type CredentialGrantRow = {
   granted_by_account_id: string;
   created_at: string;
   revoked_at: string | null;
+};
+
+type CredentialAuditLogRow = {
+  id: string;
+  credential_id: string | null;
+  definition_key: string;
+  owner_type: CredentialOwnerType;
+  owner_id: string;
+  actor_account_id: string | null;
+  skill_id: string | null;
+  action: string;
+  created_at: string;
+  metadata_json: string | null;
 };
 
 const CREDENTIAL_OWNER_TYPES = new Set<CredentialOwnerType>(["account", "room", "system"]);
@@ -189,6 +205,55 @@ function rowToGrant(row: CredentialGrantRow): CredentialGrant {
     createdAt: row.created_at,
     revokedAt: row.revoked_at,
   };
+}
+
+function parseAuditMetadata(raw: string | null): Record<string, unknown> | null {
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function rowToAuditLog(row: CredentialAuditLogRow): CredentialAuditLog {
+  return {
+    id: row.id,
+    credentialId: row.credential_id,
+    definitionKey: row.definition_key,
+    ownerType: row.owner_type,
+    ownerId: row.owner_id,
+    actorAccountId: row.actor_account_id,
+    skillId: row.skill_id,
+    action: row.action,
+    createdAt: row.created_at,
+    metadata: parseAuditMetadata(row.metadata_json),
+  };
+}
+
+function normalizeAuditLimit(limit: number | undefined): number {
+  if (limit === undefined) {
+    return 100;
+  }
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error("limit must be a positive integer when provided");
+  }
+  return Math.min(limit, 1000);
+}
+
+function serializeAuditMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!metadata) {
+    return null;
+  }
+  return JSON.stringify(metadata);
 }
 
 export class SQLiteCredentialService implements CredentialService {
@@ -481,6 +546,66 @@ export class SQLiteCredentialService implements CredentialService {
         permission,
       }) !== null
     );
+  }
+
+  async auditCredential(input: AuditCredentialInput): Promise<void> {
+    const definitionKey = trimRequired(input.definitionKey, "definitionKey");
+    const action = trimRequired(input.action, "action");
+    const scope = this.normalizeScope(input.scope);
+    const now = new Date().toISOString();
+    getPlatformClawDatabase(this.env)
+      .db.prepare(
+        `INSERT INTO credential_audit_logs (
+           id, credential_id, definition_key, owner_type, owner_id, actor_account_id,
+           skill_id, action, created_at, metadata_json
+         ) VALUES (
+           @id, @credential_id, @definition_key, @owner_type, @owner_id, @actor_account_id,
+           @skill_id, @action, @created_at, @metadata_json
+         )`,
+      )
+      .run({
+        id: randomUUID(),
+        credential_id: trimOptional(input.credentialId),
+        definition_key: definitionKey,
+        owner_type: scope.ownerType,
+        owner_id: scope.ownerId,
+        actor_account_id: trimOptional(input.actorAccountId),
+        skill_id: trimOptional(input.skillId),
+        action,
+        created_at: now,
+        metadata_json: serializeAuditMetadata(input.metadata),
+      });
+  }
+
+  async listCredentialAuditLogs(
+    input: ListCredentialAuditLogsInput = {},
+  ): Promise<CredentialAuditLog[]> {
+    const limit = normalizeAuditLimit(input.limit);
+    const clauses: string[] = [];
+    const values: Array<string | number | null> = [];
+    if (input.scope) {
+      const scope = this.normalizeScope(input.scope);
+      clauses.push("owner_type = ?", "owner_id = ?");
+      values.push(scope.ownerType, scope.ownerId);
+    }
+    const definitionKey = trimOptional(input.definitionKey);
+    if (definitionKey) {
+      clauses.push("definition_key = ?");
+      values.push(definitionKey);
+    }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const { db } = getPlatformClawDatabase(this.env);
+    const rows = db
+      .prepare(
+        `SELECT id, credential_id, definition_key, owner_type, owner_id, actor_account_id,
+                skill_id, action, created_at, metadata_json
+           FROM credential_audit_logs
+           ${where}
+          ORDER BY created_at DESC
+          LIMIT ?`,
+      )
+      .all(...values, limit) as CredentialAuditLogRow[];
+    return rows.map(rowToAuditLog);
   }
 
   private normalizeScope(scope: CredentialScope): CredentialScope {

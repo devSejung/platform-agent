@@ -6,13 +6,19 @@ import {
 } from "../../accounts/account-store.js";
 import {
   addGroupMembership,
+  approveGroupJoinRequest,
   archiveGroupScope,
+  countVisiblePendingGroupJoinRequests,
   createGroup,
   createPart,
   getGroupDetail,
+  listVisibleGroupJoinRequests,
   listGroupEntries,
   listGroupScopeOptions,
+  rejectGroupJoinRequest,
   removeGroupMembership,
+  resolveManageableGroupSummary,
+  isAdminAccount,
   updateGroup,
   updatePart,
 } from "../../accounts/group-store.js";
@@ -31,6 +37,10 @@ import {
   validateGroupDetailParams,
   validateGroupMembershipAddParams,
   validateGroupMembershipRemoveParams,
+  validateGroupJoinRequestApproveParams,
+  validateGroupJoinRequestListParams,
+  validateGroupJoinRequestPendingCountParams,
+  validateGroupJoinRequestRejectParams,
   validateGroupPartCreateParams,
   validateGroupPartUpdateParams,
   validateGroupUpdateParams,
@@ -311,6 +321,117 @@ export const accountGroupHandlers: GatewayRequestHandlers = {
       const { scopeId } = params as { scopeId: string };
       const archived = archiveGroupScope({ actorAccountId, scopeId });
       respond(true, { ok: true, message: `Archived ${archived.name}` }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
+    }
+  },
+  "groups.joinRequests.list": ({ params, respond, client }) => {
+    if (!validateGroupJoinRequestListParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid groups.joinRequests.list params: ${formatValidationErrors(validateGroupJoinRequestListParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const actorAccountId = requireRequesterAccountId(client);
+      const manageable = resolveManageableGroupSummary(actorAccountId);
+      if (!isAdminAccount(actorAccountId) && manageable.groupCount <= 0) {
+        throw new Error("join request review access required");
+      }
+      respond(
+        true,
+        {
+          entries: listVisibleGroupJoinRequests({
+            actorAccountId,
+            status: "pending",
+          }),
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
+    }
+  },
+  "groups.joinRequests.pendingCount": ({ params, respond, client }) => {
+    if (!validateGroupJoinRequestPendingCountParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid groups.joinRequests.pendingCount params: ${formatValidationErrors(validateGroupJoinRequestPendingCountParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const actorAccountId = requireRequesterAccountId(client);
+      const manageable = resolveManageableGroupSummary(actorAccountId);
+      if (!isAdminAccount(actorAccountId) && manageable.groupCount <= 0) {
+        throw new Error("join request review access required");
+      }
+      respond(
+        true,
+        {
+          count: countVisiblePendingGroupJoinRequests(actorAccountId),
+        },
+        undefined,
+      );
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
+    }
+  },
+  "groups.joinRequests.approve": ({ params, respond, client }) => {
+    if (!validateGroupJoinRequestApproveParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid groups.joinRequests.approve params: ${formatValidationErrors(validateGroupJoinRequestApproveParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const actorAccountId = requireRequesterAccountId(client);
+      const { requestId, reviewComment } = params as { requestId: string; reviewComment?: string };
+      approveGroupJoinRequest({
+        actorAccountId,
+        requestId,
+        reviewComment,
+      });
+      respond(true, { ok: true, message: "Join request approved." }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
+    }
+  },
+  "groups.joinRequests.reject": ({ params, respond, client }) => {
+    if (!validateGroupJoinRequestRejectParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid groups.joinRequests.reject params: ${formatValidationErrors(validateGroupJoinRequestRejectParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const actorAccountId = requireRequesterAccountId(client);
+      const { requestId, reviewComment } = params as { requestId: string; reviewComment?: string };
+      rejectGroupJoinRequest({
+        actorAccountId,
+        requestId,
+        reviewComment,
+      });
+      respond(true, { ok: true, message: "Join request rejected." }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
     }

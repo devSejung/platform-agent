@@ -133,6 +133,32 @@ export const GroupMemberEntrySchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const GroupJoinRequestEntrySchema = Type.Object(
+  {
+    id: NonEmptyString,
+    accountId: NonEmptyString,
+    employeeId: NonEmptyString,
+    displayName: NonEmptyString,
+    email: Type.Union([Type.String(), Type.Null()]),
+    department: Type.Union([Type.String(), Type.Null()]),
+    groupId: NonEmptyString,
+    groupName: NonEmptyString,
+    partId: NonEmptyString,
+    partName: NonEmptyString,
+    status: Type.Union([
+      Type.Literal("pending"),
+      Type.Literal("approved"),
+      Type.Literal("rejected"),
+    ]),
+    requestedAt: NonEmptyString,
+    updatedAt: NonEmptyString,
+    reviewedAt: Type.Union([Type.String(), Type.Null()]),
+    reviewedByAccountId: Type.Union([Type.String(), Type.Null()]),
+    reviewComment: Type.Union([Type.String(), Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+
 export const GroupListEntrySchema = Type.Composite([
   GroupScopeSchema,
   Type.Object(
@@ -278,6 +304,43 @@ export const GroupArchiveParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const GroupJoinRequestListParamsSchema = Type.Object({}, { additionalProperties: false });
+
+export const GroupJoinRequestListResultSchema = Type.Object(
+  {
+    entries: Type.Array(GroupJoinRequestEntrySchema),
+  },
+  { additionalProperties: false },
+);
+
+export const GroupJoinRequestPendingCountParamsSchema = Type.Object(
+  {},
+  { additionalProperties: false },
+);
+
+export const GroupJoinRequestPendingCountResultSchema = Type.Object(
+  {
+    count: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+export const GroupJoinRequestApproveParamsSchema = Type.Object(
+  {
+    requestId: NonEmptyString,
+    reviewComment: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+export const GroupJoinRequestRejectParamsSchema = Type.Object(
+  {
+    requestId: NonEmptyString,
+    reviewComment: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
 export const GroupMutationResultSchema = Type.Object(
   {
     ok: Type.Literal(true),
@@ -309,4 +372,8 @@ export type GroupScopesListParams = Static<typeof GroupScopesListParamsSchema>;
 export type GroupMembershipAddParams = Static<typeof GroupMembershipAddParamsSchema>;
 export type GroupMembershipRemoveParams = Static<typeof GroupMembershipRemoveParamsSchema>;
 export type GroupArchiveParams = Static<typeof GroupArchiveParamsSchema>;
+export type GroupJoinRequestListParams = Static<typeof GroupJoinRequestListParamsSchema>;
+export type GroupJoinRequestPendingCountParams = Static<typeof GroupJoinRequestPendingCountParamsSchema>;
+export type GroupJoinRequestApproveParams = Static<typeof GroupJoinRequestApproveParamsSchema>;
+export type GroupJoinRequestRejectParams = Static<typeof GroupJoinRequestRejectParamsSchema>;
 export type SkillHubTransferOwnershipParams = Static<typeof SkillHubTransferOwnershipParamsSchema>;

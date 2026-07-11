@@ -34,7 +34,9 @@ export type EmployeeLoginState = {
   chatRunId?: string | null;
   chatSendDrafts?: Record<string, unknown>;
   chatSendFailures?: Record<string, unknown>;
+  employeeMembershipBootstrapOpen?: boolean;
   resetReleaseNotesSession?: () => void;
+  resetEmployeeMembershipBootstrapSession?: () => void;
 } & Parameters<typeof loadEmployeeBootstrap>[0];
 
 export async function submitEmployeeLogin(state: EmployeeLoginState) {
@@ -97,7 +99,7 @@ export async function submitEmployeeLogin(state: EmployeeLoginState) {
         : null;
     state.employeeLoginPassword = "";
     await loadEmployeeBootstrap(state);
-    if (state.employeeBootstrapReady) {
+    if (state.employeeBootstrapReady && !state.employeeMembershipBootstrapOpen) {
       state.connect();
     }
   } catch (error) {
@@ -126,6 +128,7 @@ export async function logoutEmployee(state: EmployeeLoginState) {
       credentials: "include",
     });
   } finally {
+    state.resetEmployeeMembershipBootstrapSession?.();
     state.resetReleaseNotesSession?.();
     state.client?.stop?.();
     state.connected = false;

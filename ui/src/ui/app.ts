@@ -2,6 +2,9 @@ import { LitElement } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import type {
   EmployeeUiAccountSummary,
+  EmployeeMembershipGroupOption,
+  EmployeeMembershipPartOption,
+  EmployeeMembershipStatusResponse,
   EmployeeUiLoginNotice,
 } from "../../../src/gateway/employee-ui-contract.ts";
 import type { PlatformClawReleaseIndex } from "../../../src/platformclaw-release.ts";
@@ -77,10 +80,22 @@ import {
   submitEmployeeAdSso,
   submitEmployeeLogin,
 } from "./controllers/employee-login.ts";
+import { loadEmployeeBootstrap } from "./controllers/employee-bootstrap.ts";
+import {
+  loadEmployeeMembershipGroups,
+  loadEmployeeMembershipParts,
+  loadEmployeeMembershipStatus,
+  submitEmployeeGroupJoinRequest,
+} from "./controllers/employee-membership.ts";
 import { submitEmployeeVoc } from "./controllers/employee-voc.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
-import type { GroupDetail, GroupEntry, GroupScopeOption } from "./controllers/groups.ts";
+import type {
+  GroupDetail,
+  GroupEntry,
+  GroupJoinRequestEntry,
+  GroupScopeOption,
+} from "./controllers/groups.ts";
 import {
   confirmEmployeeReleaseNotesRead,
   loadEmployeeReleaseNotesStatus,
@@ -221,6 +236,15 @@ export class OpenClawApp extends LitElement {
   @state() employeeVocSubmitting = false;
   @state() employeeVocError: string | null = null;
   @state() employeeVocResult: { issueKey: string; issueUrl: string } | null = null;
+  @state() employeeMembershipBootstrapOpen = false;
+  @state() employeeMembershipBootstrapLoading = false;
+  @state() employeeMembershipBootstrapSubmitting = false;
+  @state() employeeMembershipBootstrapError: string | null = null;
+  @state() employeeMembershipBootstrapGroups: EmployeeMembershipGroupOption[] = [];
+  @state() employeeMembershipBootstrapParts: EmployeeMembershipPartOption[] = [];
+  @state() employeeMembershipBootstrapSelectedGroupId: string | null = null;
+  @state() employeeMembershipBootstrapSelectedPartId: string | null = null;
+  @state() employeeMembershipBootstrapStatus: EmployeeMembershipStatusResponse | null = null;
   @state() employeeProfile = {
     employeeId: null as string | null,
     name: null as string | null,
@@ -249,6 +273,10 @@ export class OpenClawApp extends LitElement {
   private releaseNotesLoadGeneration = 0;
   private releaseNotesAutoCheckEmployeeId: string | null = null;
   private releaseNotesAutoCheckPromise: Promise<void> | null = null;
+  private employeeMembershipBootstrapCheckEmployeeId: string | null = null;
+  private employeeMembershipBootstrapCheckPromise: Promise<boolean> | null = null;
+  private employeeMembershipBootstrapValidEmployeeId: string | null = null;
+  private employeeMembershipBootstrapSkippedEmployeeId: string | null = null;
   @state() lastError: string | null = null;
   @state() lastErrorCode: string | null = null;
   @state() eventLog: EventLogEntry[] = [];
@@ -647,6 +675,10 @@ export class OpenClawApp extends LitElement {
   @state() groupsDetailError: string | null = null;
   @state() groupsScopeOptions: GroupScopeOption[] = [];
   @state() groupsMessage: { kind: "success" | "error"; text: string } | null = null;
+  @state() groupsJoinRequests: GroupJoinRequestEntry[] = [];
+  @state() groupsJoinRequestsLoading = false;
+  @state() groupsJoinRequestsError: string | null = null;
+  @state() groupsJoinRequestsPendingCount = 0;
   @state() groupsCreateOpen = false;
   @state() groupsCreateName = "";
   @state() groupsCreateDescription = "";
@@ -830,6 +862,155 @@ export class OpenClawApp extends LitElement {
 
   async handleEmployeeVocSubmit() {
     await submitEmployeeVoc(this as unknown as Parameters<typeof submitEmployeeVoc>[0]);
+  }
+
+  async maybeEnsureEmployeeMembershipBootstrap(): Promise<boolean> {
+    if (!this.employeeMode) {
+      return true;
+    }
+    const employeeId = this.employeeProfile.employeeId?.trim();
+    if (!employeeId) {
+      return true;
+    }
+    if (this.employeeMembershipBootstrapValidEmployeeId === employeeId) {
+      return true;
+    }
+    if (this.employeeMembershipBootstrapSkippedEmployeeId === employeeId) {
+      return true;
+    }
+    if (this.employeeMembershipBootstrapOpen) {
+      return false;
+    }
+    if (this.employeeMembershipBootstrapCheckPromise) {
+      return await this.employeeMembershipBootstrapCheckPromise;
+    }
+    const check = async () => {
+      this.employeeMembershipBootstrapLoading = true;
+      this.employeeMembershipBootstrapError = null;
+      try {
+        const status = await loadEmployeeMembershipStatus();
+        if (this.employeeProfile.employeeId?.trim() !== employeeId) {
+          return true;
+        }
+        this.employeeMembershipBootstrapCheckEmployeeId = employeeId;
+        this.employeeMembershipBootstrapStatus = status;
+        if (status.has_valid_membership) {
+          this.employeeMembershipBootstrapValidEmployeeId = employeeId;
+          this.employeeMembershipBootstrapSkippedEmployeeId = null;
+          this.employeeMembershipBootstrapOpen = false;
+          return true;
+        }
+        this.employeeMembershipBootstrapValidEmployeeId = null;
+        this.employeeMembershipBootstrapSelectedGroupId = null;
+        this.employeeMembershipBootstrapSelectedPartId = null;
+        this.employeeMembershipBootstrapParts = [];
+        this.employeeMembershipBootstrapGroups = await loadEmployeeMembershipGroups();
+        this.employeeMembershipBootstrapOpen = true;
+        return false;
+      } catch (error) {
+        this.employeeMembershipBootstrapError =
+          error instanceof Error ? error.message : String(error);
+        this.employeeMembershipBootstrapStatus = null;
+        this.employeeMembershipBootstrapGroups = [];
+        this.employeeMembershipBootstrapParts = [];
+        this.employeeMembershipBootstrapOpen = true;
+        return false;
+      } finally {
+        this.employeeMembershipBootstrapLoading = false;
+      }
+    };
+    this.employeeMembershipBootstrapCheckPromise = check();
+    try {
+      return await this.employeeMembershipBootstrapCheckPromise;
+    } finally {
+      this.employeeMembershipBootstrapCheckPromise = null;
+    }
+  }
+
+  async handleEmployeeMembershipBootstrapGroupChange(groupId: string) {
+    const nextGroupId = groupId.trim() || null;
+    this.employeeMembershipBootstrapSelectedGroupId = nextGroupId;
+    this.employeeMembershipBootstrapSelectedPartId = null;
+    this.employeeMembershipBootstrapParts = [];
+    this.employeeMembershipBootstrapError = null;
+    if (!nextGroupId) {
+      return;
+    }
+    this.employeeMembershipBootstrapLoading = true;
+    try {
+      this.employeeMembershipBootstrapParts = await loadEmployeeMembershipParts(nextGroupId);
+    } catch (error) {
+      this.employeeMembershipBootstrapError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.employeeMembershipBootstrapLoading = false;
+    }
+  }
+
+  async handleEmployeeMembershipBootstrapConfirm() {
+    const employeeId = this.employeeProfile.employeeId?.trim();
+    const groupId = this.employeeMembershipBootstrapSelectedGroupId?.trim() || "";
+    const partId = this.employeeMembershipBootstrapSelectedPartId?.trim() || "";
+    if (!employeeId || !groupId || !partId || this.employeeMembershipBootstrapSubmitting) {
+      return;
+    }
+    this.employeeMembershipBootstrapSubmitting = true;
+    this.employeeMembershipBootstrapError = null;
+    try {
+      const result = await submitEmployeeGroupJoinRequest(groupId, partId);
+      this.employeeMembershipBootstrapStatus = {
+        has_membership: false,
+        has_valid_membership: false,
+        reason: "NOT_REGISTERED",
+        membership_status: "pending",
+        group_id: null,
+        group_name:
+          this.employeeMembershipBootstrapGroups.find((entry) => entry.id === result.group_id)?.name ?? null,
+        part_id: null,
+        part_name:
+          this.employeeMembershipBootstrapParts.find((entry) => entry.id === result.part_id)?.name ?? null,
+        pending_request: {
+          request_id: result.request_id,
+          group_id: result.group_id,
+          group_name:
+            this.employeeMembershipBootstrapGroups.find((entry) => entry.id === result.group_id)?.name ??
+            "Group",
+          part_id: result.part_id,
+          part_name:
+            this.employeeMembershipBootstrapParts.find((entry) => entry.id === result.part_id)?.name ??
+            "Part",
+          status: "pending",
+          requested_at: new Date().toISOString(),
+        },
+      };
+      this.employeeMembershipBootstrapSkippedEmployeeId = employeeId;
+      this.employeeMembershipBootstrapOpen = false;
+      if (!this.connected) {
+        this.connect();
+      }
+      await this.maybeOpenUnreadReleaseNotes();
+    } catch (error) {
+      this.employeeMembershipBootstrapError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.employeeMembershipBootstrapSubmitting = false;
+    }
+  }
+
+  async handleEmployeeMembershipBootstrapCancel() {
+    await this.handleEmployeeLogout();
+  }
+
+  async handleEmployeeMembershipBootstrapSkip() {
+    const employeeId = this.employeeProfile.employeeId?.trim();
+    if (!employeeId || this.employeeMembershipBootstrapSubmitting) {
+      return;
+    }
+    this.employeeMembershipBootstrapSkippedEmployeeId = employeeId;
+    this.employeeMembershipBootstrapError = null;
+    this.employeeMembershipBootstrapOpen = false;
+    if (!this.connected) {
+      this.connect();
+    }
+    await this.maybeOpenUnreadReleaseNotes();
   }
 
   handleChatScroll(event: Event) {
@@ -1195,6 +1376,9 @@ export class OpenClawApp extends LitElement {
     if (!this.employeeMode) {
       return;
     }
+    if (this.employeeMembershipBootstrapOpen || this.employeeMembershipBootstrapLoading) {
+      return;
+    }
     const employeeId = this.employeeProfile.employeeId?.trim();
     if (!employeeId || this.releaseNotesAutoCheckEmployeeId === employeeId) {
       return;
@@ -1265,6 +1449,22 @@ export class OpenClawApp extends LitElement {
     this.releaseNotesReadVersion = null;
     this.releaseNotesAutoMode = false;
     this.releaseNotesOpen = false;
+  }
+
+  resetEmployeeMembershipBootstrapSession() {
+    this.employeeMembershipBootstrapCheckEmployeeId = null;
+    this.employeeMembershipBootstrapCheckPromise = null;
+    this.employeeMembershipBootstrapValidEmployeeId = null;
+    this.employeeMembershipBootstrapOpen = false;
+    this.employeeMembershipBootstrapLoading = false;
+    this.employeeMembershipBootstrapSubmitting = false;
+    this.employeeMembershipBootstrapError = null;
+    this.employeeMembershipBootstrapGroups = [];
+    this.employeeMembershipBootstrapParts = [];
+    this.employeeMembershipBootstrapSelectedGroupId = null;
+    this.employeeMembershipBootstrapSelectedPartId = null;
+    this.employeeMembershipBootstrapStatus = null;
+    this.employeeMembershipBootstrapSkippedEmployeeId = null;
   }
 
   handleCloseReleaseNotes() {

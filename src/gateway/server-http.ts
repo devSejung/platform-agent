@@ -38,6 +38,7 @@ import {
 } from "./control-ui.js";
 import { handleOpenAiEmbeddingsHttpRequest } from "./embeddings-http.js";
 import { handleEmployeeChatAttachmentsHttpRequest } from "./employee-chat-attachments.js";
+import { handleEmployeeMembershipHttpRequest } from "./employee-membership.js";
 import { handleEmployeeReleaseNotesHttpRequest } from "./employee-release-notes.js";
 import { handleEmployeeVocHttpRequest } from "./employee-voc.js";
 import {
@@ -1045,6 +1046,16 @@ export function createGatewayHttpServer(opts: {
         name: "employee-release-notes",
         run: () =>
           handleEmployeeReleaseNotesHttpRequest({
+            req,
+            res,
+            readJsonBody,
+          }),
+      });
+
+      requestStages.push({
+        name: "employee-membership",
+        run: () =>
+          handleEmployeeMembershipHttpRequest({
             req,
             res,
             readJsonBody,

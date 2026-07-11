@@ -87,6 +87,11 @@ function createProps(overrides: Partial<GroupsViewProps> = {}): GroupsViewProps 
     },
     detailError: null,
     message: null,
+    joinRequests: [],
+    joinRequestsLoading: false,
+    joinRequestsError: null,
+    joinRequestsPendingCount: 0,
+    showJoinRequests: true,
     createOpen: false,
     createName: "",
     createDescription: "",
@@ -140,6 +145,8 @@ function createProps(overrides: Partial<GroupsViewProps> = {}): GroupsViewProps 
     onPromoteMember: () => undefined,
     onDemoteMember: () => undefined,
     onArchiveScope: () => undefined,
+    onApproveJoinRequest: () => undefined,
+    onRejectJoinRequest: () => undefined,
     ...overrides,
   };
 }

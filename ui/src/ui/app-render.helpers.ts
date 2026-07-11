@@ -203,6 +203,13 @@ export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: bo
   const href = pathForTab(tab, state.basePath);
   const isActive = state.tab === tab;
   const collapsed = opts?.collapsed ?? state.settings.navCollapsed;
+  const label =
+    tab === "groups" &&
+    state.employeeMode &&
+    (state.employeeAccountSummary?.hasAdminAccess || state.employeeAccountSummary?.hasLeaderScope) &&
+    state.groupsJoinRequestsPendingCount > 0
+      ? `${titleForTab(tab)} (${state.groupsJoinRequestsPendingCount})`
+      : titleForTab(tab);
   return html`
     <a
       href=${href}
@@ -232,10 +239,10 @@ export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: bo
         }
         state.setTab(tab);
       }}
-      title=${titleForTab(tab)}
+      title=${label}
     >
       <span class="nav-item__icon" aria-hidden="true">${icons[iconForTab(tab)]}</span>
-      ${!collapsed ? html`<span class="nav-item__text">${titleForTab(tab)}</span>` : nothing}
+      ${!collapsed ? html`<span class="nav-item__text">${label}</span>` : nothing}
     </a>
   `;
 }
@@ -874,9 +881,43 @@ export async function switchChatSession(
     nextSessionKey,
     true,
   );
+  ensureCurrentSessionVisible(state);
   void loadChatHistory(state as unknown as ChatState);
   void refreshSessionOptions(state);
   return true;
+}
+
+function ensureCurrentSessionVisible(state: AppViewState) {
+  if (!state.employeeMode) {
+    return;
+  }
+  const key = state.sessionKey?.trim();
+  if (!key) {
+    return;
+  }
+  const current = state.sessionsResult;
+  const rows = current?.sessions ?? [];
+  if (rows.some((row) => row.key === key)) {
+    return;
+  }
+  const nextRow = {
+    key,
+    kind: "direct" as const,
+    updatedAt: Date.now(),
+  };
+  state.sessionsResult = current
+    ? {
+        ...current,
+        count: current.count + 1,
+        sessions: [nextRow, ...current.sessions],
+      }
+    : {
+        ts: Date.now(),
+        path: "",
+        count: 1,
+        defaults: { modelProvider: null, model: null, contextTokens: null },
+        sessions: [nextRow],
+      };
 }
 
 async function refreshSessionOptions(state: AppViewState) {
@@ -886,6 +927,7 @@ async function refreshSessionOptions(state: AppViewState) {
     includeGlobal: true,
     includeUnknown: true,
   });
+  ensureCurrentSessionVisible(state);
 }
 
 function renderChatModelSelect(state: AppViewState) {

@@ -322,6 +322,10 @@ import {
   type AdminAccountsListParams,
   AdminAccountsListParamsSchema,
   GroupArchiveParamsSchema,
+  GroupJoinRequestApproveParamsSchema,
+  GroupJoinRequestListParamsSchema,
+  GroupJoinRequestPendingCountParamsSchema,
+  GroupJoinRequestRejectParamsSchema,
   GroupCreateParamsSchema,
   type GroupDetailParams,
   GroupDetailParamsSchema,
@@ -535,6 +539,16 @@ export const validateGroupScopesListParams = ajv.compile(GroupScopesListParamsSc
 export const validateGroupMembershipAddParams = ajv.compile(GroupMembershipAddParamsSchema);
 export const validateGroupMembershipRemoveParams = ajv.compile(GroupMembershipRemoveParamsSchema);
 export const validateGroupArchiveParams = ajv.compile(GroupArchiveParamsSchema);
+export const validateGroupJoinRequestListParams = ajv.compile(GroupJoinRequestListParamsSchema);
+export const validateGroupJoinRequestPendingCountParams = ajv.compile(
+  GroupJoinRequestPendingCountParamsSchema,
+);
+export const validateGroupJoinRequestApproveParams = ajv.compile(
+  GroupJoinRequestApproveParamsSchema,
+);
+export const validateGroupJoinRequestRejectParams = ajv.compile(
+  GroupJoinRequestRejectParamsSchema,
+);
 export const validateSkillsDeleteParams = ajv.compile(SkillsDeleteParamsSchema);
 export const validateCronListParams = ajv.compile<CronListParams>(CronListParamsSchema);
 export const validateCronStatusParams = ajv.compile<CronStatusParams>(CronStatusParamsSchema);

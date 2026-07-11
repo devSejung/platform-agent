@@ -28,7 +28,13 @@ import { loadDebug } from "./controllers/debug.ts";
 import { loadDevices } from "./controllers/devices.ts";
 import { loadDreamDiary, loadDreamingStatus } from "./controllers/dreaming.ts";
 import { loadExecApprovals } from "./controllers/exec-approvals.ts";
-import { loadGroups, loadGroupDetail, loadGroupScopeOptions } from "./controllers/groups.ts";
+import {
+  loadGroups,
+  loadGroupDetail,
+  loadGroupJoinRequestPendingCount,
+  loadGroupJoinRequests,
+  loadGroupScopeOptions,
+} from "./controllers/groups.ts";
 import { loadEmployeeHeartbeat } from "./controllers/heartbeat.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
@@ -66,6 +72,7 @@ type SettingsHost = {
   };
   employeeAccountSummary?: {
     hasAdminAccess?: boolean;
+    hasLeaderScope?: boolean;
   } | null;
   groupsEntries?: Array<{ id: string }>;
   groupsDetailGroupId?: string | null;
@@ -282,6 +289,9 @@ export async function refreshActiveTab(host: SettingsHost) {
       includeGlobal: false,
       includeUnknown: false,
     });
+    if (host.employeeAccountSummary?.hasAdminAccess || host.employeeAccountSummary?.hasLeaderScope) {
+      await loadGroupJoinRequestPendingCount(host as unknown as OpenClawApp);
+    }
     if (
       host.tab !== "chat" &&
       host.tab !== "dashboard" &&
@@ -338,8 +348,12 @@ export async function refreshActiveTab(host: SettingsHost) {
       await loadSkillHubWorkspacePublish(host as unknown as OpenClawApp);
     }
     if (host.tab === "groups") {
-      await loadGroups(host as unknown as OpenClawApp);
-      await loadGroupScopeOptions(host as unknown as OpenClawApp);
+      await Promise.all([
+        loadGroups(host as unknown as OpenClawApp),
+        loadGroupScopeOptions(host as unknown as OpenClawApp),
+        loadGroupJoinRequests(host as unknown as OpenClawApp),
+        loadGroupJoinRequestPendingCount(host as unknown as OpenClawApp),
+      ]);
       const selectedGroupId =
         (host as unknown as OpenClawApp).groupsDetailGroupId ||
         (host as unknown as OpenClawApp).groupsEntries?.[0]?.id ||

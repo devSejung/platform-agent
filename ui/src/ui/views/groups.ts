@@ -1,8 +1,8 @@
 import { html, nothing } from "lit";
 import { ref } from "lit/directives/ref.js";
-import { t } from "../../i18n/index.ts";
+import { i18n, t } from "../../i18n/index.ts";
 import type { AccountDirectoryEntry } from "../controllers/accounts.ts";
-import type { GroupDetail, GroupEntry } from "../controllers/groups.ts";
+import type { GroupDetail, GroupEntry, GroupJoinRequestEntry } from "../controllers/groups.ts";
 
 export type GroupsViewProps = {
   loading: boolean;
@@ -14,6 +14,11 @@ export type GroupsViewProps = {
   detail: GroupDetail | null;
   detailError: string | null;
   message: { kind: "success" | "error"; text: string } | null;
+  joinRequests: GroupJoinRequestEntry[];
+  joinRequestsLoading: boolean;
+  joinRequestsError: string | null;
+  joinRequestsPendingCount: number;
+  showJoinRequests: boolean;
   createOpen: boolean;
   createName: string;
   createDescription: string;
@@ -72,6 +77,8 @@ export type GroupsViewProps = {
   onPromoteMember: (scopeType: "group" | "part", scopeId: string, accountId: string) => void;
   onDemoteMember: (scopeType: "group" | "part", scopeId: string, accountId: string) => void;
   onArchiveScope: (scopeId: string, label: string) => void;
+  onApproveJoinRequest: (requestId: string) => void;
+  onRejectJoinRequest: (requestId: string) => void;
 };
 
 function ensureOpen(el?: Element) {
@@ -591,6 +598,77 @@ function renderAddMemberDialog(props: GroupsViewProps) {
   `;
 }
 
+function renderJoinRequestsSection(props: GroupsViewProps) {
+  if (!props.showJoinRequests) {
+    return nothing;
+  }
+  const english = i18n.getLocale() === "en";
+  const title = english
+    ? `Join Requests (${props.joinRequestsPendingCount})`
+    : `가입 신청 (${props.joinRequestsPendingCount})`;
+  const subtitle = english
+    ? "Review pending Group / Part join requests that you can manage."
+    : "관리 가능한 Group / Part 가입 신청을 검토하세요.";
+  const empty = english ? "No pending join requests." : "대기 중인 가입 신청이 없습니다.";
+  const loading = english ? "Loading join requests..." : "가입 신청을 불러오는 중...";
+  const requestedAtLabel = english ? "Requested" : "신청일";
+  const groupLabel = english ? "Group" : "그룹";
+  const partLabel = english ? "Part" : "파트";
+  const requesterLabel = english ? "Requester" : "신청자";
+  const approveLabel = english ? "Approve" : "승인";
+  const rejectLabel = english ? "Reject" : "거절";
+  return html`
+    <section class="card groups-selected-card">
+      <div class="groups-selected-header">
+        <div>
+          <div class="groups-scope-eyebrow">${title}</div>
+          <div class="groups-selected-subtitle">${subtitle}</div>
+        </div>
+      </div>
+      ${props.joinRequestsError
+        ? html`<div class="notice notice--error">${props.joinRequestsError}</div>`
+        : nothing}
+      ${props.joinRequestsLoading
+        ? html`<div class="muted">${loading}</div>`
+        : props.joinRequests.length === 0
+          ? html`<div class="muted">${empty}</div>`
+          : html`
+              <div class="list">
+                ${props.joinRequests.map(
+                  (request) => html`
+                    <div class="list-item">
+                      <div class="list-main">
+                        <div class="list-title">${request.displayName}</div>
+                        <div class="list-sub">
+                          ${requesterLabel}: ${request.employeeId}
+                          <br />
+                          ${groupLabel}: ${request.groupName}
+                          <br />
+                          ${partLabel}: ${request.partName}
+                          <br />
+                          ${requestedAtLabel}: ${formatDate(request.requestedAt)}
+                        </div>
+                      </div>
+                      <div class="list-meta" style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button
+                          class="btn btn--sm primary"
+                          @click=${() => props.onApproveJoinRequest(request.id)}
+                        >
+                          ${approveLabel}
+                        </button>
+                        <button class="btn btn--sm" @click=${() => props.onRejectJoinRequest(request.id)}>
+                          ${rejectLabel}
+                        </button>
+                      </div>
+                    </div>
+                  `,
+                )}
+              </div>
+            `}
+    </section>
+  `;
+}
+
 export function renderGroups(props: GroupsViewProps) {
   return html`
     <section class="card" style="display:grid; gap:16px;">
@@ -621,6 +699,7 @@ export function renderGroups(props: GroupsViewProps) {
         ? html`<div class="notice notice--${props.message.kind}">${props.message.text}</div>`
         : nothing}
       ${props.error ? html`<div class="notice notice--error">${props.error}</div>` : nothing}
+      ${renderJoinRequestsSection(props)}
       <div class="groups-layout">
         <div class="groups-sidebar">
           ${props.entries.map(

@@ -51,6 +51,27 @@ export type GroupScopeOption = {
   archived: boolean;
 };
 
+export type GroupJoinRequestStatus = "pending" | "approved" | "rejected";
+
+export type GroupJoinRequestEntry = {
+  id: string;
+  accountId: string;
+  employeeId: string;
+  displayName: string;
+  email: string | null;
+  department: string | null;
+  groupId: string;
+  groupName: string;
+  partId: string;
+  partName: string;
+  status: GroupJoinRequestStatus;
+  requestedAt: string;
+  updatedAt: string;
+  reviewedAt: string | null;
+  reviewedByAccountId: string | null;
+  reviewComment: string | null;
+};
+
 type GroupRow = {
   id: string;
   name: string;
@@ -63,6 +84,28 @@ type GroupRow = {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+};
+
+type GroupJoinRequestRow = {
+  id: string;
+  account_id: string;
+  employee_id: string;
+  display_name: string | null;
+  email: string | null;
+  department: string | null;
+  group_id: string;
+  group_name: string | null;
+  group_archived_at: string | null;
+  part_id: string;
+  part_name: string | null;
+  part_archived_at: string | null;
+  part_parent_group_id: string | null;
+  status: GroupJoinRequestStatus;
+  requested_at: string;
+  updated_at: string;
+  reviewed_at: string | null;
+  reviewed_by_account_id: string | null;
+  review_comment: string | null;
 };
 
 function trimOrNull(value: string | null | undefined): string | null {
@@ -87,6 +130,27 @@ function rowToScopeRecord(row: GroupRow): GroupScopeRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     archivedAt: trimOrNull(row.archived_at),
+  };
+}
+
+function rowToJoinRequestEntry(row: GroupJoinRequestRow): GroupJoinRequestEntry {
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    employeeId: row.employee_id,
+    displayName: trimOrNull(row.display_name) ?? row.employee_id,
+    email: row.email,
+    department: row.department,
+    groupId: row.group_id,
+    groupName: trimOrNull(row.group_name) ?? "Group",
+    partId: row.part_id,
+    partName: trimOrNull(row.part_name) ?? "Part",
+    status: row.status,
+    requestedAt: row.requested_at,
+    updatedAt: row.updated_at,
+    reviewedAt: trimOrNull(row.reviewed_at),
+    reviewedByAccountId: trimOrNull(row.reviewed_by_account_id),
+    reviewComment: trimOrNull(row.review_comment),
   };
 }
 
@@ -201,6 +265,22 @@ export function canManageGroupScope(params: {
   env?: NodeJS.ProcessEnv;
 }): boolean {
   return isAdminAccount(params.accountId, params.env) || isLeaderForScope(params);
+}
+
+function canReviewJoinRequestForGroup(
+  actorAccountId: string,
+  groupId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return (
+    isAdminAccount(actorAccountId, env) ||
+    isLeaderForScope({
+      accountId: actorAccountId,
+      scopeType: "group",
+      scopeId: groupId,
+      env,
+    })
+  );
 }
 
 function listMembersForScope(
@@ -855,4 +935,334 @@ export function resolveManageableGroupSummary(
     partCount:
       typeof row?.part_count === "bigint" ? Number(row.part_count) : (row?.part_count ?? 0),
   };
+}
+
+function validateJoinRequestTargets(params: {
+  groupId: string;
+  partId: string;
+  env?: NodeJS.ProcessEnv;
+}) {
+  const env = params.env ?? process.env;
+  const group = getGroupScopeById(params.groupId, env);
+  if (!group || group.scopeType !== "group" || group.archivedAt) {
+    throw new Error("selected group is not available");
+  }
+  const part = getGroupScopeById(params.partId, env);
+  if (!part || part.scopeType !== "part" || part.archivedAt) {
+    throw new Error("selected part is not available");
+  }
+  if (part.parentGroupId !== group.id) {
+    throw new Error("selected part does not belong to the selected group");
+  }
+  return { group, part };
+}
+
+function listJoinRequestRows(params: {
+  actorAccountId: string;
+  status?: GroupJoinRequestStatus;
+  env?: NodeJS.ProcessEnv;
+}): GroupJoinRequestRow[] {
+  const env = params.env ?? process.env;
+  const { db } = getPlatformClawDatabase(env);
+  const actorIsAdmin = isAdminAccount(params.actorAccountId, env);
+  const statusFilter = trimOrNull(params.status) ?? null;
+  const rows = db
+    .prepare(
+      `SELECT r.id,
+              r.account_id,
+              a.employee_id,
+              a.display_name,
+              a.email,
+              a.department,
+              r.group_id,
+              grp.name AS group_name,
+              grp.archived_at AS group_archived_at,
+              r.part_id,
+              part.name AS part_name,
+              part.archived_at AS part_archived_at,
+              part.parent_group_id AS part_parent_group_id,
+              r.status,
+              r.requested_at,
+              r.updated_at,
+              r.reviewed_at,
+              r.reviewed_by_account_id,
+              r.review_comment
+         FROM group_join_requests r
+         JOIN accounts a ON a.id = r.account_id
+         LEFT JOIN groups grp ON grp.id = r.group_id
+         LEFT JOIN groups part ON part.id = r.part_id
+        WHERE (@status IS NULL OR r.status = @status)
+          AND (
+            @is_admin = 1 OR EXISTS (
+              SELECT 1
+                FROM group_memberships gm
+               WHERE gm.account_id = @actor_account_id
+                 AND gm.scope_type = 'group'
+                 AND gm.scope_id = r.group_id
+                 AND gm.group_role = 'leader'
+            )
+          )
+        ORDER BY r.requested_at DESC, r.updated_at DESC`,
+    )
+    .all({
+      actor_account_id: params.actorAccountId,
+      is_admin: actorIsAdmin ? 1 : 0,
+      status: statusFilter,
+    }) as GroupJoinRequestRow[];
+  return rows;
+}
+
+export function getLatestGroupJoinRequestForAccount(
+  accountId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): GroupJoinRequestEntry | null {
+  const { db } = getPlatformClawDatabase(env);
+  const row = db
+    .prepare(
+      `SELECT r.id,
+              r.account_id,
+              a.employee_id,
+              a.display_name,
+              a.email,
+              a.department,
+              r.group_id,
+              grp.name AS group_name,
+              grp.archived_at AS group_archived_at,
+              r.part_id,
+              part.name AS part_name,
+              part.archived_at AS part_archived_at,
+              part.parent_group_id AS part_parent_group_id,
+              r.status,
+              r.requested_at,
+              r.updated_at,
+              r.reviewed_at,
+              r.reviewed_by_account_id,
+              r.review_comment
+         FROM group_join_requests r
+         JOIN accounts a ON a.id = r.account_id
+         LEFT JOIN groups grp ON grp.id = r.group_id
+         LEFT JOIN groups part ON part.id = r.part_id
+        WHERE r.account_id = ?
+        ORDER BY r.updated_at DESC, r.requested_at DESC
+        LIMIT 1`,
+    )
+    .get(accountId) as GroupJoinRequestRow | undefined;
+  return row ? rowToJoinRequestEntry(row) : null;
+}
+
+export function upsertGroupJoinRequest(params: {
+  accountId: string;
+  groupId: string;
+  partId: string;
+  env?: NodeJS.ProcessEnv;
+}): GroupJoinRequestEntry {
+  const env = params.env ?? process.env;
+  const { group, part } = validateJoinRequestTargets(params);
+  const now = new Date().toISOString();
+  const { db } = getPlatformClawDatabase(env);
+  const existing = db
+    .prepare(`SELECT id, requested_at FROM group_join_requests WHERE account_id = ?`)
+    .get(params.accountId) as { id?: string; requested_at?: string | null } | undefined;
+  const id = existing?.id ?? randomUUID();
+  db.prepare(
+    `INSERT INTO group_join_requests (
+       id, account_id, group_id, part_id, status, requested_at, updated_at,
+       reviewed_at, reviewed_by_account_id, review_comment
+     ) VALUES (
+       @id, @account_id, @group_id, @part_id, 'pending', @requested_at, @updated_at,
+       NULL, NULL, NULL
+     )
+     ON CONFLICT(account_id) DO UPDATE SET
+       group_id = excluded.group_id,
+       part_id = excluded.part_id,
+       status = 'pending',
+       updated_at = excluded.updated_at,
+       reviewed_at = NULL,
+       reviewed_by_account_id = NULL,
+       review_comment = NULL`,
+  ).run({
+    id,
+    account_id: params.accountId,
+    group_id: group.id,
+    part_id: part.id,
+    requested_at: trimOrNull(existing?.requested_at) ?? now,
+    updated_at: now,
+  });
+  appendAuditEvent({
+    actorAccountId: params.accountId,
+    eventType: "group.join-request.submitted",
+    targetType: "account",
+    targetId: params.accountId,
+    payload: {
+      groupId: group.id,
+      partId: part.id,
+    },
+    env,
+  });
+  return getLatestGroupJoinRequestForAccount(params.accountId, env)!;
+}
+
+export function listVisibleGroupJoinRequests(params: {
+  actorAccountId: string;
+  status?: GroupJoinRequestStatus;
+  env?: NodeJS.ProcessEnv;
+}): GroupJoinRequestEntry[] {
+  return listJoinRequestRows(params).map(rowToJoinRequestEntry);
+}
+
+export function countVisiblePendingGroupJoinRequests(
+  actorAccountId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  return listJoinRequestRows({
+    actorAccountId,
+    status: "pending",
+    env,
+  }).length;
+}
+
+export function approveGroupJoinRequest(params: {
+  actorAccountId: string;
+  requestId: string;
+  reviewComment?: string | null;
+  env?: NodeJS.ProcessEnv;
+}) {
+  const env = params.env ?? process.env;
+  const { db } = getPlatformClawDatabase(env);
+  const request = db
+    .prepare(
+      `SELECT id, account_id, group_id, part_id, status
+         FROM group_join_requests
+        WHERE id = ?`,
+    )
+    .get(params.requestId) as
+    | {
+        id: string;
+        account_id: string;
+        group_id: string;
+        part_id: string;
+        status: GroupJoinRequestStatus;
+      }
+    | undefined;
+  if (!request) {
+    throw new Error("join request not found");
+  }
+  if (request.status !== "pending") {
+    throw new Error("only pending requests can be approved");
+  }
+  if (!canReviewJoinRequestForGroup(params.actorAccountId, request.group_id, env)) {
+    throw new Error("not allowed to review this join request");
+  }
+  validateJoinRequestTargets({
+    groupId: request.group_id,
+    partId: request.part_id,
+    env,
+  });
+  const now = new Date().toISOString();
+  const upsertMembership = db.prepare(
+    `INSERT INTO group_memberships (scope_type, scope_id, account_id, group_role, created_at, updated_at)
+     VALUES (@scope_type, @scope_id, @account_id, 'member', @created_at, @updated_at)
+     ON CONFLICT(scope_type, scope_id, account_id) DO UPDATE SET
+       group_role = CASE
+         WHEN group_memberships.group_role = 'leader' THEN group_memberships.group_role
+         ELSE excluded.group_role
+       END,
+       updated_at = excluded.updated_at`,
+  );
+  upsertMembership.run({
+    scope_type: "group",
+    scope_id: request.group_id,
+    account_id: request.account_id,
+    created_at: now,
+    updated_at: now,
+  });
+  upsertMembership.run({
+    scope_type: "part",
+    scope_id: request.part_id,
+    account_id: request.account_id,
+    created_at: now,
+    updated_at: now,
+  });
+  db.prepare(
+    `UPDATE group_join_requests
+        SET status = 'approved',
+            updated_at = @updated_at,
+            reviewed_at = @reviewed_at,
+            reviewed_by_account_id = @reviewed_by_account_id,
+            review_comment = @review_comment
+      WHERE id = @id`,
+  ).run({
+    id: request.id,
+    updated_at: now,
+    reviewed_at: now,
+    reviewed_by_account_id: params.actorAccountId,
+    review_comment: trimOrNull(params.reviewComment),
+  });
+  appendAuditEvent({
+    actorAccountId: params.actorAccountId,
+    eventType: "group.join-request.approved",
+    targetType: "account",
+    targetId: request.account_id,
+    payload: {
+      requestId: request.id,
+      groupId: request.group_id,
+      partId: request.part_id,
+    },
+    env,
+  });
+}
+
+export function rejectGroupJoinRequest(params: {
+  actorAccountId: string;
+  requestId: string;
+  reviewComment?: string | null;
+  env?: NodeJS.ProcessEnv;
+}) {
+  const env = params.env ?? process.env;
+  const { db } = getPlatformClawDatabase(env);
+  const request = db
+    .prepare(
+      `SELECT id, account_id, group_id, status
+         FROM group_join_requests
+        WHERE id = ?`,
+    )
+    .get(params.requestId) as
+    | { id: string; account_id: string; group_id: string; status: GroupJoinRequestStatus }
+    | undefined;
+  if (!request) {
+    throw new Error("join request not found");
+  }
+  if (request.status !== "pending") {
+    throw new Error("only pending requests can be rejected");
+  }
+  if (!canReviewJoinRequestForGroup(params.actorAccountId, request.group_id, env)) {
+    throw new Error("not allowed to review this join request");
+  }
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE group_join_requests
+        SET status = 'rejected',
+            updated_at = @updated_at,
+            reviewed_at = @reviewed_at,
+            reviewed_by_account_id = @reviewed_by_account_id,
+            review_comment = @review_comment
+      WHERE id = @id`,
+  ).run({
+    id: request.id,
+    updated_at: now,
+    reviewed_at: now,
+    reviewed_by_account_id: params.actorAccountId,
+    review_comment: trimOrNull(params.reviewComment),
+  });
+  appendAuditEvent({
+    actorAccountId: params.actorAccountId,
+    eventType: "group.join-request.rejected",
+    targetType: "account",
+    targetId: request.account_id,
+    payload: {
+      requestId: request.id,
+      groupId: request.group_id,
+    },
+    env,
+  });
 }

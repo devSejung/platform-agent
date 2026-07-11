@@ -46,6 +46,7 @@ type LifecycleHost = {
   employeeBootstrapToken: string | null;
   employeeBootstrapReady: boolean;
   employeeBootstrapError: string | null;
+  employeeMembershipBootstrapOpen: boolean;
   employeeProfile: {
     employeeId: string | null;
     name: string | null;
@@ -66,6 +67,7 @@ type LifecycleHost = {
   logsEntries: unknown[];
   popStateHandler: () => void;
   topbarObserver: ResizeObserver | null;
+  updateComplete: Promise<unknown>;
 };
 
 export function handleConnected(host: LifecycleHost) {
@@ -83,7 +85,10 @@ export function handleConnected(host: LifecycleHost) {
     if (host.connectGeneration !== connectGeneration) {
       return;
     }
-    if (host.employeeMode && !host.employeeBootstrapReady) {
+    if (
+      host.employeeMode &&
+      (!host.employeeBootstrapReady || host.employeeMembershipBootstrapOpen)
+    ) {
       return;
     }
     connectGateway(host as unknown as Parameters<typeof connectGateway>[0]);

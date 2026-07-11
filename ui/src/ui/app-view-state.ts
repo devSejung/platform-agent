@@ -1,6 +1,9 @@
 import type {
   EmployeeUiAccountSummary,
   EmployeeUiLoginNotice,
+  EmployeeMembershipGroupOption,
+  EmployeeMembershipPartOption,
+  EmployeeMembershipStatusResponse,
 } from "../../../src/gateway/employee-ui-contract.ts";
 import type { PlatformClawReleaseIndex } from "../../../src/platformclaw-release.ts";
 import type { EventLogEntry } from "./app-events.ts";
@@ -19,7 +22,12 @@ import type { CronModelSuggestionsState, CronState } from "./controllers/cron.ts
 import type { DevicePairingList } from "./controllers/devices.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
-import type { GroupDetail, GroupEntry, GroupScopeOption } from "./controllers/groups.ts";
+import type {
+  GroupDetail,
+  GroupEntry,
+  GroupJoinRequestEntry,
+  GroupScopeOption,
+} from "./controllers/groups.ts";
 import type { SkillHubDetail, SkillHubEntry, SkillHubScope } from "./controllers/skill-hub.ts";
 import type {
   ClawHubSearchResult,
@@ -84,6 +92,15 @@ export type AppViewState = {
   employeeVocSubmitting: boolean;
   employeeVocError: string | null;
   employeeVocResult: { issueKey: string; issueUrl: string } | null;
+  employeeMembershipBootstrapOpen: boolean;
+  employeeMembershipBootstrapLoading: boolean;
+  employeeMembershipBootstrapSubmitting: boolean;
+  employeeMembershipBootstrapError: string | null;
+  employeeMembershipBootstrapGroups: EmployeeMembershipGroupOption[];
+  employeeMembershipBootstrapParts: EmployeeMembershipPartOption[];
+  employeeMembershipBootstrapSelectedGroupId: string | null;
+  employeeMembershipBootstrapSelectedPartId: string | null;
+  employeeMembershipBootstrapStatus: EmployeeMembershipStatusResponse | null;
   employeeProfile: {
     employeeId: string | null;
     name: string | null;
@@ -484,6 +501,10 @@ export type AppViewState = {
     groupsDetailError: string | null;
     groupsScopeOptions: GroupScopeOption[];
     groupsMessage: { kind: "success" | "error"; text: string } | null;
+    groupsJoinRequests: GroupJoinRequestEntry[];
+    groupsJoinRequestsLoading: boolean;
+    groupsJoinRequestsError: string | null;
+    groupsJoinRequestsPendingCount: number;
     groupsCreateOpen: boolean;
     groupsCreateName: string;
     groupsCreateDescription: string;
@@ -598,6 +619,10 @@ export type AppViewState = {
     handleEmployeeAdSso: () => Promise<void>;
     handleEmployeeLogout: () => Promise<void>;
     handleEmployeeVocSubmit: () => Promise<void>;
+    handleEmployeeMembershipBootstrapGroupChange: (groupId: string) => Promise<void>;
+    handleEmployeeMembershipBootstrapConfirm: () => Promise<void>;
+    handleEmployeeMembershipBootstrapCancel: () => Promise<void>;
+    handleEmployeeMembershipBootstrapSkip: () => Promise<void>;
     handleConfigLoad: () => Promise<void>;
     handleConfigSave: () => Promise<void>;
     handleConfigApply: () => Promise<void>;
@@ -631,6 +656,7 @@ export type AppViewState = {
     handleAbortChat: () => Promise<void>;
     removeQueuedMessage: (id: string) => void;
     handleChatScroll: (event: Event) => void;
+    handleContentScroll: () => void;
     resetToolStream: () => void;
     resetChatScroll: () => void;
     exportLogs: (lines: string[], label: string) => void;

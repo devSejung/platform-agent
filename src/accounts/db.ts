@@ -125,6 +125,23 @@ function ensureSchema(db: DatabaseSync) {
       FOREIGN KEY (account_id) REFERENCES accounts(id)
     );
 
+    CREATE TABLE IF NOT EXISTS group_join_requests (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL UNIQUE,
+      group_id TEXT NOT NULL,
+      part_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      requested_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      reviewed_at TEXT,
+      reviewed_by_account_id TEXT,
+      review_comment TEXT,
+      FOREIGN KEY (account_id) REFERENCES accounts(id),
+      FOREIGN KEY (group_id) REFERENCES groups(id),
+      FOREIGN KEY (part_id) REFERENCES groups(id),
+      FOREIGN KEY (reviewed_by_account_id) REFERENCES accounts(id)
+    );
+
     CREATE TABLE IF NOT EXISTS skill_events (
       id TEXT PRIMARY KEY,
       skill_id TEXT NOT NULL,

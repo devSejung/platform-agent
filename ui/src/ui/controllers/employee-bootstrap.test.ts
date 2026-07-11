@@ -51,6 +51,8 @@ function createBootstrapState(overrides: Partial<EmployeeBootstrapState> = {}) {
     employeeBootstrapToken: null,
     employeeBootstrapReady: true,
     employeeBootstrapError: null,
+    employeeMembershipBootstrapOpen: false,
+    maybeEnsureEmployeeMembershipBootstrap: vi.fn(async () => true),
     maybeOpenUnreadReleaseNotes: vi.fn(),
     ...overrides,
   } as EmployeeBootstrapState;
@@ -104,6 +106,8 @@ describe("loadEmployeeBootstrap", () => {
       employeeBootstrapToken: "old-token",
       employeeBootstrapReady: true,
       employeeBootstrapError: null,
+      employeeMembershipBootstrapOpen: false,
+      maybeEnsureEmployeeMembershipBootstrap: vi.fn(async () => true),
       maybeOpenUnreadReleaseNotes: vi.fn(),
     };
     mockBootstrapResponse({
@@ -151,5 +155,33 @@ describe("loadEmployeeBootstrap", () => {
     expect(state.sessionKey).toBe("agent:eon:main");
     expect(state.settings.sessionKey).toBe("agent:eon:main");
     expect(state.settings.lastActiveSessionKey).toBe("agent:eon:main");
+  });
+
+  it("skips release note auto-open while membership bootstrap is required", async () => {
+    const state = createBootstrapState({
+      employeeProfile: {
+        employeeId: null,
+        name: null,
+        department: null,
+        agentId: null,
+      },
+      employeeBootstrapReady: false,
+    });
+    state.maybeEnsureEmployeeMembershipBootstrap = vi.fn(async () => false);
+    mockBootstrapResponse({
+      authenticated: true,
+      token: "bootstrap-token",
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+      sessionKey: "agent:eon:main",
+      gatewayUrl: "ws://127.0.0.1:19001",
+    });
+
+    await loadEmployeeBootstrap(state);
+
+    expect(state.maybeEnsureEmployeeMembershipBootstrap).toHaveBeenCalledTimes(1);
+    expect(state.maybeOpenUnreadReleaseNotes).not.toHaveBeenCalled();
   });
 });

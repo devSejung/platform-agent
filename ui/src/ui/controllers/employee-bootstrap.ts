@@ -31,6 +31,8 @@ export type EmployeeBootstrapState = {
   employeeBootstrapToken: string | null;
   employeeBootstrapReady: boolean;
   employeeBootstrapError: string | null;
+  employeeMembershipBootstrapOpen?: boolean;
+  maybeEnsureEmployeeMembershipBootstrap?: () => Promise<boolean>;
   maybeOpenUnreadReleaseNotes?: () => Promise<void>;
 };
 
@@ -122,7 +124,12 @@ export async function loadEmployeeBootstrap(
     state.employeeBootstrapReady = true;
     state.employeeBootstrapError = null;
     if (!background) {
-      void state.maybeOpenUnreadReleaseNotes?.();
+      const membershipReady =
+        (await state.maybeEnsureEmployeeMembershipBootstrap?.()) ??
+        !state.employeeMembershipBootstrapOpen;
+      if (membershipReady) {
+        void state.maybeOpenUnreadReleaseNotes?.();
+      }
     }
   } catch (error) {
     if (!background) {

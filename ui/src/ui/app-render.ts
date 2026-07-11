@@ -102,12 +102,16 @@ import {
 } from "./controllers/exec-approvals.ts";
 import {
   addGroupMemberAction,
+  approveGroupJoinRequestAction,
   archiveGroupScopeAction,
   createGroupAction,
   createPartAction,
   loadGroups,
   loadGroupDetail,
+  loadGroupJoinRequestPendingCount,
+  loadGroupJoinRequests,
   loadGroupScopeOptions,
+  rejectGroupJoinRequestAction,
   removeGroupMemberAction,
   updateGroupAction,
   updatePartAction,
@@ -665,6 +669,36 @@ function canMutateEmployeeChatSession(row: GatewaySessionRow): boolean {
   return canRenameEmployeeChatSession(row);
 }
 
+function ensureEmployeeSessionVisible(state: AppViewState, sessionKey: string) {
+  const key = sessionKey.trim();
+  if (!key) {
+    return;
+  }
+  const current = state.sessionsResult;
+  const existingRows = current?.sessions ?? [];
+  if (existingRows.some((row) => row.key === key)) {
+    return;
+  }
+  const nextRow: GatewaySessionRow = {
+    key,
+    kind: "direct",
+    updatedAt: Date.now(),
+  };
+  state.sessionsResult = current
+    ? {
+        ...current,
+        count: current.count + 1,
+        sessions: [nextRow, ...current.sessions],
+      }
+    : {
+        ts: Date.now(),
+        path: "",
+        count: 1,
+        defaults: { modelProvider: null, model: null, contextTokens: null },
+        sessions: [nextRow],
+      };
+}
+
 async function createEmployeeChatSession(state: AppViewState) {
   if (!state.client || !state.connected) {
     return;
@@ -683,6 +717,7 @@ async function createEmployeeChatSession(state: AppViewState) {
     });
     const key = typeof created?.key === "string" ? created.key.trim() : "";
     if (key) {
+      ensureEmployeeSessionVisible(state, key);
       await switchChatSession(state, key);
       state.setTab("chat");
     }
@@ -1297,6 +1332,340 @@ function resolveProductVersion(state: AppViewState): { name: string; version: st
   };
 }
 
+function renderEmployeeMembershipBootstrapDialog(state: AppViewState) {
+  if (!state.employeeMembershipBootstrapOpen) {
+    return nothing;
+  }
+  const title = "본인의 Group과 Part를 선택해주세요.";
+  const subtitle = "Please select your Group and Part.";
+  const groupLabel = "Group";
+  const partLabel = "Part";
+  const english = state.settings.locale === "en";
+  const cancelLabel = english ? "Cancel" : "취소";
+  const confirmLabel = state.employeeMembershipBootstrapSubmitting
+    ? english
+      ? "Saving..."
+      : "저장 중..."
+    : english
+      ? "Confirm"
+      : "확인";
+  const groupPlaceholder = english
+    ? "Select a group"
+    : "Group을 선택해주세요. (Select a group.)";
+  const partPlaceholder = english ? "Select a part" : "Part를 선택해주세요";
+  const partDisabledHint = english
+    ? "Please select a group first."
+    : "먼저 Group을 선택해주세요. (Please select a group first.)";
+  const emptyGroupsMessage = english
+    ? "No groups are available. Please contact an administrator."
+    : "등록 가능한 Group이 없습니다. 관리자에게 문의해주세요.";
+  const emptyPartsMessage = english
+    ? "There are no parts in the selected group. Please contact an administrator."
+    : "선택한 Group에 등록된 Part가 없습니다. 관리자에게 문의해주세요.";
+  const ensureOpen = (el?: Element) => {
+    if (!(el instanceof HTMLDialogElement)) {
+      return;
+    }
+    queueMicrotask(() => {
+      if (!el.isConnected || el.matches(":modal")) {
+        return;
+      }
+      try {
+        if (el.open) {
+          el.removeAttribute("open");
+        }
+        el.showModal();
+      } catch {
+        el.setAttribute("open", "");
+      }
+    });
+  };
+  const hasGroups = state.employeeMembershipBootstrapGroups.length > 0;
+  const hasParts = state.employeeMembershipBootstrapParts.length > 0;
+  const confirmDisabled =
+    state.employeeMembershipBootstrapSubmitting ||
+    !state.employeeMembershipBootstrapSelectedGroupId ||
+    !state.employeeMembershipBootstrapSelectedPartId ||
+    !hasGroups ||
+    !hasParts;
+  return html`
+    <dialog
+      open
+      class="md-preview-dialog employee-membership-dialog"
+      ${ref(ensureOpen)}
+      @cancel=${(event: Event) => event.preventDefault()}
+    >
+      <div class="md-preview-dialog__panel employee-membership-dialog__panel">
+        <div class="md-preview-dialog__header employee-membership-dialog__header">
+          <div>
+            <div class="md-preview-dialog__title employee-membership-dialog__title">${title}</div>
+            <div class="employee-membership-dialog__subtitle">${subtitle}</div>
+          </div>
+        </div>
+        <div class="md-preview-dialog__body employee-membership-dialog__body">
+          <label class="employee-membership-dialog__field">
+            <span>${groupLabel}</span>
+            <select
+              .value=${state.employeeMembershipBootstrapSelectedGroupId ?? ""}
+              ?disabled=${state.employeeMembershipBootstrapLoading || !hasGroups}
+              @change=${(event: Event) =>
+                void state.handleEmployeeMembershipBootstrapGroupChange(
+                  (event.target as HTMLSelectElement).value,
+                )}
+            >
+              <option value="">${groupPlaceholder}</option>
+              ${state.employeeMembershipBootstrapGroups.map(
+                (group) => html`<option value=${group.id}>${group.name}</option>`,
+              )}
+            </select>
+          </label>
+          <label class="employee-membership-dialog__field">
+            <span>${partLabel}</span>
+            <select
+              .value=${state.employeeMembershipBootstrapSelectedPartId ?? ""}
+              ?disabled=${state.employeeMembershipBootstrapLoading || !state.employeeMembershipBootstrapSelectedGroupId || !hasParts}
+              @change=${(event: Event) => {
+                state.employeeMembershipBootstrapSelectedPartId = (
+                  event.target as HTMLSelectElement
+                ).value;
+                state.employeeMembershipBootstrapError = null;
+              }}
+            >
+              <option value="">
+                ${state.employeeMembershipBootstrapSelectedGroupId ? partPlaceholder : partDisabledHint}
+              </option>
+              ${state.employeeMembershipBootstrapParts.map(
+                (part) => html`<option value=${part.id}>${part.name}</option>`,
+              )}
+            </select>
+          </label>
+          ${!hasGroups && !state.employeeMembershipBootstrapLoading
+            ? html`<div class="callout warn employee-membership-dialog__message">
+                ${emptyGroupsMessage}
+              </div>`
+            : nothing}
+          ${hasGroups &&
+          state.employeeMembershipBootstrapSelectedGroupId &&
+          !hasParts &&
+          !state.employeeMembershipBootstrapLoading
+            ? html`<div class="callout warn employee-membership-dialog__message">
+                ${emptyPartsMessage}
+              </div>`
+            : nothing}
+          ${state.employeeMembershipBootstrapError
+            ? html`<div class="callout danger employee-membership-dialog__message">
+                ${state.employeeMembershipBootstrapError}
+              </div>`
+            : nothing}
+          <div class="md-preview-dialog__actions employee-membership-dialog__actions">
+            <button
+              type="button"
+              class="btn"
+              ?disabled=${state.employeeMembershipBootstrapSubmitting}
+              @click=${() => void state.handleEmployeeMembershipBootstrapCancel()}
+            >
+              ${cancelLabel}
+            </button>
+            <button
+              type="button"
+              class="btn primary"
+              ?disabled=${confirmDisabled}
+              @click=${() => void state.handleEmployeeMembershipBootstrapConfirm()}
+            >
+              ${confirmLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+  `;
+}
+
+function renderEmployeeMembershipBootstrapDialogV2(state: AppViewState) {
+  if (!state.employeeMembershipBootstrapOpen) {
+    return nothing;
+  }
+  const english = state.settings.locale === "en";
+  const title = english
+    ? "Please select your Group and Part."
+    : "본인의 Group과 Part를 선택해주세요.\nPlease select your Group and Part.";
+  const groupLabel = "Group";
+  const partLabel = "Part";
+  const cancelLabel = english ? "Cancel" : "취소";
+  const skipLabel = english ? "Maybe later" : "다음에 입력하기";
+  const confirmLabel = state.employeeMembershipBootstrapSubmitting
+    ? english
+      ? "Submitting..."
+      : "신청 중..."
+    : english
+      ? "Request to join"
+      : "가입 신청";
+  const groupPlaceholder = english ? "Select a group" : "Group을 선택해주세요. (Select a group.)";
+  const partPlaceholder = english ? "Select a part" : "Part를 선택해주세요.";
+  const partDisabledHint = english
+    ? "Please select a group first."
+    : "먼저 Group을 선택해주세요. (Please select a group first.)";
+  const emptyGroupsMessage = english
+    ? "No groups are available. Please contact an administrator."
+    : "등록 가능한 Group이 없습니다. 관리자에게 문의해주세요.";
+  const emptyPartsMessage = english
+    ? "There are no parts in the selected group. Please contact an administrator."
+    : "선택한 Group에 등록된 Part가 없습니다. 관리자에게 문의해주세요.";
+  const pendingRequest =
+    state.employeeMembershipBootstrapStatus?.pending_request?.status === "pending"
+      ? state.employeeMembershipBootstrapStatus.pending_request
+      : null;
+  const pendingMessage = english
+    ? "Your current join request is waiting for approval."
+    : "현재 가입 신청이 승인 대기 중입니다.";
+  const pendingHint = english
+    ? "You can keep using the service now. Until approval is completed, this dialog may appear again after you sign in."
+    : "지금은 서비스를 계속 사용할 수 있습니다. 승인이 완료되기 전까지는 로그인할 때 이 창이 다시 표시될 수 있습니다.";
+  const ensureOpen = (el?: Element) => {
+    if (!(el instanceof HTMLDialogElement)) {
+      return;
+    }
+    queueMicrotask(() => {
+      if (!el.isConnected || el.matches(":modal")) {
+        return;
+      }
+      try {
+        if (el.open) {
+          el.removeAttribute("open");
+        }
+        el.showModal();
+      } catch {
+        el.setAttribute("open", "");
+      }
+    });
+  };
+  const hasGroups = state.employeeMembershipBootstrapGroups.length > 0;
+  const hasParts = state.employeeMembershipBootstrapParts.length > 0;
+  const confirmDisabled =
+    state.employeeMembershipBootstrapSubmitting ||
+    !state.employeeMembershipBootstrapSelectedGroupId ||
+    !state.employeeMembershipBootstrapSelectedPartId ||
+    !hasGroups ||
+    !hasParts;
+  return html`
+    <dialog
+      open
+      class="md-preview-dialog employee-membership-dialog"
+      ${ref(ensureOpen)}
+      @cancel=${(event: Event) => event.preventDefault()}
+    >
+      <div class="md-preview-dialog__panel employee-membership-dialog__panel">
+        <div class="md-preview-dialog__header employee-membership-dialog__header">
+          <div>
+            <div class="md-preview-dialog__title employee-membership-dialog__title">
+              ${title.split("\n").map(
+                (line, index) => html`${index > 0 ? html`<br />` : nothing}${line}`,
+              )}
+            </div>
+          </div>
+        </div>
+        <div class="md-preview-dialog__body employee-membership-dialog__body">
+          ${pendingRequest
+            ? html`
+                <div class="callout info employee-membership-dialog__message">
+                  <strong>${pendingMessage}</strong>
+                  <div style="margin-top:8px;">
+                    ${groupLabel}: ${pendingRequest.group_name}
+                    <br />
+                    ${partLabel}: ${pendingRequest.part_name}
+                  </div>
+                  <div style="margin-top:8px;">${pendingHint}</div>
+                </div>
+              `
+            : nothing}
+          <label class="employee-membership-dialog__field">
+            <span>${groupLabel}</span>
+            <select
+              .value=${state.employeeMembershipBootstrapSelectedGroupId ?? ""}
+              ?disabled=${state.employeeMembershipBootstrapLoading || !hasGroups}
+              @change=${(event: Event) =>
+                void state.handleEmployeeMembershipBootstrapGroupChange(
+                  (event.target as HTMLSelectElement).value,
+                )}
+            >
+              <option value="">${groupPlaceholder}</option>
+              ${state.employeeMembershipBootstrapGroups.map(
+                (group) => html`<option value=${group.id}>${group.name}</option>`,
+              )}
+            </select>
+          </label>
+          <label class="employee-membership-dialog__field">
+            <span>${partLabel}</span>
+            <select
+              .value=${state.employeeMembershipBootstrapSelectedPartId ?? ""}
+              ?disabled=${state.employeeMembershipBootstrapLoading || !state.employeeMembershipBootstrapSelectedGroupId || !hasParts}
+              @change=${(event: Event) => {
+                state.employeeMembershipBootstrapSelectedPartId = (
+                  event.target as HTMLSelectElement
+                ).value;
+                state.employeeMembershipBootstrapError = null;
+              }}
+            >
+              <option value="">
+                ${state.employeeMembershipBootstrapSelectedGroupId ? partPlaceholder : partDisabledHint}
+              </option>
+              ${state.employeeMembershipBootstrapParts.map(
+                (part) => html`<option value=${part.id}>${part.name}</option>`,
+              )}
+            </select>
+          </label>
+          ${!hasGroups && !state.employeeMembershipBootstrapLoading
+            ? html`<div class="callout warn employee-membership-dialog__message">
+                ${emptyGroupsMessage}
+              </div>`
+            : nothing}
+          ${hasGroups &&
+          state.employeeMembershipBootstrapSelectedGroupId &&
+          !hasParts &&
+          !state.employeeMembershipBootstrapLoading
+            ? html`<div class="callout warn employee-membership-dialog__message">
+                ${emptyPartsMessage}
+              </div>`
+            : nothing}
+          ${state.employeeMembershipBootstrapError
+            ? html`<div class="callout danger employee-membership-dialog__message">
+                ${state.employeeMembershipBootstrapError}
+              </div>`
+            : nothing}
+          <div class="md-preview-dialog__actions employee-membership-dialog__actions">
+            <button
+              type="button"
+              class="btn"
+              ?disabled=${state.employeeMembershipBootstrapSubmitting}
+              @click=${() => void state.handleEmployeeMembershipBootstrapCancel()}
+            >
+              ${cancelLabel}
+            </button>
+            <button
+              type="button"
+              class="btn"
+              ?disabled=${state.employeeMembershipBootstrapSubmitting}
+              @click=${() => void state.handleEmployeeMembershipBootstrapSkip()}
+            >
+              ${skipLabel}
+            </button>
+            <button
+              type="button"
+              class="btn primary"
+              ?disabled=${confirmDisabled}
+              @click=${() => void state.handleEmployeeMembershipBootstrapConfirm()}
+            >
+              ${confirmLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+  `;
+}
+
+void renderEmployeeMembershipBootstrapDialog;
+
 export function renderReleaseNotesDialog(state: AppViewState) {
   if (!state.releaseNotesOpen) {
     return nothing;
@@ -1601,7 +1970,11 @@ export function renderApp(state: AppViewState) {
   // Gate: require successful gateway connection before showing the dashboard.
   // The gateway URL confirmation overlay is always rendered so URL-param flows still work.
   if (!state.connected) {
-    return html` ${renderLoginGate(state)} ${renderGatewayUrlConfirmation(state)} `;
+    return html`
+      ${renderLoginGate(state)}
+      ${renderGatewayUrlConfirmation(state)}
+      ${renderEmployeeMembershipBootstrapDialogV2(state)}
+    `;
   }
   const visibleTabGroups = filterVisibleTabGroups(tabGroupsForMode(state.employeeMode), state);
   const employeeSidebarGroups = state.employeeMode
@@ -3935,6 +4308,14 @@ export function renderApp(state: AppViewState) {
                 detail: state.groupsDetail,
                 detailError: state.groupsDetailError,
                 message: state.groupsMessage,
+                joinRequests: state.groupsJoinRequests,
+                joinRequestsLoading: state.groupsJoinRequestsLoading,
+                joinRequestsError: state.groupsJoinRequestsError,
+                joinRequestsPendingCount: state.groupsJoinRequestsPendingCount,
+                showJoinRequests: Boolean(
+                  state.employeeAccountSummary?.hasAdminAccess ||
+                    state.employeeAccountSummary?.hasLeaderScope,
+                ),
                 createOpen: state.groupsCreateOpen,
                 createName: state.groupsCreateName,
                 createDescription: state.groupsCreateDescription,
@@ -3969,7 +4350,12 @@ export function renderApp(state: AppViewState) {
                 },
                 onRefresh: () =>
                   void (async () => {
-                    await Promise.all([loadGroups(state), loadGroupScopeOptions(state)]);
+                    await Promise.all([
+                      loadGroups(state),
+                      loadGroupScopeOptions(state),
+                      loadGroupJoinRequests(state),
+                      loadGroupJoinRequestPendingCount(state),
+                    ]);
                     const currentGroupId =
                       state.groupsDetailGroupId ?? state.groupsEntries[0]?.id ?? null;
                     if (currentGroupId) {
@@ -4190,6 +4576,12 @@ export function renderApp(state: AppViewState) {
                     return;
                   }
                   void archiveGroupScopeAction(state, scopeId);
+                },
+                onApproveJoinRequest: (requestId) => {
+                  void approveGroupJoinRequestAction(state, requestId);
+                },
+                onRejectJoinRequest: (requestId) => {
+                  void rejectGroupJoinRequestAction(state, requestId);
                 },
               }),
             )
@@ -4882,7 +5274,9 @@ export function renderApp(state: AppViewState) {
           : nothing}
       </main>
       ${renderExecApprovalPrompt(state)} ${renderGatewayUrlConfirmation(state)}
-      ${renderEmployeeVocDialog(state)} ${renderReleaseNotesDialog(state)}
+      ${renderEmployeeMembershipBootstrapDialogV2(state)}
+      ${renderEmployeeVocDialog(state)}
+      ${renderReleaseNotesDialog(state)}
     </div>
   `;
 }

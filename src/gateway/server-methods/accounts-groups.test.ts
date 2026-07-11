@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { provisionEmployeeAccount } from "../../accounts/account-provisioning.js";
 import { resetPlatformClawDatabaseForTests } from "../../accounts/db.js";
+import { getLatestGroupJoinRequestForAccount, upsertGroupJoinRequest } from "../../accounts/group-store.js";
 import { accountGroupHandlers } from "./accounts-groups.js";
 
 function createRespond() {
@@ -191,6 +192,50 @@ describe("accounts/groups gateway handlers", () => {
     expect(detailPayload.detail.parts[0]?.members.map((entry) => entry.accountId)).toEqual([
       "member",
     ]);
+
+    upsertGroupJoinRequest({
+      accountId: "member",
+      groupId,
+      partId: partScope!.scopeId,
+    });
+
+    respond = createRespond();
+    await accountGroupHandlers["groups.joinRequests.pendingCount"]({
+      params: {},
+      respond,
+      client: adminClient,
+    } as never);
+    expect(respond).toHaveBeenCalledWith(true, { count: 1 }, undefined);
+
+    respond = createRespond();
+    await accountGroupHandlers["groups.joinRequests.list"]({
+      params: {},
+      respond,
+      client: leaderClient,
+    } as never);
+    const joinRequestPayload = respond.mock.calls[0]?.[1] as {
+      entries: Array<{ id: string; employeeId: string; groupId: string }>;
+    };
+    expect(joinRequestPayload.entries).toHaveLength(1);
+    expect(joinRequestPayload.entries[0]).toEqual(
+      expect.objectContaining({
+        employeeId: "member",
+        groupId,
+      }),
+    );
+
+    respond = createRespond();
+    await accountGroupHandlers["groups.joinRequests.approve"]({
+      params: { requestId: joinRequestPayload.entries[0].id },
+      respond,
+      client: leaderClient,
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ ok: true, message: "Join request approved." }),
+      undefined,
+    );
+    expect(getLatestGroupJoinRequestForAccount("member")?.status).toBe("approved");
 
     respond = createRespond();
     await accountGroupHandlers["groups.members.remove"]({

@@ -39,6 +39,27 @@ export type GroupDetail = {
   parts: Array<GroupEntry & { members: GroupMemberEntry[] }>;
 };
 
+export type GroupJoinRequestStatus = "pending" | "approved" | "rejected";
+
+export type GroupJoinRequestEntry = {
+  id: string;
+  accountId: string;
+  employeeId: string;
+  displayName: string;
+  email: string | null;
+  department: string | null;
+  groupId: string;
+  groupName: string;
+  partId: string;
+  partName: string;
+  status: GroupJoinRequestStatus;
+  requestedAt: string;
+  updatedAt: string;
+  reviewedAt: string | null;
+  reviewedByAccountId: string | null;
+  reviewComment: string | null;
+};
+
 export type GroupScopeOption = {
   scopeType: GroupScopeType;
   scopeId: string;
@@ -59,6 +80,10 @@ type GroupsState = {
   groupsDetailError: string | null;
   groupsScopeOptions: GroupScopeOption[];
   groupsMessage: { kind: "success" | "error"; text: string } | null;
+  groupsJoinRequests: GroupJoinRequestEntry[];
+  groupsJoinRequestsLoading: boolean;
+  groupsJoinRequestsError: string | null;
+  groupsJoinRequestsPendingCount: number;
 };
 
 function getErrorMessage(err: unknown): string {
@@ -128,8 +153,75 @@ async function afterMutation(state: GroupsState, currentGroupId?: string | null)
   await Promise.all([
     loadGroups(state),
     loadGroupScopeOptions(state),
+    loadGroupJoinRequestPendingCount(state),
+    loadGroupJoinRequests(state),
     currentGroupId ? loadGroupDetail(state, currentGroupId) : Promise.resolve(),
   ]);
+}
+
+export async function loadGroupJoinRequests(state: GroupsState) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  state.groupsJoinRequestsLoading = true;
+  state.groupsJoinRequestsError = null;
+  try {
+    const result = await state.client.request<{ entries: GroupJoinRequestEntry[] }>(
+      "groups.joinRequests.list",
+      {},
+    );
+    state.groupsJoinRequests = result?.entries ?? [];
+  } catch (err) {
+    state.groupsJoinRequestsError = getErrorMessage(err);
+  } finally {
+    state.groupsJoinRequestsLoading = false;
+  }
+}
+
+export async function loadGroupJoinRequestPendingCount(state: GroupsState) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  try {
+    const result = await state.client.request<{ count: number }>("groups.joinRequests.pendingCount", {});
+    state.groupsJoinRequestsPendingCount = typeof result?.count === "number" ? result.count : 0;
+  } catch {
+    state.groupsJoinRequestsPendingCount = 0;
+  }
+}
+
+export async function approveGroupJoinRequestAction(state: GroupsState, requestId: string) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  state.groupsMessage = null;
+  try {
+    const result = await state.client.request<{ message: string }>("groups.joinRequests.approve", {
+      requestId,
+    });
+    state.groupsMessage = { kind: "success", text: result.message };
+    await afterMutation(state, state.groupsDetail?.group.id ?? null);
+  } catch (err) {
+    state.groupsMessage = { kind: "error", text: getErrorMessage(err) };
+    throw err;
+  }
+}
+
+export async function rejectGroupJoinRequestAction(state: GroupsState, requestId: string) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  state.groupsMessage = null;
+  try {
+    const result = await state.client.request<{ message: string }>("groups.joinRequests.reject", {
+      requestId,
+    });
+    state.groupsMessage = { kind: "success", text: result.message };
+    await afterMutation(state, state.groupsDetail?.group.id ?? null);
+  } catch (err) {
+    state.groupsMessage = { kind: "error", text: getErrorMessage(err) };
+    throw err;
+  }
 }
 
 export async function createGroupAction(

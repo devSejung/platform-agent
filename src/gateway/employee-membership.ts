@@ -114,9 +114,12 @@ function resolveEmployeeMembership(
       `SELECT gm.scope_id AS scope_id,
               g.name AS scope_name,
               g.parent_group_id AS parent_group_id,
-              g.archived_at AS archived_at
+              g.archived_at AS archived_at,
+              parent.name AS parent_group_name,
+              parent.archived_at AS parent_group_archived_at
          FROM group_memberships gm
          LEFT JOIN groups g ON g.id = gm.scope_id
+         LEFT JOIN groups parent ON parent.id = g.parent_group_id
         WHERE gm.account_id = ?
           AND gm.scope_type = 'part'
         ORDER BY gm.updated_at DESC, gm.created_at DESC`,
@@ -126,6 +129,8 @@ function resolveEmployeeMembership(
     scope_name: string | null;
     parent_group_id: string | null;
     archived_at: string | null;
+    parent_group_name: string | null;
+    parent_group_archived_at: string | null;
   }>;
 
   const hasMembership = groupRows.length > 0 || partRows.length > 0;
@@ -135,16 +140,43 @@ function resolveEmployeeMembership(
   const activeParts = partRows.filter(
     (row) => normalizeOptionalString(row.scope_name) && !normalizeOptionalString(row.archived_at),
   );
+  const activeGroupById = new Map(
+    activeGroups.map((row) => [
+      row.scope_id,
+      {
+        id: row.scope_id,
+        name: normalizeOptionalString(row.scope_name) ?? null,
+      },
+    ]),
+  );
 
-  for (const groupRow of activeGroups) {
-    const matchingPart = activeParts.find((partRow) => partRow.parent_group_id === groupRow.scope_id);
-    if (matchingPart) {
+  for (const partRow of activeParts) {
+    const parentGroupId = normalizeOptionalString(partRow.parent_group_id);
+    if (!parentGroupId) {
+      continue;
+    }
+    const parentGroupName = normalizeOptionalString(partRow.parent_group_name);
+    if (parentGroupName && !normalizeOptionalString(partRow.parent_group_archived_at)) {
       return {
         hasMembership,
-        groupId: groupRow.scope_id,
-        groupName: normalizeOptionalString(groupRow.scope_name) ?? null,
-        partId: matchingPart.scope_id,
-        partName: normalizeOptionalString(matchingPart.scope_name) ?? null,
+        groupId: parentGroupId,
+        groupName: parentGroupName,
+        partId: partRow.scope_id,
+        partName: normalizeOptionalString(partRow.scope_name) ?? null,
+        valid: true,
+        reason: null,
+        membershipStatus: "approved",
+        pendingRequest: null,
+      };
+    }
+    const parentGroup = activeGroupById.get(parentGroupId);
+    if (parentGroup) {
+      return {
+        hasMembership,
+        groupId: parentGroup.id,
+        groupName: parentGroup.name,
+        partId: partRow.scope_id,
+        partName: normalizeOptionalString(partRow.scope_name) ?? null,
         valid: true,
         reason: null,
         membershipStatus: "approved",
@@ -153,9 +185,53 @@ function resolveEmployeeMembership(
     }
   }
 
+  for (const partRow of activeParts) {
+    const parentGroupId = normalizeOptionalString(partRow.parent_group_id);
+    if (!parentGroupId) {
+      continue;
+    }
+    const parentGroupRow =
+      groupRows.find((groupRow) => groupRow.scope_id === parentGroupId) ??
+      (normalizeOptionalString(partRow.parent_group_name)
+        ? {
+            scope_id: parentGroupId,
+            scope_name: partRow.parent_group_name,
+            archived_at: partRow.parent_group_archived_at,
+          }
+        : undefined);
+    if (parentGroupRow && normalizeOptionalString(parentGroupRow.scope_name)) {
+      return {
+        hasMembership,
+        groupId: parentGroupRow.scope_id,
+        groupName: normalizeOptionalString(parentGroupRow.scope_name) ?? null,
+        partId: partRow.scope_id,
+        partName: normalizeOptionalString(partRow.scope_name) ?? null,
+        valid: true,
+        reason: null,
+        membershipStatus: "approved",
+        pendingRequest: null,
+      };
+    }
+  }
+
+  const firstActiveGroup = activeGroups[0];
+  if (firstActiveGroup) {
+    return {
+      hasMembership,
+      groupId: firstActiveGroup.scope_id,
+      groupName: normalizeOptionalString(firstActiveGroup.scope_name) ?? null,
+      partId: null,
+      partName: null,
+      valid: true,
+      reason: null,
+      membershipStatus: "approved",
+      pendingRequest: null,
+    };
+  }
+
   const latestRequest = getLatestGroupJoinRequestForAccount(accountId, env);
   const pendingRequest =
-    latestRequest?.status === "pending"
+    latestRequest?.status === "pending" || latestRequest?.status === "rejected"
       ? {
           request_id: latestRequest.id,
           group_id: latestRequest.groupId,
@@ -164,6 +240,8 @@ function resolveEmployeeMembership(
           part_name: latestRequest.partName,
           status: latestRequest.status,
           requested_at: latestRequest.requestedAt,
+          reviewed_at: latestRequest.reviewedAt,
+          review_comment: latestRequest.reviewComment,
         }
       : null;
 
@@ -183,6 +261,19 @@ function resolveEmployeeMembership(
     };
   }
   if (!firstGroup) {
+    if (firstPart && normalizeOptionalString(firstPart.scope_name) && !normalizeOptionalString(firstPart.archived_at)) {
+      return {
+        hasMembership: true,
+        groupId: normalizeOptionalString(firstPart.parent_group_id) ?? null,
+        groupName: null,
+        partId: firstPart.scope_id,
+        partName: normalizeOptionalString(firstPart.scope_name) ?? null,
+        valid: false,
+        reason: normalizeOptionalString(firstPart.parent_group_id) ? "GROUP_INVALID" : "GROUP_MISSING",
+        membershipStatus: pendingRequest?.status ?? "none",
+        pendingRequest,
+      };
+    }
     return {
       hasMembership: true,
       groupId: null,

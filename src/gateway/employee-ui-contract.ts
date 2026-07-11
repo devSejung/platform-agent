@@ -93,6 +93,8 @@ export type EmployeeMembershipPendingRequest = {
   part_name: string;
   status: "pending" | "rejected";
   requested_at: string;
+  reviewed_at?: string | null;
+  review_comment?: string | null;
 };
 
 export type EmployeeMembershipStatusResponse = {

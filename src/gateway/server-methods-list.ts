@@ -89,6 +89,7 @@ const BASE_METHODS = [
   "groups.members.add",
   "groups.members.remove",
   "groups.archive",
+  "groups.restore",
   "groups.joinRequests.list",
   "groups.joinRequests.pendingCount",
   "groups.joinRequests.approve",

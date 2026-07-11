@@ -50,6 +50,7 @@ function createProps(overrides: Partial<GroupsViewProps> = {}): GroupsViewProps 
     ],
     error: null,
     includeArchived: false,
+    canViewArchived: true,
     detailGroupId: "group-platform",
     detailLoading: false,
     detail: {
@@ -117,6 +118,7 @@ function createProps(overrides: Partial<GroupsViewProps> = {}): GroupsViewProps 
     memberModalError: null,
     memberModalLoading: false,
     canAssignLeader: true,
+    canAssignLeaderForScope: () => true,
     onToggleArchived: () => undefined,
     onRefresh: () => undefined,
     onSelectGroup: () => undefined,
@@ -145,6 +147,7 @@ function createProps(overrides: Partial<GroupsViewProps> = {}): GroupsViewProps 
     onPromoteMember: () => undefined,
     onDemoteMember: () => undefined,
     onArchiveScope: () => undefined,
+    onRestoreScope: () => undefined,
     onApproveJoinRequest: () => undefined,
     onRejectJoinRequest: () => undefined,
     ...overrides,
@@ -192,5 +195,48 @@ describe("renderGroups", () => {
 
     expect(container.querySelector("dialog")?.hasAttribute("open")).toBe(true);
     expect(container.textContent).toContain("Create Group");
+  });
+
+  it("hides archived toggle for non-admin viewers", async () => {
+    const container = document.createElement("div");
+    render(
+      renderGroups(
+        createProps({
+          canViewArchived: false,
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    expect(container.textContent).not.toContain("Show archived");
+    expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+  });
+
+  it("shows a restore button for archived scopes", async () => {
+    const container = document.createElement("div");
+    render(
+      renderGroups(
+        createProps({
+          entries: [
+            {
+              ...createProps().entries[0],
+              archivedAt: "2026-07-12T00:00:00.000Z",
+            },
+          ],
+          detail: {
+            ...createProps().detail!,
+            group: {
+              ...createProps().detail!.group,
+              archivedAt: "2026-07-12T00:00:00.000Z",
+            },
+          },
+        }),
+      ),
+      container,
+    );
+    await Promise.resolve();
+
+    expect(container.textContent).toContain("Restore");
   });
 });

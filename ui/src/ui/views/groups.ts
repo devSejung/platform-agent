@@ -9,6 +9,7 @@ export type GroupsViewProps = {
   entries: GroupEntry[];
   error: string | null;
   includeArchived: boolean;
+  canViewArchived: boolean;
   detailGroupId: string | null;
   detailLoading: boolean;
   detail: GroupDetail | null;
@@ -44,6 +45,7 @@ export type GroupsViewProps = {
   memberModalError: string | null;
   memberModalLoading: boolean;
   canAssignLeader: boolean;
+  canAssignLeaderForScope: (scopeType: "group" | "part", scopeId: string) => boolean;
   onToggleArchived: (next: boolean) => void;
   onRefresh: () => void;
   onSelectGroup: (groupId: string) => void;
@@ -77,6 +79,7 @@ export type GroupsViewProps = {
   onPromoteMember: (scopeType: "group" | "part", scopeId: string, accountId: string) => void;
   onDemoteMember: (scopeType: "group" | "part", scopeId: string, accountId: string) => void;
   onArchiveScope: (scopeId: string, label: string) => void;
+  onRestoreScope: (scopeId: string, label: string) => void;
   onApproveJoinRequest: (requestId: string) => void;
   onRejectJoinRequest: (requestId: string) => void;
 };
@@ -149,7 +152,7 @@ function renderMemberRows(
                     >
                       ${t("groups.actions.removeMember")}
                     </button>
-                    ${props.canAssignLeader
+                    ${props.canAssignLeaderForScope(scopeType, scopeId)
                       ? html`
                           <button
                             class="btn btn--sm"
@@ -236,6 +239,16 @@ function renderScopePanel(
                 </button>
               `
             : nothing}
+          ${entry.canArchive && entry.archivedAt
+            ? html`
+                <button
+                  class="btn btn--sm"
+                  @click=${() => props.onRestoreScope(entry.id, entry.name)}
+                >
+                  ${i18n.locale === "ko" ? "복구" : "Restore"}
+                </button>
+              `
+            : nothing}
         </div>
       </div>
       ${renderMemberRows(entry.scopeType, entry.id, members, entry.canManageMembers, props)}
@@ -303,6 +316,16 @@ function renderSelectedGroupDetail(props: GroupsViewProps) {
                   @click=${() => props.onArchiveScope(detail.group.id, detail.group.name)}
                 >
                   ${t("groups.actions.archive")}
+                </button>
+              `
+            : nothing}
+          ${detail.group.canArchive && detail.group.archivedAt
+            ? html`
+                <button
+                  class="btn btn--sm"
+                  @click=${() => props.onRestoreScope(detail.group.id, detail.group.name)}
+                >
+                  ${i18n.locale === "ko" ? "복구" : "Restore"}
                 </button>
               `
             : nothing}
@@ -680,15 +703,19 @@ export function renderGroups(props: GroupsViewProps) {
           <div class="card-sub">${t("groups.subtitle")}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <label class="muted" style="display:flex; gap:8px; align-items:center;">
-            <input
-              type="checkbox"
-              .checked=${props.includeArchived}
-              @change=${(e: Event) =>
-                props.onToggleArchived((e.target as HTMLInputElement).checked)}
-            />
-            ${t("groups.showArchived")}
-          </label>
+          ${props.canViewArchived
+            ? html`
+                <label class="muted" style="display:flex; gap:8px; align-items:center;">
+                  <input
+                    type="checkbox"
+                    .checked=${props.includeArchived}
+                    @change=${(e: Event) =>
+                      props.onToggleArchived((e.target as HTMLInputElement).checked)}
+                  />
+                  ${t("groups.showArchived")}
+                </label>
+              `
+            : nothing}
           <button class="btn btn--sm" @click=${props.onRefresh}>${t("common.refresh")}</button>
           <button class="btn btn--sm primary" @click=${props.onOpenCreate}>
             ${t("groups.actions.createGroup")}

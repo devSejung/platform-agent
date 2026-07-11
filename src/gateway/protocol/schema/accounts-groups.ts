@@ -304,6 +304,8 @@ export const GroupArchiveParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const GroupRestoreParamsSchema = GroupArchiveParamsSchema;
+
 export const GroupJoinRequestListParamsSchema = Type.Object({}, { additionalProperties: false });
 
 export const GroupJoinRequestListResultSchema = Type.Object(
@@ -372,6 +374,7 @@ export type GroupScopesListParams = Static<typeof GroupScopesListParamsSchema>;
 export type GroupMembershipAddParams = Static<typeof GroupMembershipAddParamsSchema>;
 export type GroupMembershipRemoveParams = Static<typeof GroupMembershipRemoveParamsSchema>;
 export type GroupArchiveParams = Static<typeof GroupArchiveParamsSchema>;
+export type GroupRestoreParams = Static<typeof GroupRestoreParamsSchema>;
 export type GroupJoinRequestListParams = Static<typeof GroupJoinRequestListParamsSchema>;
 export type GroupJoinRequestPendingCountParams = Static<typeof GroupJoinRequestPendingCountParamsSchema>;
 export type GroupJoinRequestApproveParams = Static<typeof GroupJoinRequestApproveParamsSchema>;

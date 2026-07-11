@@ -113,6 +113,7 @@ import {
   loadGroupScopeOptions,
   rejectGroupJoinRequestAction,
   removeGroupMemberAction,
+  restoreGroupScopeAction,
   updateGroupAction,
   updatePartAction,
 } from "./controllers/groups.ts";
@@ -1362,6 +1363,12 @@ function renderEmployeeMembershipBootstrapDialog(state: AppViewState) {
   const emptyPartsMessage = english
     ? "There are no parts in the selected group. Please contact an administrator."
     : "선택한 Group에 등록된 Part가 없습니다. 관리자에게 문의해주세요.";
+  const rejectedMessage = english
+    ? "Your group join request was rejected."
+    : "그룹 가입 신청이 거절되었습니다.";
+  const rejectedHint = english
+    ? "Please review the selected Group / Part and submit a new request."
+    : "선택한 Group과 Part를 확인한 뒤 다시 신청해주세요.";
   const ensureOpen = (el?: Element) => {
     if (!(el instanceof HTMLDialogElement)) {
       return;
@@ -1511,16 +1518,23 @@ function renderEmployeeMembershipBootstrapDialogV2(state: AppViewState) {
   const emptyPartsMessage = english
     ? "There are no parts in the selected group. Please contact an administrator."
     : "선택한 Group에 등록된 Part가 없습니다. 관리자에게 문의해주세요.";
-  const pendingRequest =
-    state.employeeMembershipBootstrapStatus?.pending_request?.status === "pending"
-      ? state.employeeMembershipBootstrapStatus.pending_request
-      : null;
-  const pendingMessage = english
-    ? "Your current join request is waiting for approval."
-    : "현재 가입 신청이 승인 대기 중입니다.";
-  const pendingHint = english
-    ? "You can keep using the service now. Until approval is completed, this dialog may appear again after you sign in."
-    : "지금은 서비스를 계속 사용할 수 있습니다. 승인이 완료되기 전까지는 로그인할 때 이 창이 다시 표시될 수 있습니다.";
+  const latestRequest = state.employeeMembershipBootstrapStatus?.pending_request ?? null;
+  const pendingRequest = latestRequest?.status === "pending" ? latestRequest : null;
+  const rejectedRequest = latestRequest?.status === "rejected" ? latestRequest : null;
+  const pendingMessageKo = "현재 가입 신청이 승인 대기 중입니다.";
+  const pendingMessageEn = "Your current join request is waiting for approval.";
+  const pendingHintKoLines = [
+    "지금은 서비스를 계속 사용할 수 있습니다.",
+    "승인이 완료되기 전까지는 로그인할 때 이 창이 다시 표시될 수 있습니다.",
+  ];
+  const pendingHintEnLines = [
+    "You can keep using the service now.",
+    "Until approval is completed, this dialog may appear again after you sign in.",
+  ];
+  const rejectedMessageKo = "그룹 가입 신청이 거절되었습니다.";
+  const rejectedMessageEn = "Your group join request was rejected.";
+  const rejectedHintKo = "선택한 Group과 Part를 확인한 뒤 다시 신청해주세요.";
+  const rejectedHintEn = "Please review the selected Group / Part and submit a new request.";
   const ensureOpen = (el?: Element) => {
     if (!(el instanceof HTMLDialogElement)) {
       return;
@@ -1568,13 +1582,57 @@ function renderEmployeeMembershipBootstrapDialogV2(state: AppViewState) {
           ${pendingRequest
             ? html`
                 <div class="callout info employee-membership-dialog__message">
-                  <strong>${pendingMessage}</strong>
-                  <div style="margin-top:8px;">
-                    ${groupLabel}: ${pendingRequest.group_name}
-                    <br />
-                    ${partLabel}: ${pendingRequest.part_name}
+                  <strong class="employee-membership-dialog__message-title">
+                    ${pendingMessageKo}
+                  </strong>
+                  <div class="employee-membership-dialog__message-subtitle">
+                    ${pendingMessageEn}
                   </div>
-                  <div style="margin-top:8px;">${pendingHint}</div>
+                  <div class="employee-membership-dialog__message-meta">
+                    <span>${groupLabel}: ${pendingRequest.group_name}</span>
+                    <span>${partLabel}: ${pendingRequest.part_name}</span>
+                  </div>
+                  <div class="employee-membership-dialog__message-copy">
+                    ${pendingHintKoLines.map(
+                      (line, index) => html`${index > 0 ? html`<br />` : nothing}${line}`,
+                    )}
+                  </div>
+                  <div class="employee-membership-dialog__message-subcopy">
+                    ${pendingHintEnLines.map(
+                      (line, index) => html`${index > 0 ? html`<br />` : nothing}${line}`,
+                    )}
+                  </div>
+                </div>
+              `
+            : nothing}
+          ${rejectedRequest
+            ? html`
+                <div
+                  class="callout warn employee-membership-dialog__message employee-membership-dialog__message--rejected"
+                >
+                  <strong class="employee-membership-dialog__message-title employee-membership-dialog__message-title--rejected"
+                    >${rejectedMessageKo}</strong
+                  >
+                  <div class="employee-membership-dialog__message-subtitle">
+                    ${rejectedMessageEn}
+                  </div>
+                  <div class="employee-membership-dialog__message-meta">
+                    <span>${groupLabel}: ${rejectedRequest.group_name}</span>
+                    <span>${partLabel}: ${rejectedRequest.part_name}</span>
+                  </div>
+                  <div class="employee-membership-dialog__message-copy">
+                    ${rejectedHintKo}
+                  </div>
+                  <div class="employee-membership-dialog__message-subcopy">
+                    ${rejectedHintEn}
+                  </div>
+                  ${rejectedRequest.review_comment
+                    ? html`
+                        <div class="employee-membership-dialog__message-note">
+                          ${rejectedRequest.review_comment}
+                        </div>
+                      `
+                    : nothing}
                 </div>
               `
             : nothing}
@@ -4303,6 +4361,7 @@ export function renderApp(state: AppViewState) {
                 entries: state.groupsEntries,
                 error: state.groupsError,
                 includeArchived: state.groupsIncludeArchived,
+                canViewArchived: Boolean(state.employeeAccountSummary?.hasAdminAccess),
                 detailGroupId: state.groupsDetailGroupId,
                 detailLoading: state.groupsDetailLoading,
                 detail: state.groupsDetail,
@@ -4340,7 +4399,60 @@ export function renderApp(state: AppViewState) {
                 memberModalRole: state.groupsMemberModalRole,
                 memberModalError: state.groupsMemberModalError,
                 memberModalLoading: state.groupsMemberModalLoading,
-                canAssignLeader: Boolean(state.employeeAccountSummary?.hasAdminAccess),
+                canAssignLeader: Boolean(
+                  (() => {
+                    if (state.employeeAccountSummary?.hasAdminAccess) {
+                      return true;
+                    }
+                    const actorAccountId = state.employeeAccountSummary?.accountId?.trim();
+                    if (!actorAccountId || state.groupsMemberModalScopeType !== "part") {
+                      return false;
+                    }
+                    const isGroupLeader = Boolean(
+                      state.groupsDetail?.members.some(
+                        (entry) =>
+                          entry.accountId === actorAccountId && entry.groupRole === "leader",
+                      ),
+                    );
+                    if (isGroupLeader) {
+                      return true;
+                    }
+                    return Boolean(
+                      state.groupsDetail?.parts
+                        .find((entry) => entry.id === state.groupsMemberModalScopeId)
+                        ?.members.some(
+                          (entry) =>
+                            entry.accountId === actorAccountId && entry.groupRole === "leader",
+                        ),
+                    );
+                  })(),
+                ),
+                canAssignLeaderForScope: (scopeType, scopeId) => {
+                  if (state.employeeAccountSummary?.hasAdminAccess) {
+                    return true;
+                  }
+                  const actorAccountId = state.employeeAccountSummary?.accountId?.trim();
+                  if (!actorAccountId || scopeType !== "part") {
+                    return false;
+                  }
+                  const isGroupLeader = Boolean(
+                    state.groupsDetail?.members.some(
+                      (entry) =>
+                        entry.accountId === actorAccountId && entry.groupRole === "leader",
+                    ),
+                  );
+                  if (isGroupLeader) {
+                    return true;
+                  }
+                  return Boolean(
+                    state.groupsDetail?.parts
+                      .find((entry) => entry.id === scopeId)
+                      ?.members.some(
+                        (entry) =>
+                          entry.accountId === actorAccountId && entry.groupRole === "leader",
+                      ),
+                  );
+                },
                 onToggleArchived: async (next) => {
                   state.groupsIncludeArchived = next;
                   await loadGroups(state);
@@ -4576,6 +4688,12 @@ export function renderApp(state: AppViewState) {
                     return;
                   }
                   void archiveGroupScopeAction(state, scopeId);
+                },
+                onRestoreScope: (scopeId, label) => {
+                  if (!window.confirm(`Restore ${label}?`)) {
+                    return;
+                  }
+                  void restoreGroupScopeAction(state, scopeId);
                 },
                 onApproveJoinRequest: (requestId) => {
                   void approveGroupJoinRequestAction(state, requestId);

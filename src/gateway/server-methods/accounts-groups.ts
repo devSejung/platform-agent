@@ -8,6 +8,7 @@ import {
   addGroupMembership,
   approveGroupJoinRequest,
   archiveGroupScope,
+  restoreGroupScope,
   countVisiblePendingGroupJoinRequests,
   createGroup,
   createPart,
@@ -84,9 +85,10 @@ export const accountGroupHandlers: GatewayRequestHandlers = {
     try {
       const actorAccountId = requireRequesterAccountId(client);
       const { includeArchived } = params as { includeArchived?: boolean };
+      const allowArchived = Boolean(includeArchived) && isAdminAccount(actorAccountId);
       respond(
         true,
-        { entries: listGroupEntries({ actorAccountId, includeArchived: Boolean(includeArchived) }) },
+        { entries: listGroupEntries({ actorAccountId, includeArchived: allowArchived }) },
         undefined,
       );
     } catch (err) {
@@ -108,13 +110,14 @@ export const accountGroupHandlers: GatewayRequestHandlers = {
     try {
       const actorAccountId = requireRequesterAccountId(client);
       const { groupId, includeArchived } = params as { groupId: string; includeArchived?: boolean };
+      const allowArchived = Boolean(includeArchived) && isAdminAccount(actorAccountId);
       respond(
         true,
         {
           detail: getGroupDetail({
             actorAccountId,
             groupId,
-            includeArchived: Boolean(includeArchived),
+            includeArchived: allowArchived,
           }),
         },
         undefined,
@@ -219,7 +222,7 @@ export const accountGroupHandlers: GatewayRequestHandlers = {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
     }
   },
-  "groups.scopes.list": ({ params, respond }) => {
+  "groups.scopes.list": ({ params, respond, client }) => {
     if (!validateGroupScopesListParams(params)) {
       respond(
         false,
@@ -232,10 +235,17 @@ export const accountGroupHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
+      const actorAccountId = requireRequesterAccountId(client);
       const { includeArchived } = params as { includeArchived?: boolean };
+      const allowArchived = Boolean(includeArchived) && isAdminAccount(actorAccountId);
       respond(
         true,
-        { entries: listGroupScopeOptions({ includeArchived: Boolean(includeArchived) }) },
+        {
+          entries: listGroupScopeOptions({
+            actorAccountId,
+            includeArchived: allowArchived,
+          }),
+        },
         undefined,
       );
     } catch (err) {
@@ -325,6 +335,27 @@ export const accountGroupHandlers: GatewayRequestHandlers = {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
     }
   },
+  "groups.restore": ({ params, respond, client }) => {
+    if (!validateGroupArchiveParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid groups.restore params: ${formatValidationErrors(validateGroupArchiveParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const actorAccountId = requireAdminAccount(client);
+      const { scopeId } = params as { scopeId: string };
+      const restored = restoreGroupScope({ actorAccountId, scopeId });
+      respond(true, { ok: true, message: `Restored ${restored.name}` }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
+    }
+  },
   "groups.joinRequests.list": ({ params, respond, client }) => {
     if (!validateGroupJoinRequestListParams(params)) {
       respond(
@@ -340,7 +371,7 @@ export const accountGroupHandlers: GatewayRequestHandlers = {
     try {
       const actorAccountId = requireRequesterAccountId(client);
       const manageable = resolveManageableGroupSummary(actorAccountId);
-      if (!isAdminAccount(actorAccountId) && manageable.groupCount <= 0) {
+      if (!isAdminAccount(actorAccountId) && manageable.groupCount + manageable.partCount <= 0) {
         throw new Error("join request review access required");
       }
       respond(
@@ -372,7 +403,7 @@ export const accountGroupHandlers: GatewayRequestHandlers = {
     try {
       const actorAccountId = requireRequesterAccountId(client);
       const manageable = resolveManageableGroupSummary(actorAccountId);
-      if (!isAdminAccount(actorAccountId) && manageable.groupCount <= 0) {
+      if (!isAdminAccount(actorAccountId) && manageable.groupCount + manageable.partCount <= 0) {
         throw new Error("join request review access required");
       }
       respond(

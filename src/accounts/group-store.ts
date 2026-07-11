@@ -270,6 +270,7 @@ export function canManageGroupScope(params: {
 function canReviewJoinRequestForGroup(
   actorAccountId: string,
   groupId: string,
+  partId: string,
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   return (
@@ -279,8 +280,31 @@ function canReviewJoinRequestForGroup(
       scopeType: "group",
       scopeId: groupId,
       env,
+    }) ||
+    isLeaderForScope({
+      accountId: actorAccountId,
+      scopeType: "part",
+      scopeId: partId,
+      env,
     })
   );
+}
+
+function canNonAdminAssignLeaderRole(params: {
+  actorAccountId: string;
+  scope: GroupScopeRecord;
+  env?: NodeJS.ProcessEnv;
+}): boolean {
+  const env = params.env ?? process.env;
+  if (params.scope.scopeType !== "part" || !params.scope.parentGroupId) {
+    return false;
+  }
+  return isLeaderForScope({
+    accountId: params.actorAccountId,
+    scopeType: "group",
+    scopeId: params.scope.parentGroupId,
+    env,
+  });
 }
 
 function listMembersForScope(
@@ -526,17 +550,20 @@ export function getGroupDetail(params: {
 }
 
 export function listGroupScopeOptions(params: {
+  actorAccountId: string;
   includeArchived?: boolean;
   env?: NodeJS.ProcessEnv;
 }): GroupScopeOption[] {
   const env = params.env ?? process.env;
   const { db } = getPlatformClawDatabase(env);
+  const actorIsAdmin = isAdminAccount(params.actorAccountId, env);
   const rows = db
     .prepare(
       `SELECT g.id,
               g.name,
               g.group_level,
               g.archived_at,
+              g.parent_group_id,
               parent.name AS parent_group_name
          FROM groups g
          LEFT JOIN groups parent ON parent.id = g.parent_group_id
@@ -548,14 +575,45 @@ export function listGroupScopeOptions(params: {
     name: string;
     group_level: number;
     archived_at: string | null;
+    parent_group_id: string | null;
     parent_group_name: string | null;
   }>;
-  return rows.map((row) => ({
-    scopeType: row.group_level === 1 ? "group" : "part",
-    scopeId: row.id,
-    label: row.group_level === 1 ? row.name : `${row.parent_group_name ?? "Group"} / ${row.name}`,
-    archived: Boolean(trimOrNull(row.archived_at)),
-  }));
+  return rows
+    .filter((row) => {
+      if (actorIsAdmin) {
+        return true;
+      }
+      if (row.group_level === 1) {
+        return isLeaderForScope({
+          accountId: params.actorAccountId,
+          scopeType: "group",
+          scopeId: row.id,
+          env,
+        });
+      }
+      return (
+        isLeaderForScope({
+          accountId: params.actorAccountId,
+          scopeType: "part",
+          scopeId: row.id,
+          env,
+        }) ||
+        (row.parent_group_id
+          ? isLeaderForScope({
+              accountId: params.actorAccountId,
+              scopeType: "group",
+              scopeId: row.parent_group_id,
+              env,
+            })
+          : false)
+      );
+    })
+    .map((row) => ({
+      scopeType: row.group_level === 1 ? "group" : "part",
+      scopeId: row.id,
+      label: row.group_level === 1 ? row.name : `${row.parent_group_name ?? "Group"} / ${row.name}`,
+      archived: Boolean(trimOrNull(row.archived_at)),
+    }));
 }
 
 export function createGroup(params: {
@@ -797,7 +855,15 @@ export function addGroupMembership(params: {
     throw new Error("not allowed to manage memberships for this scope");
   }
   const requestedRole = params.groupRole ?? "member";
-  if (!actorIsAdmin && requestedRole !== "member") {
+  if (
+    !actorIsAdmin &&
+    requestedRole !== "member" &&
+    !canNonAdminAssignLeaderRole({
+      actorAccountId: params.actorAccountId,
+      scope,
+      env,
+    })
+  ) {
     throw new Error("leaders can only add members");
   }
   const now = new Date().toISOString();
@@ -915,6 +981,43 @@ export function archiveGroupScope(params: {
   return getGroupScopeById(params.scopeId, env)!;
 }
 
+export function restoreGroupScope(params: {
+  actorAccountId: string;
+  scopeId: string;
+  env?: NodeJS.ProcessEnv;
+}) {
+  const env = params.env ?? process.env;
+  if (!isAdminAccount(params.actorAccountId, env)) {
+    throw new Error("only admins can restore groups or parts");
+  }
+  const scope = getGroupScopeById(params.scopeId, env);
+  if (!scope) {
+    throw new Error("group scope not found");
+  }
+  if (!scope.archivedAt) {
+    return scope;
+  }
+  const now = new Date().toISOString();
+  const { db } = getPlatformClawDatabase(env);
+  db.prepare(
+    `UPDATE groups
+        SET archived_at = NULL,
+            updated_at = @updated_at
+      WHERE id = @id`,
+  ).run({
+    id: params.scopeId,
+    updated_at: now,
+  });
+  appendAuditEvent({
+    actorAccountId: params.actorAccountId,
+    eventType: scope.scopeType === "group" ? "group.restored" : "part.restored",
+    targetType: scope.scopeType,
+    targetId: scope.id,
+    env,
+  });
+  return getGroupScopeById(params.scopeId, env)!;
+}
+
 export function resolveManageableGroupSummary(
   accountId: string,
   env: NodeJS.ProcessEnv = process.env,
@@ -997,9 +1100,11 @@ function listJoinRequestRows(params: {
               SELECT 1
                 FROM group_memberships gm
                WHERE gm.account_id = @actor_account_id
-                 AND gm.scope_type = 'group'
-                 AND gm.scope_id = r.group_id
                  AND gm.group_role = 'leader'
+                 AND (
+                   (gm.scope_type = 'group' AND gm.scope_id = r.group_id) OR
+                   (gm.scope_type = 'part' AND gm.scope_id = r.part_id)
+                 )
             )
           )
         ORDER BY r.requested_at DESC, r.updated_at DESC`,
@@ -1150,7 +1255,7 @@ export function approveGroupJoinRequest(params: {
   if (request.status !== "pending") {
     throw new Error("only pending requests can be approved");
   }
-  if (!canReviewJoinRequestForGroup(params.actorAccountId, request.group_id, env)) {
+  if (!canReviewJoinRequestForGroup(params.actorAccountId, request.group_id, request.part_id, env)) {
     throw new Error("not allowed to review this join request");
   }
   validateJoinRequestTargets({
@@ -1169,13 +1274,6 @@ export function approveGroupJoinRequest(params: {
        END,
        updated_at = excluded.updated_at`,
   );
-  upsertMembership.run({
-    scope_type: "group",
-    scope_id: request.group_id,
-    account_id: request.account_id,
-    created_at: now,
-    updated_at: now,
-  });
   upsertMembership.run({
     scope_type: "part",
     scope_id: request.part_id,
@@ -1222,12 +1320,12 @@ export function rejectGroupJoinRequest(params: {
   const { db } = getPlatformClawDatabase(env);
   const request = db
     .prepare(
-      `SELECT id, account_id, group_id, status
+      `SELECT id, account_id, group_id, part_id, status
          FROM group_join_requests
         WHERE id = ?`,
     )
     .get(params.requestId) as
-    | { id: string; account_id: string; group_id: string; status: GroupJoinRequestStatus }
+    | { id: string; account_id: string; group_id: string; part_id: string; status: GroupJoinRequestStatus }
     | undefined;
   if (!request) {
     throw new Error("join request not found");
@@ -1235,7 +1333,7 @@ export function rejectGroupJoinRequest(params: {
   if (request.status !== "pending") {
     throw new Error("only pending requests can be rejected");
   }
-  if (!canReviewJoinRequestForGroup(params.actorAccountId, request.group_id, env)) {
+  if (!canReviewJoinRequestForGroup(params.actorAccountId, request.group_id, request.part_id, env)) {
     throw new Error("not allowed to review this join request");
   }
   const now = new Date().toISOString();
@@ -1262,6 +1360,7 @@ export function rejectGroupJoinRequest(params: {
     payload: {
       requestId: request.id,
       groupId: request.group_id,
+      partId: request.part_id,
     },
     env,
   });

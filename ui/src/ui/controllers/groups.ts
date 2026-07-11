@@ -362,3 +362,36 @@ export async function archiveGroupScopeAction(state: GroupsState, scopeId: strin
     throw err;
   }
 }
+
+export async function restoreGroupScopeAction(state: GroupsState, scopeId: string) {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  state.groupsMessage = null;
+  try {
+    const result = await state.client.request<{ message: string }>("groups.restore", { scopeId });
+    state.groupsMessage = { kind: "success", text: result.message };
+    const restoredAt = null;
+    state.groupsEntries = state.groupsEntries.map((entry) =>
+      entry.id === scopeId ? { ...entry, archivedAt: restoredAt } : entry,
+    );
+    if (state.groupsDetail?.group.id === scopeId) {
+      state.groupsDetail = {
+        ...state.groupsDetail,
+        group: { ...state.groupsDetail.group, archivedAt: restoredAt },
+      };
+    } else if (state.groupsDetail) {
+      state.groupsDetail = {
+        ...state.groupsDetail,
+        parts: state.groupsDetail.parts.map((part) =>
+          part.id === scopeId ? { ...part, archivedAt: restoredAt } : part,
+        ),
+      };
+    }
+    const currentGroupId = state.groupsDetail?.group.id ?? null;
+    await afterMutation(state, currentGroupId);
+  } catch (err) {
+    state.groupsMessage = { kind: "error", text: getErrorMessage(err) };
+    throw err;
+  }
+}

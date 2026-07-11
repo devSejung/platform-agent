@@ -38,6 +38,7 @@ const EMPLOYEE_ROLE_METHODS = new Set([
   "groups.members.add",
   "groups.members.remove",
   "groups.archive",
+  "groups.restore",
   "credentials.status",
   "credentials.definitions.list",
   "credentials.definitions.upsert",

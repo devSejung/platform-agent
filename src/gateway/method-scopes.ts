@@ -188,6 +188,7 @@ const METHOD_SCOPE_GROUPS: Record<OperatorScope, readonly string[]> = {
     "groups.create",
     "groups.part.create",
     "groups.archive",
+    "groups.restore",
     "admin.accounts.list",
     "admin.accounts.detail",
     "admin.accounts.role.update",

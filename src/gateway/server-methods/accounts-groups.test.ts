@@ -61,6 +61,14 @@ describe("accounts/groups gateway handlers", () => {
       department: "Platform",
       agentId: "member",
     });
+    provisionEmployeeAccount({
+      config,
+      employeeId: "partleader",
+      email: "partleader@example.com",
+      name: "PartLeader",
+      department: "Platform",
+      agentId: "partleader",
+    });
 
     const adminClient = {
       connect: { role: "employee" },
@@ -69,6 +77,10 @@ describe("accounts/groups gateway handlers", () => {
     const leaderClient = {
       connect: { role: "employee" },
       internal: { employee: { employeeId: "leader", agentId: "leader" } },
+    };
+    const partLeaderClient = {
+      connect: { role: "employee" },
+      internal: { employee: { employeeId: "partleader", agentId: "partleader" } },
     };
 
     let respond = createRespond();
@@ -174,6 +186,18 @@ describe("accounts/groups gateway handlers", () => {
     );
 
     respond = createRespond();
+    await accountGroupHandlers["groups.members.add"]({
+      params: { scopeType: "part", scopeId: partScope!.scopeId, accountId: "partleader", groupRole: "leader" },
+      respond,
+      client: leaderClient,
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ ok: true, message: "Member added." }),
+      undefined,
+    );
+
+    respond = createRespond();
     await accountGroupHandlers["groups.detail"]({
       params: { groupId },
       respond,
@@ -190,8 +214,44 @@ describe("accounts/groups gateway handlers", () => {
     expect(detailPayload.detail.members.map((entry) => entry.accountId)).toEqual(["leader"]);
     expect(detailPayload.detail.parts[0]?.name).toBe("Automation");
     expect(detailPayload.detail.parts[0]?.members.map((entry) => entry.accountId)).toEqual([
+      "partleader",
       "member",
     ]);
+
+    respond = createRespond();
+    await accountGroupHandlers["groups.archive"]({
+      params: { scopeId: groupId },
+      respond,
+      client: adminClient,
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ ok: true, message: "Archived Platform Core" }),
+      undefined,
+    );
+
+    respond = createRespond();
+    await accountGroupHandlers["groups.list"]({
+      params: { includeArchived: true },
+      respond,
+      client: leaderClient,
+    } as never);
+    const leaderListPayload = respond.mock.calls[0]?.[1] as {
+      entries: Array<{ id: string }>;
+    };
+    expect(leaderListPayload.entries).toHaveLength(0);
+
+    respond = createRespond();
+    await accountGroupHandlers["groups.restore"]({
+      params: { scopeId: groupId },
+      respond,
+      client: adminClient,
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ ok: true, message: "Restored Platform Core" }),
+      undefined,
+    );
 
     upsertGroupJoinRequest({
       accountId: "member",
@@ -221,6 +281,23 @@ describe("accounts/groups gateway handlers", () => {
       expect.objectContaining({
         employeeId: "member",
         groupId,
+      }),
+    );
+
+    respond = createRespond();
+    await accountGroupHandlers["groups.joinRequests.list"]({
+      params: {},
+      respond,
+      client: partLeaderClient,
+    } as never);
+    const partLeaderJoinRequestPayload = respond.mock.calls[0]?.[1] as {
+      entries: Array<{ id: string; employeeId: string; partId: string }>;
+    };
+    expect(partLeaderJoinRequestPayload.entries).toHaveLength(1);
+    expect(partLeaderJoinRequestPayload.entries[0]).toEqual(
+      expect.objectContaining({
+        employeeId: "member",
+        partId: partScope!.scopeId,
       }),
     );
 

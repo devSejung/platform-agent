@@ -692,6 +692,43 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     );
   });
 
+  it("chat.send uses employee account id for internal web runs", async () => {
+    createTranscriptFixture("openclaw-chat-send-employee-account-");
+    mockState.finalText = "ok";
+    const respond = vi.fn();
+    const context = createChatContext();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-employee-account",
+      client: {
+        connect: {
+          role: "employee",
+          client: {
+            id: "employee-web",
+            mode: GATEWAY_CLIENT_MODES.WEBCHAT,
+            displayName: "Employee Web",
+          },
+        },
+        internal: {
+          employee: {
+            employeeId: "minji",
+            agentId: "main",
+          },
+        },
+      },
+      expectBroadcast: false,
+    });
+
+    expect(mockState.lastDispatchCtx).toEqual(
+      expect.objectContaining({
+        AccountId: "minji",
+        OriginatingChannel: "webchat",
+      }),
+    );
+  });
+
   it("chat.send keeps explicit delivery routes for channel-scoped sessions", async () => {
     createTranscriptFixture("openclaw-chat-send-origin-routing-");
     mockState.finalText = "ok";

@@ -104,6 +104,7 @@ import { normalizeWebchatReplyMediaPathsForDisplay } from "./chat-reply-media.js
 import { appendInjectedAssistantMessageToTranscript } from "./chat-transcript-inject.js";
 import { buildWebchatMediaContentBlocksFromReplyPayloads } from "./chat-webchat-media.js";
 import type {
+  GatewayClient,
   GatewayRequestContext,
   GatewayRequestHandlerOptions,
   GatewayRequestHandlers,
@@ -309,6 +310,16 @@ function resolveChatSendOriginatingRoute(params: {
     messageThreadId: routeThreadIdCandidate,
     explicitDeliverRoute: true,
   };
+}
+
+function resolveEmployeeClientAccountId(
+  client: GatewayClient | null | undefined,
+): string | undefined {
+  if (client?.connect?.role !== "employee") {
+    return undefined;
+  }
+  const employeeId = normalizeOptionalString(client.internal?.employee?.employeeId);
+  return employeeId ?? undefined;
 }
 
 function stripDisallowedChatControlChars(message: string): string {
@@ -1969,7 +1980,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       const {
         originatingChannel,
         originatingTo,
-        accountId,
+        accountId: routeAccountId,
         messageThreadId,
         explicitDeliverRoute,
       } = resolveChatSendOriginatingRoute({
@@ -1981,6 +1992,7 @@ export const chatHandlers: GatewayRequestHandlers = {
         mainKey: cfg.session?.mainKey,
         sessionKey,
       });
+      const accountId = routeAccountId ?? resolveEmployeeClientAccountId(client);
       // Inject timestamp so agents know the current date/time.
       // Only BodyForAgent gets the timestamp — Body stays raw for UI display.
       // See: https://github.com/openclaw/openclaw/issues/3658

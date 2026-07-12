@@ -1,7 +1,13 @@
 {
   "name": "PlatformClaw",
-  "latest": "2026.7.6",
+  "latest": "2026.7.12",
   "releases": [
+    {
+      "version": "2026.7.12",
+      "date": "2026-07-12",
+      "title": "Credential 관리와 Skill SDK 연동",
+      "path": "docs/platformclaw/releases/2026.7.12.md"
+    },
     {
       "version": "2026.7.6",
       "date": "2026-07-06",

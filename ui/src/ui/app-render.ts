@@ -1363,12 +1363,6 @@ function renderEmployeeMembershipBootstrapDialog(state: AppViewState) {
   const emptyPartsMessage = english
     ? "There are no parts in the selected group. Please contact an administrator."
     : "선택한 Group에 등록된 Part가 없습니다. 관리자에게 문의해주세요.";
-  const rejectedMessage = english
-    ? "Your group join request was rejected."
-    : "그룹 가입 신청이 거절되었습니다.";
-  const rejectedHint = english
-    ? "Please review the selected Group / Part and submit a new request."
-    : "선택한 Group과 Part를 확인한 뒤 다시 신청해주세요.";
   const ensureOpen = (el?: Element) => {
     if (!(el instanceof HTMLDialogElement)) {
       return;
@@ -4241,7 +4235,12 @@ export function renderApp(state: AppViewState) {
                   })();
                 },
                 onRevokeCredential: (definitionKey) => {
-                  if (!window.confirm(`Revoke credential "${definitionKey}"?`)) {
+                  const ok = window.confirm(
+                    i18n.getLocale() === "ko"
+                      ? `Credential "${definitionKey}"을 폐기할까요?`
+                      : `Revoke credential "${definitionKey}"?`,
+                  );
+                  if (!ok) {
                     return;
                   }
                   void (async () => {

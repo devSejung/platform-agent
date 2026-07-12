@@ -151,14 +151,21 @@ the process. Missing credentials stop the process and return a registration
 hint. Skills without `requires.credentials` keep the existing behavior and may
 still fail later if their code calls `credentials.get(...)` for a missing value.
 
-The Python SDK transport is wired for gateway-host exec processes only,
-including foreground exec and gateway approval follow-up exec. Runtime injects a
-local loopback endpoint plus a per-run token, not plaintext credentials. If the
+The Python SDK transport is wired for gateway-host exec processes, including
+foreground exec and gateway approval follow-up exec. Runtime injects a local
+loopback endpoint plus a per-run token, not plaintext credentials. If the
 Runtime cannot prove an account owner or detects a group-room context, the
-transport is skipped and the SDK call fails closed. Sandbox and node-host
-executions intentionally do not receive the endpoint yet; they need an explicit
-socket or network bridge before this can be enabled safely. Direct
-`python some_skill.py` execution is outside PlatformClaw Runtime and must not
+transport is skipped and the SDK call fails closed.
+
+Docker sandbox exec can also receive the same short-lived endpoint/token pair
+when sandbox networking is enabled. PlatformClaw binds the listener to the
+Docker gateway interface discovered from the configured sandbox network, or to
+`PLATFORMCLAW_SANDBOX_CREDENTIAL_BIND_HOST` when an operator explicitly
+overrides it. Networkless sandboxes and non-Docker sandbox backends intentionally
+skip this transport. Node-host execution still needs a node-side bridge before
+it can receive credential runtime variables safely.
+
+Direct `python some_skill.py` execution outside PlatformClaw Runtime must not
 receive credential runtime variables. The SDK must not call `credentials.*`
 Control UI methods, and SDK requests must not include `ownerId`, `accountId`,
 `roomId`, or `systemId` as credential owner input.
@@ -499,9 +506,9 @@ Implemented foundation:
 
 Remaining implementation order:
 
-1. Add a sandbox/node-host bridge for SDK credential lookup. Do not reuse the
-   browser Gateway protocol and do not expose plaintext credential lookup to
-   browser clients.
+1. Add a node-host bridge for SDK credential lookup. Do not reuse the browser
+   Gateway protocol and do not expose plaintext credential lookup to browser
+   clients.
 2. Resolve scope from the run context:
    - Web and DM: current authenticated account.
    - Group room: deny personal credentials by default.

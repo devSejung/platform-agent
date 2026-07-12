@@ -35,7 +35,7 @@ export function registerRuntimeSecretForRedaction(
   pruneExpiredSecrets(now);
   const maxSecrets = opts.maxSecrets ?? DEFAULT_MAX_SECRETS;
   while (registeredSecrets.size >= maxSecrets) {
-    const oldest = registeredSecrets.keys().next().value as string | undefined;
+    const oldest = registeredSecrets.keys().next().value;
     if (!oldest) {
       break;
     }

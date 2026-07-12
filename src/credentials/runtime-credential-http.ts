@@ -13,15 +13,22 @@ type RuntimeCredentialSession = {
 
 export type RuntimeCredentialHttpServer = {
   endpoint: string;
+  listenHost: string;
   registerSession: (context: CredentialRuntimeContext, opts?: { ttlMs?: number }) => string;
   revokeSession: (token: string) => void;
   close: () => Promise<void>;
 };
 
+export type RuntimeCredentialHttpServerOptions = {
+  listenHost?: string;
+  endpointHost?: string;
+};
+
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 16 * 1024;
+const DEFAULT_LISTEN_HOST = "127.0.0.1";
 
-let serverPromise: Promise<RuntimeCredentialHttpServer> | null = null;
+const serverPromises = new Map<string, Promise<RuntimeCredentialHttpServer>>();
 
 // PlatformClaw Phase 3: this loopback server is an internal SDK transport for
 // child processes. It is intentionally separate from the browser Gateway API.
@@ -83,9 +90,23 @@ function pruneSessions(sessions: Map<string, RuntimeCredentialSession>): void {
   }
 }
 
-export function startRuntimeCredentialHttpServer(): Promise<RuntimeCredentialHttpServer> {
-  if (serverPromise) {
-    return serverPromise;
+function normalizeHost(value: string | undefined, fallback: string): string {
+  const trimmed = value?.trim();
+  return trimmed || fallback;
+}
+
+function serverKey(options?: RuntimeCredentialHttpServerOptions): string {
+  return normalizeHost(options?.listenHost, DEFAULT_LISTEN_HOST);
+}
+
+export function startRuntimeCredentialHttpServer(
+  options?: RuntimeCredentialHttpServerOptions,
+): Promise<RuntimeCredentialHttpServer> {
+  const listenHost = serverKey(options);
+  const endpointHost = normalizeHost(options?.endpointHost, listenHost);
+  const existing = serverPromises.get(listenHost);
+  if (existing) {
+    return existing;
   }
 
   const startingServer = new Promise<RuntimeCredentialHttpServer>((resolve, reject) => {
@@ -126,10 +147,11 @@ export function startRuntimeCredentialHttpServer(): Promise<RuntimeCredentialHtt
     });
 
     server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(0, listenHost, () => {
       const address = server.address() as AddressInfo;
       resolve({
-        endpoint: `http://127.0.0.1:${address.port}`,
+        endpoint: `http://${endpointHost}:${address.port}`,
+        listenHost,
         registerSession: (context: CredentialRuntimeContext, opts?: { ttlMs?: number }) => {
           pruneSessions(sessions);
           const token = randomBytes(32).toString("base64url");
@@ -147,26 +169,25 @@ export function startRuntimeCredentialHttpServer(): Promise<RuntimeCredentialHtt
           await new Promise<void>((closeResolve, closeReject) => {
             server.close((err) => (err ? closeReject(err) : closeResolve()));
           });
-          serverPromise = null;
+          serverPromises.delete(listenHost);
         },
       });
     });
   }).catch((err) => {
-    serverPromise = null;
+    serverPromises.delete(listenHost);
     throw err;
   });
 
-  serverPromise = startingServer;
+  serverPromises.set(listenHost, startingServer);
   return startingServer;
 }
 
 export async function stopRuntimeCredentialHttpServerForTest(): Promise<void> {
-  const pendingServer = serverPromise;
-  if (!pendingServer) {
-    return;
-  }
-  const server = await pendingServer;
-  if (server) {
-    await server.close();
+  const pendingServers = [...serverPromises.values()];
+  for (const pendingServer of pendingServers) {
+    const server = await pendingServer;
+    if (server) {
+      await server.close();
+    }
   }
 }

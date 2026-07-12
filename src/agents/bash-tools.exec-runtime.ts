@@ -8,6 +8,7 @@ import {
   redactRegisteredRuntimeSecrets,
   startRuntimeCredentialHttpServer,
   type CredentialRuntimeContext,
+  type RuntimeCredentialHttpServerOptions,
 } from "../credentials/index.js";
 import {
   DEFAULT_EXEC_APPROVAL_TIMEOUT_MS,
@@ -576,6 +577,7 @@ export async function runExecProcess(opts: {
   timeoutSec: number | null;
   onUpdate?: (partialResult: AgentToolResult<ExecToolDetails>) => void;
   credentialRuntimeContext?: CredentialRuntimeContext | null;
+  credentialRuntimeHttp?: RuntimeCredentialHttpServerOptions;
 }): Promise<ExecProcessHandle> {
   const startedAt = Date.now();
   const sessionId = createSessionSlug();
@@ -596,12 +598,12 @@ export async function runExecProcess(opts: {
     if (!credentialRuntimeToken) {
       return;
     }
-    const credentialRuntime = await startRuntimeCredentialHttpServer();
+    const credentialRuntime = await startRuntimeCredentialHttpServer(opts.credentialRuntimeHttp);
     credentialRuntime.revokeSession(credentialRuntimeToken);
     credentialRuntimeToken = null;
   };
   if (opts.credentialRuntimeContext) {
-    const credentialRuntime = await startRuntimeCredentialHttpServer();
+    const credentialRuntime = await startRuntimeCredentialHttpServer(opts.credentialRuntimeHttp);
     credentialRuntimeToken = credentialRuntime.registerSession({
       ...opts.credentialRuntimeContext,
       runId: sessionId,

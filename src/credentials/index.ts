@@ -19,6 +19,7 @@ export {
 export {
   startRuntimeCredentialHttpServer,
   stopRuntimeCredentialHttpServerForTest,
+  type RuntimeCredentialHttpServerOptions,
 } from "./runtime-credential-http.js";
 export {
   resolveRuntimeCredential,

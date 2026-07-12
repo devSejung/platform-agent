@@ -466,9 +466,11 @@ export function createOpenClawCodingTools(options?: {
       options?.exec?.notifyOnExitEmptySuccess ?? execConfig.notifyOnExitEmptySuccess,
     sandbox: sandbox
       ? {
+          backendId: sandbox.backendId,
           containerName: sandbox.containerName,
           workspaceDir: sandbox.workspaceDir,
           containerWorkdir: sandbox.containerWorkdir,
+          dockerNetwork: sandbox.docker.network,
           env: sandbox.backend?.env ?? sandbox.docker.env,
           buildExecSpec: sandbox.backend?.buildExecSpec.bind(sandbox.backend),
           finalizeExec: sandbox.backend?.finalizeExec?.bind(sandbox.backend),

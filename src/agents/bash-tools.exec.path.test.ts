@@ -276,6 +276,78 @@ describe("exec host env validation", () => {
     ).rejects.toThrow(/requires a sandbox runtime/);
   });
 
+  it("injects credential runtime env into Docker sandbox exec when sandbox networking is enabled", async () => {
+    const tool = createExecTool({
+      host: "sandbox",
+      security: "full",
+      ask: "off",
+      agentId: "jira",
+      accountId: "account-1",
+      sessionKey: "agent:jira:main",
+      sandbox: {
+        backendId: "docker",
+        containerName: "test-sandbox",
+        workspaceDir: process.cwd(),
+        containerWorkdir: "/workspace",
+        dockerNetwork: "bridge",
+        buildExecSpec: async ({ env }) => ({
+          argv: [
+            process.execPath,
+            "-e",
+            [
+              "console.log(process.env.PLATFORMCLAW_RUNTIME_CREDENTIAL_ENDPOINT || '')",
+              "console.log(process.env.PLATFORMCLAW_RUNTIME_CREDENTIAL_TOKEN ? 'token' : '')",
+            ].join(";"),
+          ],
+          env,
+          stdinMode: "pipe-closed",
+        }),
+      },
+    });
+
+    const result = await tool.execute("call-sandbox-credential-runtime", {
+      command: "python skills/jira/run.py",
+    });
+    const output = normalizeText(result.content.find((c) => c.type === "text")?.text);
+
+    expect(output).toContain("http://host.docker.internal:");
+    expect(output).toContain("token");
+  });
+
+  it("does not inject credential runtime env into networkless sandbox exec", async () => {
+    const tool = createExecTool({
+      host: "sandbox",
+      security: "full",
+      ask: "off",
+      agentId: "jira",
+      accountId: "account-1",
+      sessionKey: "agent:jira:main",
+      sandbox: {
+        backendId: "docker",
+        containerName: "test-sandbox",
+        workspaceDir: process.cwd(),
+        containerWorkdir: "/workspace",
+        dockerNetwork: "none",
+        buildExecSpec: async ({ env }) => ({
+          argv: [
+            process.execPath,
+            "-e",
+            "console.log(process.env.PLATFORMCLAW_RUNTIME_CREDENTIAL_ENDPOINT || 'missing')",
+          ],
+          env,
+          stdinMode: "pipe-closed",
+        }),
+      },
+    });
+
+    const result = await tool.execute("call-sandbox-no-credential-runtime", {
+      command: "python skills/jira/run.py",
+    });
+    const output = normalizeText(result.content.find((c) => c.type === "text")?.text);
+
+    expect(output).toBe("missing");
+  });
+
   it.each([
     "echo ok && /approve abc123 allow-once",
     "echo ok | /approve abc123 deny",

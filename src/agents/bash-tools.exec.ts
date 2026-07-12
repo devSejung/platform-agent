@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import { resolveExecCredentialRuntimeContext } from "../credentials/index.js";
+import {
+  resolveExecCredentialRuntimeContext,
+  type RuntimeCredentialHttpServerOptions,
+} from "../credentials/index.js";
 import { analyzeShellCommand } from "../infra/exec-approvals-analysis.js";
 import {
   type ExecHost,
@@ -56,6 +59,7 @@ import {
   resolveSandboxWorkdir,
   resolveWorkdir,
   truncateMiddle,
+  type BashSandboxConfig,
 } from "./bash-tools.shared.js";
 import { assertSandboxPath } from "./sandbox-paths.js";
 import { preflightSkillCredentials } from "./skills/credential-preflight.js";
@@ -68,6 +72,37 @@ export type {
   ExecToolDefaults,
   ExecToolDetails,
 } from "./bash-tools.exec-types.js";
+
+const SANDBOX_CREDENTIAL_ENDPOINT_HOST_ENV = "PLATFORMCLAW_SANDBOX_CREDENTIAL_ENDPOINT_HOST";
+const SANDBOX_CREDENTIAL_BIND_HOST_ENV = "PLATFORMCLAW_SANDBOX_CREDENTIAL_BIND_HOST";
+const DEFAULT_SANDBOX_CREDENTIAL_ENDPOINT_HOST = "host.docker.internal";
+const DEFAULT_SANDBOX_CREDENTIAL_BIND_HOST = "0.0.0.0";
+
+function normalizeSandboxNetwork(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.toLowerCase() : null;
+}
+
+function resolveSandboxCredentialRuntimeHttp(
+  sandbox: BashSandboxConfig | undefined,
+): RuntimeCredentialHttpServerOptions | null {
+  if (!sandbox) {
+    return null;
+  }
+  if ((sandbox.backendId?.trim() || "docker") !== "docker") {
+    return null;
+  }
+  const network = normalizeSandboxNetwork(sandbox.dockerNetwork);
+  if (!network || network === "none") {
+    return null;
+  }
+  const endpointHost =
+    process.env[SANDBOX_CREDENTIAL_ENDPOINT_HOST_ENV]?.trim() ||
+    DEFAULT_SANDBOX_CREDENTIAL_ENDPOINT_HOST;
+  const listenHost =
+    process.env[SANDBOX_CREDENTIAL_BIND_HOST_ENV]?.trim() || DEFAULT_SANDBOX_CREDENTIAL_BIND_HOST;
+  return { endpointHost, listenHost };
+}
 
 function buildExecForegroundResult(params: {
   outcome: ExecProcessOutcome;
@@ -1697,10 +1732,10 @@ export function createExecTool(
         : (explicitTimeoutSec ?? defaultTimeoutSec);
       const getWarningText = () => (warnings.length ? `${warnings.join("\n")}\n\n` : "");
       const usePty = params.pty === true && !sandbox;
+      const credentialRuntimeHttp =
+        host === "sandbox" ? resolveSandboxCredentialRuntimeHttp(sandbox) : undefined;
 
-      if (host === "gateway") {
-        // PlatformClaw Phase 4: Skill credential preflight is intentionally
-        // gateway-host only until sandbox/node-host SDK bridges exist.
+      if (host === "gateway" || credentialRuntimeHttp) {
         const credentialPreflight = await preflightSkillCredentials({
           command: params.command,
           workdir,
@@ -1721,7 +1756,7 @@ export function createExecTool(
       await validateScriptFileForShellBleed({ command: params.command, workdir });
 
       const credentialRuntime =
-        host === "gateway"
+        host === "gateway" || credentialRuntimeHttp
           ? resolveExecCredentialRuntimeContext({
               runId: "pending",
               agentId,
@@ -1732,7 +1767,15 @@ export function createExecTool(
             })
           : null;
       if (credentialRuntime && !credentialRuntime.ok) {
-        logInfo(`credential runtime skipped for gateway exec: ${credentialRuntime.reason}`);
+        logInfo(`credential runtime skipped for ${host} exec: ${credentialRuntime.reason}`);
+      } else if (host === "sandbox" && !credentialRuntimeHttp) {
+        logInfo(
+          `credential runtime skipped for sandbox exec: ${
+            sandbox?.backendId && sandbox.backendId !== "docker"
+              ? "unsupported_sandbox_backend"
+              : "sandbox_network_unavailable"
+          }`,
+        );
       }
 
       const run = await runExecProcess({
@@ -1751,10 +1794,11 @@ export function createExecTool(
         scopeKey: defaults?.scopeKey,
         sessionKey: notifySessionKey,
         timeoutSec: effectiveTimeout,
-        // PlatformClaw Phase 3: expose the Python SDK credential runtime only
-        // for gateway-host exec. Sandbox/node need an explicit socket/network
-        // bridge before they can safely receive this endpoint.
+        // PlatformClaw: node-host still needs a node-side bridge before it can
+        // safely receive this endpoint. Gateway uses loopback; Docker sandbox
+        // uses a short-lived host bridge when sandbox networking is enabled.
         credentialRuntimeContext: credentialRuntime?.ok ? credentialRuntime.context : null,
+        credentialRuntimeHttp: credentialRuntimeHttp ?? undefined,
         onUpdate,
       });
 

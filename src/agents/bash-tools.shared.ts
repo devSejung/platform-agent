@@ -9,9 +9,11 @@ import type { SandboxBackendExecSpec } from "./sandbox/backend.js";
 const CHUNK_LIMIT = 8 * 1024;
 
 export type BashSandboxConfig = {
+  backendId?: string;
   containerName: string;
   workspaceDir: string;
   containerWorkdir: string;
+  dockerNetwork?: string;
   env?: Record<string, string>;
   buildExecSpec?: (params: {
     command: string;

@@ -131,3 +131,29 @@ Use one of:
 - bake the env into your custom sandbox image
 
 Global `env` and `skills.entries.<skill>.env/apiKey` apply to **host** runs only.
+
+PlatformClaw credential SDK transport is different from plaintext skill env
+vars. When Docker sandbox networking is enabled, the runtime can inject only a
+short-lived credential endpoint/token pair into sandbox exec so Python skills
+can call `from platformclaw import credentials` and
+`credentials.get("credential.key")`. The secret value is returned to the skill
+process by the runtime endpoint and is not written into the workspace.
+
+For Linux Docker hosts, sandbox credential SDK calls generally require:
+
+```json5
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "docker": {
+          "network": "bridge",
+          "extraHosts": ["host.docker.internal:host-gateway"]
+        }
+      }
+    }
+  }
+}
+```
+
+`sandbox.docker.network: "none"` intentionally disables this transport.

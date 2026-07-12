@@ -32,6 +32,25 @@ afterEach(async () => {
 });
 
 describe("runtime credential HTTP server", () => {
+  it("creates a separate Docker sandbox endpoint without changing the host endpoint", async () => {
+    const hostServer = await startRuntimeCredentialHttpServer();
+    const sandboxServer = await startRuntimeCredentialHttpServer({
+      listenHost: "127.0.0.1",
+      endpointHost: "host.docker.internal",
+    });
+
+    expect(hostServer.endpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/u);
+    expect(sandboxServer.endpoint).toBe(hostServer.endpoint);
+
+    const externalSandboxServer = await startRuntimeCredentialHttpServer({
+      listenHost: "0.0.0.0",
+      endpointHost: "host.docker.internal",
+    });
+    expect(externalSandboxServer.endpoint).toMatch(/^http:\/\/host\.docker\.internal:\d+$/u);
+    expect(externalSandboxServer.listenHost).toBe("0.0.0.0");
+    expect(externalSandboxServer.endpoint).not.toBe(hostServer.endpoint);
+  });
+
   it("returns credentials only with a registered runtime token", async () => {
     const server = await startRuntimeCredentialHttpServer();
     const token = server.registerSession({

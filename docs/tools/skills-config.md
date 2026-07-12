@@ -157,3 +157,7 @@ For Linux Docker hosts, sandbox credential SDK calls generally require:
 ```
 
 `sandbox.docker.network: "none"` intentionally disables this transport.
+By default, PlatformClaw binds the sandbox credential listener to the Docker
+network gateway address discovered from `docker network inspect`. Set
+`PLATFORMCLAW_SANDBOX_CREDENTIAL_BIND_HOST` only when the gateway address must
+be overridden for a custom Docker setup.

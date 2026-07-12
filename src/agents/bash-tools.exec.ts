@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
+import { execFile } from "node:child_process";
 import path from "node:path";
+import { promisify } from "node:util";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import {
   resolveExecCredentialRuntimeContext,
@@ -76,16 +78,32 @@ export type {
 const SANDBOX_CREDENTIAL_ENDPOINT_HOST_ENV = "PLATFORMCLAW_SANDBOX_CREDENTIAL_ENDPOINT_HOST";
 const SANDBOX_CREDENTIAL_BIND_HOST_ENV = "PLATFORMCLAW_SANDBOX_CREDENTIAL_BIND_HOST";
 const DEFAULT_SANDBOX_CREDENTIAL_ENDPOINT_HOST = "host.docker.internal";
-const DEFAULT_SANDBOX_CREDENTIAL_BIND_HOST = "0.0.0.0";
+const execFileAsync = promisify(execFile);
 
 function normalizeSandboxNetwork(value: string | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed.toLowerCase() : null;
 }
 
-function resolveSandboxCredentialRuntimeHttp(
+async function resolveDockerNetworkGatewayIp(network: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync("docker", [
+      "network",
+      "inspect",
+      network,
+      "--format",
+      "{{range .IPAM.Config}}{{if .Gateway}}{{.Gateway}}{{end}}{{end}}",
+    ]);
+    const gateway = stdout.trim().split(/\s+/u).find(Boolean);
+    return gateway ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveSandboxCredentialRuntimeHttp(
   sandbox: BashSandboxConfig | undefined,
-): RuntimeCredentialHttpServerOptions | null {
+): Promise<RuntimeCredentialHttpServerOptions | null> {
   if (!sandbox) {
     return null;
   }
@@ -100,7 +118,11 @@ function resolveSandboxCredentialRuntimeHttp(
     process.env[SANDBOX_CREDENTIAL_ENDPOINT_HOST_ENV]?.trim() ||
     DEFAULT_SANDBOX_CREDENTIAL_ENDPOINT_HOST;
   const listenHost =
-    process.env[SANDBOX_CREDENTIAL_BIND_HOST_ENV]?.trim() || DEFAULT_SANDBOX_CREDENTIAL_BIND_HOST;
+    process.env[SANDBOX_CREDENTIAL_BIND_HOST_ENV]?.trim() ||
+    (await resolveDockerNetworkGatewayIp(network));
+  if (!listenHost) {
+    return null;
+  }
   return { endpointHost, listenHost };
 }
 
@@ -1733,7 +1755,7 @@ export function createExecTool(
       const getWarningText = () => (warnings.length ? `${warnings.join("\n")}\n\n` : "");
       const usePty = params.pty === true && !sandbox;
       const credentialRuntimeHttp =
-        host === "sandbox" ? resolveSandboxCredentialRuntimeHttp(sandbox) : undefined;
+        host === "sandbox" ? await resolveSandboxCredentialRuntimeHttp(sandbox) : undefined;
 
       if (host === "gateway" || credentialRuntimeHttp) {
         const credentialPreflight = await preflightSkillCredentials({

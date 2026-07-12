@@ -89,7 +89,7 @@ describe("exec PATH login shell merge", () => {
   });
 
   beforeEach(() => {
-    envSnapshot = captureEnv(["PATH", "SHELL"]);
+    envSnapshot = captureEnv(["PATH", "SHELL", "PLATFORMCLAW_SANDBOX_CREDENTIAL_BIND_HOST"]);
     shellEnvMocks.getShellPathFromLoginShell.mockReset();
     shellEnvMocks.getShellPathFromLoginShell.mockReturnValue("/custom/bin:/opt/bin");
     shellEnvMocks.resolveShellEnvFallbackTimeoutMs.mockReset();
@@ -277,6 +277,7 @@ describe("exec host env validation", () => {
   });
 
   it("injects credential runtime env into Docker sandbox exec when sandbox networking is enabled", async () => {
+    process.env.PLATFORMCLAW_SANDBOX_CREDENTIAL_BIND_HOST = "127.0.0.1";
     const tool = createExecTool({
       host: "sandbox",
       security: "full",

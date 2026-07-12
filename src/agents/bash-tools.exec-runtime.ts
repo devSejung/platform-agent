@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import {
@@ -127,6 +129,7 @@ export const DEFAULT_APPROVAL_TIMEOUT_MS = DEFAULT_EXEC_APPROVAL_TIMEOUT_MS;
 export const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = DEFAULT_APPROVAL_TIMEOUT_MS + 10_000;
 const DEFAULT_APPROVAL_RUNNING_NOTICE_MS = 10_000;
 const APPROVAL_SLUG_LENGTH = 8;
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 export const execSchema = Type.Object({
   command: Type.String({ description: "Shell command to execute" }),
@@ -420,6 +423,33 @@ function joinExecFailureOutput(aggregated: string, reason: string) {
   return aggregated ? `${aggregated}\n\n${reason}` : reason;
 }
 
+function resolvePlatformClawPythonSdkPath(env: NodeJS.ProcessEnv): string | null {
+  const configured = env.PLATFORMCLAW_PYTHON_SDK_PATH?.trim();
+  const candidates = [
+    configured,
+    path.resolve(process.cwd(), "sdk", "python"),
+    path.resolve(MODULE_DIR, "..", "sdk", "python"),
+    path.resolve(MODULE_DIR, "..", "..", "sdk", "python"),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  for (const candidate of candidates) {
+    const resolved = path.resolve(candidate);
+    if (existsSync(path.join(resolved, "platformclaw", "__init__.py"))) {
+      return resolved;
+    }
+  }
+  return null;
+}
+
+function prependPythonPath(env: Record<string, string>, entry: string): void {
+  const existingKey = Object.keys(env).find((key) => key.toUpperCase() === "PYTHONPATH");
+  const key = existingKey ?? "PYTHONPATH";
+  const existing = env[key]?.trim();
+  const parts = existing ? existing.split(path.delimiter).filter(Boolean) : [];
+  if (!parts.includes(entry)) {
+    env[key] = [entry, ...parts].join(path.delimiter);
+  }
+}
+
 function classifyExecFailureKind(params: {
   exitReason: TerminationReason;
   exitCode: number;
@@ -555,6 +585,12 @@ export async function runExecProcess(opts: {
     ...opts.env,
     OPENCLAW_SHELL: "exec",
   };
+  if (!opts.sandbox) {
+    const sdkPath = resolvePlatformClawPythonSdkPath(shellRuntimeEnv);
+    if (sdkPath) {
+      prependPythonPath(shellRuntimeEnv, sdkPath);
+    }
+  }
   let credentialRuntimeToken: string | null = null;
   const revokeCredentialRuntimeToken = async () => {
     if (!credentialRuntimeToken) {

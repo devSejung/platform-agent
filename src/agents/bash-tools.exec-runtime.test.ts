@@ -394,6 +394,29 @@ describe("runExecProcess redaction", () => {
     expect(outcome.aggregated).toContain("runtim…7890");
     expect(outcome.aggregated).not.toContain("runtime-secret-token-1234567890");
   });
+
+  it("adds the bundled PlatformClaw Python SDK to host PYTHONPATH", async () => {
+    const {
+      PYTHONPATH: _pythonPath,
+      PLATFORMCLAW_PYTHON_SDK_PATH: _sdkPath,
+      ...baseEnv
+    } = process.env;
+    const run = await runExecProcess({
+      command: 'python3 -c "from platformclaw import credentials; print(credentials.__name__)"',
+      workdir: process.cwd(),
+      env: baseEnv as Record<string, string>,
+      usePty: false,
+      warnings: [],
+      maxOutput: 1000,
+      pendingMaxOutput: 1000,
+      notifyOnExit: false,
+      timeoutSec: 5,
+    });
+
+    const outcome = await run.promise;
+    expect(outcome.status).toBe("completed");
+    expect(outcome.aggregated).toContain("platformclaw.credentials");
+  });
 });
 
 describe("buildExecExitOutcome", () => {

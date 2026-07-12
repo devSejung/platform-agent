@@ -15,6 +15,12 @@ For how skills are loaded and prioritized, see [Skills](/tools/skills).
 
 ## Create your first skill
 
+OpenClaw loads workspace skills from `<workspace>/skills/<skill-name>/`. When
+creating a skill for a specific PlatformClaw employee/agent, use that
+employee-bound agent workspace and create the skill under its `skills/`
+directory. Do not create new skills directly at `<workspace>/<skill-name>/`;
+that folder is ordinary workspace content, not a loadable workspace skill.
+
 <Steps>
   <Step title="Create the skill directory">
     Skills live in your workspace. Create a new folder:

@@ -274,12 +274,17 @@ Usage:
 scripts/init_skill.py <skill-name> --path <output-directory> [--resources scripts,references,assets] [--examples]
 ```
 
+For OpenClaw/PlatformClaw workspace skills, the output directory must be the active agent
+workspace's `skills` directory. The initializer creates `<skill-name>` under the path you
+provide, so use `<workspace>/skills` as `--path`, not `<workspace>`. Creating a skill at
+`<workspace>/<skill-name>` will not load as a workspace skill.
+
 Examples:
 
 ```bash
-scripts/init_skill.py my-skill --path skills/public
-scripts/init_skill.py my-skill --path skills/public --resources scripts,references
-scripts/init_skill.py my-skill --path skills/public --resources scripts --examples
+scripts/init_skill.py my-skill --path ~/.openclaw/workspace/skills
+scripts/init_skill.py my-skill --path ~/.openclaw/workspace/skills --resources scripts,references
+scripts/init_skill.py my-skill --path ~/.openclaw/workspace/skills --resources scripts --examples
 ```
 
 The script:

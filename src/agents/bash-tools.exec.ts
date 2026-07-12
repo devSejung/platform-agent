@@ -117,6 +117,9 @@ async function resolveSandboxCredentialRuntimeHttp(
   const endpointHost =
     process.env[SANDBOX_CREDENTIAL_ENDPOINT_HOST_ENV]?.trim() ||
     DEFAULT_SANDBOX_CREDENTIAL_ENDPOINT_HOST;
+  // Docker sandbox credential support is pre-wired for future sandboxed Skill
+  // runs. Keep the listener on the Docker gateway interface instead of a broad
+  // host bind; networkless sandboxes intentionally skip this transport.
   const listenHost =
     process.env[SANDBOX_CREDENTIAL_BIND_HOST_ENV]?.trim() ||
     (await resolveDockerNetworkGatewayIp(network));

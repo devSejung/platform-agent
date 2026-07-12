@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import { buildExecCredentialRuntimeContext } from "../credentials/index.js";
+import { resolveExecCredentialRuntimeContext } from "../credentials/index.js";
 import { analyzeShellCommand } from "../infra/exec-approvals-analysis.js";
 import {
   type ExecHost,
@@ -1720,6 +1720,21 @@ export function createExecTool(
       // before we execute and burn tokens in cron loops.
       await validateScriptFileForShellBleed({ command: params.command, workdir });
 
+      const credentialRuntime =
+        host === "gateway"
+          ? resolveExecCredentialRuntimeContext({
+              runId: "pending",
+              agentId,
+              sessionKey: defaults?.sessionKey,
+              messageProvider: defaults?.messageProvider,
+              currentChannelId: defaults?.currentChannelId,
+              accountId: defaults?.accountId,
+            })
+          : null;
+      if (credentialRuntime && !credentialRuntime.ok) {
+        logInfo(`credential runtime skipped for gateway exec: ${credentialRuntime.reason}`);
+      }
+
       const run = await runExecProcess({
         command: params.command,
         execCommand: execCommandOverride,
@@ -1739,17 +1754,7 @@ export function createExecTool(
         // PlatformClaw Phase 3: expose the Python SDK credential runtime only
         // for gateway-host exec. Sandbox/node need an explicit socket/network
         // bridge before they can safely receive this endpoint.
-        credentialRuntimeContext:
-          host === "gateway"
-            ? buildExecCredentialRuntimeContext({
-                runId: "pending",
-                agentId,
-                sessionKey: defaults?.sessionKey,
-                messageProvider: defaults?.messageProvider,
-                currentChannelId: defaults?.currentChannelId,
-                accountId: defaults?.accountId,
-              })
-            : null,
+        credentialRuntimeContext: credentialRuntime?.ok ? credentialRuntime.context : null,
         onUpdate,
       });
 

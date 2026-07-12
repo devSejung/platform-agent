@@ -245,7 +245,7 @@ function renderScopePanel(
                   class="btn btn--sm"
                   @click=${() => props.onRestoreScope(entry.id, entry.name)}
                 >
-                  ${i18n.locale === "ko" ? "복구" : "Restore"}
+                  ${i18n.getLocale() === "ko" ? "복구" : "Restore"}
                 </button>
               `
             : nothing}
@@ -325,7 +325,7 @@ function renderSelectedGroupDetail(props: GroupsViewProps) {
                   class="btn btn--sm"
                   @click=${() => props.onRestoreScope(detail.group.id, detail.group.name)}
                 >
-                  ${i18n.locale === "ko" ? "복구" : "Restore"}
+                  ${i18n.getLocale() === "ko" ? "복구" : "Restore"}
                 </button>
               `
             : nothing}

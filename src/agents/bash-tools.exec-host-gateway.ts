@@ -1,5 +1,5 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import { buildExecCredentialRuntimeContext } from "../credentials/index.js";
+import { resolveExecCredentialRuntimeContext } from "../credentials/index.js";
 import {
   addDurableCommandApproval,
   type ExecAsk,
@@ -18,6 +18,7 @@ import {
   detectInterpreterInlineEvalArgv,
 } from "../infra/exec-inline-eval.js";
 import type { SafeBinProfile } from "../infra/exec-safe-bin-policy.js";
+import { logInfo } from "../logger.js";
 import { markBackgrounded, tail } from "./bash-process-registry.js";
 import {
   buildExecApprovalRequesterContext,
@@ -380,6 +381,20 @@ export async function processGatewayAllowlist(
       recordMatchedAllowlistUse(resolvedPath ?? undefined);
 
       let run: Awaited<ReturnType<typeof runExecProcess>> | null = null;
+      const credentialRuntime = resolveExecCredentialRuntimeContext({
+        runId: "pending",
+        agentId: params.agentId,
+        sessionKey: params.sessionKey,
+        messageProvider: params.turnSourceChannel,
+        currentChannelId: params.turnSourceTo,
+        accountId: params.turnSourceAccountId,
+      });
+      if (!credentialRuntime.ok) {
+        logInfo(
+          `credential runtime skipped for gateway approval follow-up: ${credentialRuntime.reason}`,
+        );
+      }
+
       try {
         run = await runExecProcess({
           command: params.command,
@@ -399,14 +414,7 @@ export async function processGatewayAllowlist(
           timeoutSec: effectiveTimeout,
           // PlatformClaw Phase 3: delayed approval follow-up runs execute on the
           // gateway host, so they can use the same local SDK credential runtime.
-          credentialRuntimeContext: buildExecCredentialRuntimeContext({
-            runId: "pending",
-            agentId: params.agentId,
-            sessionKey: params.sessionKey,
-            messageProvider: params.turnSourceChannel,
-            currentChannelId: params.turnSourceTo,
-            accountId: params.turnSourceAccountId,
-          }),
+          credentialRuntimeContext: credentialRuntime.ok ? credentialRuntime.context : null,
         });
       } catch {
         await sendExecApprovalFollowupResult(

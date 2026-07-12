@@ -5,7 +5,12 @@ export {
   encryptCredentialValue,
   loadCredentialMasterKey,
 } from "./encryption.js";
-export { buildExecCredentialRuntimeContext } from "./exec-runtime-context.js";
+export {
+  buildExecCredentialRuntimeContext,
+  resolveExecCredentialRuntimeContext,
+  type ExecCredentialRuntimeContextResult,
+  type ExecCredentialRuntimeContextSkippedReason,
+} from "./exec-runtime-context.js";
 export {
   clearRuntimeSecretRedactionRegistryForTest,
   redactRegisteredRuntimeSecrets,

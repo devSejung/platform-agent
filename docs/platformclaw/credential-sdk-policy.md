@@ -151,13 +151,17 @@ the process. Missing credentials stop the process and return a registration
 hint. Skills without `requires.credentials` keep the existing behavior and may
 still fail later if their code calls `credentials.get(...)` for a missing value.
 
-The Python SDK transport is wired for gateway-host exec processes only. Runtime
-injects a local loopback endpoint plus a per-run token, not plaintext
-credentials. Sandbox and node-host executions intentionally do not receive the
-endpoint yet; they need an explicit socket or network bridge before this can be
-enabled safely. The SDK must not call `credentials.*` Control UI methods, and
-SDK requests must not include `ownerId`, `accountId`, `roomId`, or `systemId` as
-credential owner input.
+The Python SDK transport is wired for gateway-host exec processes only,
+including foreground exec and gateway approval follow-up exec. Runtime injects a
+local loopback endpoint plus a per-run token, not plaintext credentials. If the
+Runtime cannot prove an account owner or detects a group-room context, the
+transport is skipped and the SDK call fails closed. Sandbox and node-host
+executions intentionally do not receive the endpoint yet; they need an explicit
+socket or network bridge before this can be enabled safely. Direct
+`python some_skill.py` execution is outside PlatformClaw Runtime and must not
+receive credential runtime variables. The SDK must not call `credentials.*`
+Control UI methods, and SDK requests must not include `ownerId`, `accountId`,
+`roomId`, or `systemId` as credential owner input.
 
 ## Temporary Gateway Exec Approval Policy
 

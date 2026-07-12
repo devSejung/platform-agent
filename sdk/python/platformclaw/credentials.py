@@ -12,7 +12,10 @@ def get(name: str) -> str:
     endpoint = os.environ.get("PLATFORMCLAW_RUNTIME_CREDENTIAL_ENDPOINT", "").rstrip("/")
     token = os.environ.get("PLATFORMCLAW_RUNTIME_CREDENTIAL_TOKEN", "")
     if not endpoint or not token:
-        raise CredentialError("PlatformClaw credential runtime is not available for this process")
+        raise CredentialError(
+            "PlatformClaw credential runtime is not available for this process. "
+            "Run the skill through a PlatformClaw Runtime exec path instead of direct python."
+        )
 
     payload = json.dumps({"definitionKey": name}).encode("utf-8")
     req = urllib.request.Request(
@@ -29,7 +32,12 @@ def get(name: str) -> str:
             body = json.loads(res.read().decode("utf-8"))
     except urllib.error.HTTPError as err:
         detail = err.read().decode("utf-8", errors="replace")
-        raise CredentialError(detail or str(err)) from err
+        try:
+            parsed = json.loads(detail)
+            message = parsed.get("error") if isinstance(parsed, dict) else None
+        except json.JSONDecodeError:
+            message = None
+        raise CredentialError(str(message or detail or err)) from err
 
     if not body.get("ok"):
         raise CredentialError(str(body.get("error") or "credential lookup failed"))

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildExecCredentialRuntimeContext } from "./exec-runtime-context.js";
+import {
+  buildExecCredentialRuntimeContext,
+  resolveExecCredentialRuntimeContext,
+} from "./exec-runtime-context.js";
 
 describe("buildExecCredentialRuntimeContext", () => {
   it("builds account-scoped context from runtime-owned exec defaults", () => {
@@ -40,5 +43,22 @@ describe("buildExecCredentialRuntimeContext", () => {
         accountId: "account-1",
       }),
     ).toBeNull();
+  });
+
+  it("reports why runtime context cannot be built", () => {
+    expect(
+      resolveExecCredentialRuntimeContext({
+        runId: "run-1",
+        accountId: "",
+      }),
+    ).toEqual({ ok: false, reason: "missing_account" });
+
+    expect(
+      resolveExecCredentialRuntimeContext({
+        runId: "run-1",
+        accountId: "account-1",
+        currentChannelId: "group-room-1",
+      }),
+    ).toEqual({ ok: false, reason: "group_channel" });
   });
 });

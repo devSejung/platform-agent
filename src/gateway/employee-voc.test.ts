@@ -285,7 +285,11 @@ describe("VOC Jira helpers", () => {
     expect(payload.fields.issuetype).toEqual({ name: "Sub-task" });
     expect(payload.fields.components).toEqual([{ name: "CLAW" }]);
     expect(payload.fields.assignee).toEqual({ name: "seungon.jung" });
-    expect(payload.fields.customfield_10733).toEqual([{ name: "hyeonho.jung" }, { name: "eon" }]);
+    expect(payload.fields.customfield_10733).toEqual([
+      { name: "hyeonho.jung" },
+      { name: "seungon.jung" },
+      { name: "eon" },
+    ]);
     expect(payload.fields.description).toContain("Reporter Employee ID: eon");
   });
 });

@@ -125,7 +125,11 @@ export function buildVocJiraPayload(params: {
   env?: NodeJS.ProcessEnv;
 }): JiraVocPayload {
   const config = resolveVocJiraConfig(params.env);
-  const coWorkers = dedupe([...VOC_JIRA_CONFIG.coWorkerDefaults, params.reporterEmployeeId]);
+  const coWorkers = dedupe([
+    ...VOC_JIRA_CONFIG.coWorkerDefaults,
+    config.assigneeName,
+    params.reporterEmployeeId,
+  ]);
   return {
     fields: {
       project: { key: config.projectKey },

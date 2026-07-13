@@ -7,19 +7,6 @@ const MAX_VOC_TITLE_CHARS = 200;
 const MAX_VOC_BODY_CHARS = 8000;
 const MAX_VOC_JSON_BYTES = 64 * 1024;
 
-const VOC_JIRA_CONFIG = {
-  jiraBaseUrl: "https://jira.samsungds.net",
-  createIssuePath: "/rest/api/2/issue",
-  browseIssuePath: "/browse",
-  projectKey: "SOCPE",
-  parentIssueKey: "SOCPE-75195",
-  issueTypeName: "Sub-task",
-  componentName: "CLAW",
-  assigneeName: "seungon.jung",
-  coWorkerFieldId: "customfield_10733",
-  coWorkerDefaults: ["hyeonho.jung"],
-} as const;
-
 const JIRA_AUTH_HEADER_ENV = "OPENCLAW_JIRA_AUTH_HEADER";
 const JIRA_COOKIE_ENV = "OPENCLAW_JIRA_COOKIE";
 const JIRA_ID_ENV = "OPENCLAW_JIRA_VOC_ID";
@@ -30,8 +17,20 @@ const JIRA_LEGACY_USERNAME_ENV = "JIRA_USERNAME";
 const JIRA_LEGACY_API_TOKEN_ENV = "JIRA_API_TOKEN";
 const JIRA_LEGACY_URL_ENV = "JIRA_URL";
 const JIRA_LEGACY_PROJECT_KEY_ENV = "JIRA_PROJECT_KEY";
+const JIRA_PARENT_ISSUE_KEY_ENV = "OPENCLAW_JIRA_PARENT_ISSUE_KEY";
+const JIRA_LEGACY_PARENT_ISSUE_KEY_ENV = "JIRA_PARENT_ISSUE_KEY";
+const JIRA_ISSUE_TYPE_ENV = "OPENCLAW_JIRA_ISSUE_TYPE";
+const JIRA_LEGACY_ISSUE_TYPE_ENV = "JIRA_ISSUE_TYPE";
+const JIRA_ASSIGNEE_ENV = "OPENCLAW_JIRA_ASSIGNEE";
+const JIRA_LEGACY_ASSIGNEE_ENV = "JIRA_ASSIGNEE";
 const JIRA_LEGACY_DEFAULT_COMPONENTS_ENV = "JIRA_DEFAULT_COMPONENTS";
 const JIRA_LEGACY_COWORKER_FIELD_ENV = "JIRA_COWORKER_FIELD";
+const JIRA_DEFAULT_COMPONENTS_ENV = "OPENCLAW_JIRA_DEFAULT_COMPONENTS";
+const JIRA_COWORKER_FIELD_ENV = "OPENCLAW_JIRA_COWORKER_FIELD";
+const JIRA_DEFAULT_COWORKERS_ENV = "OPENCLAW_JIRA_DEFAULT_COWORKERS";
+const JIRA_LEGACY_DEFAULT_COWORKERS_ENV = "JIRA_DEFAULT_COWORKERS";
+const JIRA_URL_ENV = "OPENCLAW_JIRA_URL";
+const JIRA_PROJECT_KEY_ENV = "OPENCLAW_JIRA_PROJECT_KEY";
 
 type JsonBodyReader = (
   req: IncomingMessage,
@@ -46,7 +45,18 @@ type JiraVocPayload = {
   fields: Record<string, unknown>;
 };
 
-type ResolvedVocJiraConfig = typeof VOC_JIRA_CONFIG;
+type ResolvedVocJiraConfig = {
+  jiraBaseUrl: string;
+  createIssuePath: string;
+  browseIssuePath: string;
+  projectKey: string;
+  parentIssueKey: string;
+  issueTypeName: string;
+  componentNames: string[];
+  assigneeName: string;
+  coWorkerFieldId: string;
+  coWorkerDefaults: string[];
+};
 
 function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status;
@@ -77,22 +87,55 @@ export function buildCoWorkerFieldValue(coWorkers: readonly string[]) {
   return dedupe(coWorkers).map((name) => ({ name }));
 }
 
+function resolveCsvEnv(
+  env: NodeJS.ProcessEnv,
+  preferredKey: string,
+  legacyKey?: string,
+): string[] {
+  const raw = env[preferredKey]?.trim() || (legacyKey ? env[legacyKey]?.trim() : "") || "";
+  return raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function requireEnvValue(
+  env: NodeJS.ProcessEnv,
+  preferredKey: string,
+  legacyKey?: string,
+): string {
+  const value = env[preferredKey]?.trim() || (legacyKey ? env[legacyKey]?.trim() : "") || "";
+  if (!value) {
+    throw new Error(`Missing Jira VOC config env: ${preferredKey}${legacyKey ? ` (or ${legacyKey})` : ""}`);
+  }
+  return value;
+}
+
 function resolveVocJiraConfig(env: NodeJS.ProcessEnv = process.env): ResolvedVocJiraConfig {
-  const jiraBaseUrl = env[JIRA_LEGACY_URL_ENV]?.trim() || VOC_JIRA_CONFIG.jiraBaseUrl;
-  const projectKey = env[JIRA_LEGACY_PROJECT_KEY_ENV]?.trim() || VOC_JIRA_CONFIG.projectKey;
-  const coWorkerFieldId =
-    env[JIRA_LEGACY_COWORKER_FIELD_ENV]?.trim() || VOC_JIRA_CONFIG.coWorkerFieldId;
-  const componentName =
-    env[JIRA_LEGACY_DEFAULT_COMPONENTS_ENV]
-      ?.split(",")
-      .map((value) => value.trim())
-      .find(Boolean) || VOC_JIRA_CONFIG.componentName;
+  const componentNames = resolveCsvEnv(
+    env,
+    JIRA_DEFAULT_COMPONENTS_ENV,
+    JIRA_LEGACY_DEFAULT_COMPONENTS_ENV,
+  );
+  const coWorkerDefaults = resolveCsvEnv(
+    env,
+    JIRA_DEFAULT_COWORKERS_ENV,
+    JIRA_LEGACY_DEFAULT_COWORKERS_ENV,
+  );
   return {
-    ...VOC_JIRA_CONFIG,
-    jiraBaseUrl,
-    projectKey,
-    componentName,
-    coWorkerFieldId,
+    jiraBaseUrl: requireEnvValue(env, JIRA_URL_ENV, JIRA_LEGACY_URL_ENV),
+    createIssuePath: "/rest/api/2/issue",
+    browseIssuePath: "/browse",
+    projectKey: requireEnvValue(env, JIRA_PROJECT_KEY_ENV, JIRA_LEGACY_PROJECT_KEY_ENV),
+    parentIssueKey: requireEnvValue(env, JIRA_PARENT_ISSUE_KEY_ENV, JIRA_LEGACY_PARENT_ISSUE_KEY_ENV),
+    issueTypeName: requireEnvValue(env, JIRA_ISSUE_TYPE_ENV, JIRA_LEGACY_ISSUE_TYPE_ENV),
+    componentNames:
+      componentNames.length > 0
+        ? componentNames
+        : [requireEnvValue(env, JIRA_DEFAULT_COMPONENTS_ENV, JIRA_LEGACY_DEFAULT_COMPONENTS_ENV)],
+    assigneeName: requireEnvValue(env, JIRA_ASSIGNEE_ENV, JIRA_LEGACY_ASSIGNEE_ENV),
+    coWorkerFieldId: requireEnvValue(env, JIRA_COWORKER_FIELD_ENV, JIRA_LEGACY_COWORKER_FIELD_ENV),
+    coWorkerDefaults,
   };
 }
 
@@ -113,7 +156,7 @@ function buildVocDescription(params: {
     `Reporter Employee ID: ${params.reporterEmployeeId}`,
     "Created via: Employee Web UI",
     `Parent: ${config.parentIssueKey}`,
-    `Component: ${config.componentName}`,
+    `Components: ${config.componentNames.join(", ")}`,
   ].join("\n");
 }
 
@@ -126,7 +169,7 @@ export function buildVocJiraPayload(params: {
 }): JiraVocPayload {
   const config = resolveVocJiraConfig(params.env);
   const coWorkers = dedupe([
-    ...VOC_JIRA_CONFIG.coWorkerDefaults,
+    ...config.coWorkerDefaults,
     config.assigneeName,
     params.reporterEmployeeId,
   ]);
@@ -142,7 +185,7 @@ export function buildVocJiraPayload(params: {
         config,
       }),
       issuetype: { name: config.issueTypeName },
-      components: [{ name: config.componentName }],
+      components: config.componentNames.map((name) => ({ name })),
       assignee: { name: config.assigneeName },
       [config.coWorkerFieldId]: buildCoWorkerFieldValue(coWorkers),
     },

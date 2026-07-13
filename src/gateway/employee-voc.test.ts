@@ -9,6 +9,18 @@ import {
 } from "./employee-voc.js";
 import { makeMockHttpResponse } from "./test-http-response.js";
 
+function setVocEnv(overrides?: Partial<NodeJS.ProcessEnv>) {
+  process.env.OPENCLAW_JIRA_URL = "https://jira.samsungds.net";
+  process.env.OPENCLAW_JIRA_PROJECT_KEY = "SOCPE";
+  process.env.OPENCLAW_JIRA_PARENT_ISSUE_KEY = "SOCPE-75195";
+  process.env.OPENCLAW_JIRA_ISSUE_TYPE = "Sub-task";
+  process.env.OPENCLAW_JIRA_ASSIGNEE = "seungon.jung";
+  process.env.OPENCLAW_JIRA_DEFAULT_COMPONENTS = "CLAW";
+  process.env.OPENCLAW_JIRA_COWORKER_FIELD = "customfield_10733";
+  process.env.OPENCLAW_JIRA_DEFAULT_COWORKERS = "hyeonho.jung";
+  Object.assign(process.env, overrides);
+}
+
 describe("handleEmployeeVocHttpRequest", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -23,8 +35,20 @@ describe("handleEmployeeVocHttpRequest", () => {
     delete process.env.JIRA_API_TOKEN;
     delete process.env.JIRA_URL;
     delete process.env.JIRA_PROJECT_KEY;
+    delete process.env.JIRA_PARENT_ISSUE_KEY;
+    delete process.env.JIRA_ISSUE_TYPE;
+    delete process.env.JIRA_ASSIGNEE;
     delete process.env.JIRA_DEFAULT_COMPONENTS;
     delete process.env.JIRA_COWORKER_FIELD;
+    delete process.env.JIRA_DEFAULT_COWORKERS;
+    delete process.env.OPENCLAW_JIRA_URL;
+    delete process.env.OPENCLAW_JIRA_PROJECT_KEY;
+    delete process.env.OPENCLAW_JIRA_PARENT_ISSUE_KEY;
+    delete process.env.OPENCLAW_JIRA_ISSUE_TYPE;
+    delete process.env.OPENCLAW_JIRA_ASSIGNEE;
+    delete process.env.OPENCLAW_JIRA_DEFAULT_COMPONENTS;
+    delete process.env.OPENCLAW_JIRA_COWORKER_FIELD;
+    delete process.env.OPENCLAW_JIRA_DEFAULT_COWORKERS;
   });
 
   it("rejects unauthenticated requests", async () => {
@@ -121,6 +145,7 @@ describe("handleEmployeeVocHttpRequest", () => {
     process.env.OPENCLAW_EMPLOYEE_AUTH_SECRET = "employee-test-secret";
     process.env.OPENCLAW_JIRA_VOC_ID = "jira-user";
     process.env.OPENCLAW_JIRA_VOC_TOKEN = "jira-token";
+    setVocEnv();
     const token = signEmployeeSessionToken(
       {
         employeeId: "seungon.jung",
@@ -175,8 +200,12 @@ describe("handleEmployeeVocHttpRequest", () => {
     process.env.JIRA_API_TOKEN = "jira-legacy-token";
     process.env.JIRA_URL = "https://jira.company.example";
     process.env.JIRA_PROJECT_KEY = "VOC";
+    process.env.JIRA_PARENT_ISSUE_KEY = "VOC-123";
+    process.env.JIRA_ISSUE_TYPE = "Task";
+    process.env.JIRA_ASSIGNEE = "jira-owner";
     process.env.JIRA_DEFAULT_COMPONENTS = "DMC,CLAW";
     process.env.JIRA_COWORKER_FIELD = "customfield_99999";
+    process.env.JIRA_DEFAULT_COWORKERS = "hyeonho.jung,ops.owner";
     const token = signEmployeeSessionToken(
       {
         employeeId: "seungon.jung",
@@ -211,9 +240,14 @@ describe("handleEmployeeVocHttpRequest", () => {
     expect((init.headers as Headers).get("Authorization")).toBe("Bearer jira-legacy-token");
     const payload = JSON.parse(String(init.body));
     expect(payload.fields.project.key).toBe("VOC");
-    expect(payload.fields.components).toEqual([{ name: "DMC" }]);
+    expect(payload.fields.parent.key).toBe("VOC-123");
+    expect(payload.fields.issuetype.name).toBe("Task");
+    expect(payload.fields.assignee.name).toBe("jira-owner");
+    expect(payload.fields.components).toEqual([{ name: "DMC" }, { name: "CLAW" }]);
     expect(payload.fields.customfield_99999).toEqual([
       { name: "hyeonho.jung" },
+      { name: "ops.owner" },
+      { name: "jira-owner" },
       { name: "seungon.jung" },
     ]);
     expect(res.statusCode).toBe(200);
@@ -229,6 +263,7 @@ describe("handleEmployeeVocHttpRequest", () => {
     process.env.OPENCLAW_JIRA_VOC_ID = "jira-user";
     process.env.OPENCLAW_JIRA_VOC_TOKEN = "jira-token";
     process.env.JIRA_API_TOKEN = "legacy-token";
+    setVocEnv();
     const token = signEmployeeSessionToken(
       {
         employeeId: "seungon.jung",
@@ -273,6 +308,7 @@ describe("VOC Jira helpers", () => {
   });
 
   it("builds the expected VOC Jira payload", () => {
+    setVocEnv();
     const payload = buildVocJiraPayload({
       title: "Need a better summary",
       body: "Please improve summaries.",

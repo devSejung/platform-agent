@@ -21,6 +21,10 @@ describe("handleEmployeeVocHttpRequest", () => {
     delete process.env.OPENCLAW_JIRA_API_TOKEN;
     delete process.env.JIRA_USERNAME;
     delete process.env.JIRA_API_TOKEN;
+    delete process.env.JIRA_URL;
+    delete process.env.JIRA_PROJECT_KEY;
+    delete process.env.JIRA_DEFAULT_COMPONENTS;
+    delete process.env.JIRA_COWORKER_FIELD;
   });
 
   it("rejects unauthenticated requests", async () => {
@@ -169,6 +173,10 @@ describe("handleEmployeeVocHttpRequest", () => {
     process.env.OPENCLAW_EMPLOYEE_AUTH_SECRET = "employee-test-secret";
     process.env.JIRA_USERNAME = "jira-legacy-user";
     process.env.JIRA_API_TOKEN = "jira-legacy-token";
+    process.env.JIRA_URL = "https://jira.company.example";
+    process.env.JIRA_PROJECT_KEY = "VOC";
+    process.env.JIRA_DEFAULT_COMPONENTS = "DMC,CLAW";
+    process.env.JIRA_COWORKER_FIELD = "customfield_99999";
     const token = signEmployeeSessionToken(
       {
         employeeId: "seungon.jung",
@@ -198,15 +206,23 @@ describe("handleEmployeeVocHttpRequest", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://jira.company.example/rest/api/2/issue");
     expect((init.headers as Headers).get("Authorization")).toBe(
       `Basic ${Buffer.from("jira-legacy-user:jira-legacy-token").toString("base64")}`,
     );
+    const payload = JSON.parse(String(init.body));
+    expect(payload.fields.project.key).toBe("VOC");
+    expect(payload.fields.components).toEqual([{ name: "DMC" }]);
+    expect(payload.fields.customfield_99999).toEqual([
+      { name: "hyeonho.jung" },
+      { name: "seungon.jung" },
+    ]);
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(String(end.mock.calls[0]?.[0] ?? ""))).toEqual({
       ok: true,
       issueKey: "SOCPE-54321",
-      issueUrl: "https://jira.samsungds.net/browse/SOCPE-54321",
+      issueUrl: "https://jira.company.example/browse/SOCPE-54321",
     });
   });
 });

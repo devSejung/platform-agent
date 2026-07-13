@@ -28,6 +28,10 @@ const JIRA_EMAIL_ENV = "OPENCLAW_JIRA_EMAIL";
 const JIRA_API_TOKEN_ENV = "OPENCLAW_JIRA_API_TOKEN";
 const JIRA_LEGACY_USERNAME_ENV = "JIRA_USERNAME";
 const JIRA_LEGACY_API_TOKEN_ENV = "JIRA_API_TOKEN";
+const JIRA_LEGACY_URL_ENV = "JIRA_URL";
+const JIRA_LEGACY_PROJECT_KEY_ENV = "JIRA_PROJECT_KEY";
+const JIRA_LEGACY_DEFAULT_COMPONENTS_ENV = "JIRA_DEFAULT_COMPONENTS";
+const JIRA_LEGACY_COWORKER_FIELD_ENV = "JIRA_COWORKER_FIELD";
 
 type JsonBodyReader = (
   req: IncomingMessage,
@@ -41,6 +45,8 @@ type JiraCreateIssueResponse = {
 type JiraVocPayload = {
   fields: Record<string, unknown>;
 };
+
+type ResolvedVocJiraConfig = typeof VOC_JIRA_CONFIG;
 
 function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status;
@@ -71,11 +77,32 @@ export function buildCoWorkerFieldValue(coWorkers: readonly string[]) {
   return dedupe(coWorkers).map((name) => ({ name }));
 }
 
+function resolveVocJiraConfig(env: NodeJS.ProcessEnv = process.env): ResolvedVocJiraConfig {
+  const jiraBaseUrl = env[JIRA_LEGACY_URL_ENV]?.trim() || VOC_JIRA_CONFIG.jiraBaseUrl;
+  const projectKey = env[JIRA_LEGACY_PROJECT_KEY_ENV]?.trim() || VOC_JIRA_CONFIG.projectKey;
+  const coWorkerFieldId =
+    env[JIRA_LEGACY_COWORKER_FIELD_ENV]?.trim() || VOC_JIRA_CONFIG.coWorkerFieldId;
+  const componentName =
+    env[JIRA_LEGACY_DEFAULT_COMPONENTS_ENV]
+      ?.split(",")
+      .map((value) => value.trim())
+      .find(Boolean) || VOC_JIRA_CONFIG.componentName;
+  return {
+    ...VOC_JIRA_CONFIG,
+    jiraBaseUrl,
+    projectKey,
+    componentName,
+    coWorkerFieldId,
+  };
+}
+
 function buildVocDescription(params: {
   body: string;
   reporterName?: string;
   reporterEmployeeId: string;
+  config?: ResolvedVocJiraConfig;
 }) {
+  const config = params.config ?? VOC_JIRA_CONFIG;
   const reporterLabel = params.reporterName?.trim() || params.reporterEmployeeId;
   return [
     params.body,
@@ -85,8 +112,8 @@ function buildVocDescription(params: {
     `Reporter: ${reporterLabel}`,
     `Reporter Employee ID: ${params.reporterEmployeeId}`,
     "Created via: Employee Web UI",
-    `Parent: ${VOC_JIRA_CONFIG.parentIssueKey}`,
-    `Component: ${VOC_JIRA_CONFIG.componentName}`,
+    `Parent: ${config.parentIssueKey}`,
+    `Component: ${config.componentName}`,
   ].join("\n");
 }
 
@@ -95,22 +122,25 @@ export function buildVocJiraPayload(params: {
   body: string;
   reporterEmployeeId: string;
   reporterName?: string;
+  env?: NodeJS.ProcessEnv;
 }): JiraVocPayload {
+  const config = resolveVocJiraConfig(params.env);
   const coWorkers = dedupe([...VOC_JIRA_CONFIG.coWorkerDefaults, params.reporterEmployeeId]);
   return {
     fields: {
-      project: { key: VOC_JIRA_CONFIG.projectKey },
-      parent: { key: VOC_JIRA_CONFIG.parentIssueKey },
+      project: { key: config.projectKey },
+      parent: { key: config.parentIssueKey },
       summary: params.title,
       description: buildVocDescription({
         body: params.body,
         reporterEmployeeId: params.reporterEmployeeId,
         reporterName: params.reporterName,
+        config,
       }),
-      issuetype: { name: VOC_JIRA_CONFIG.issueTypeName },
-      components: [{ name: VOC_JIRA_CONFIG.componentName }],
-      assignee: { name: VOC_JIRA_CONFIG.assigneeName },
-      [VOC_JIRA_CONFIG.coWorkerFieldId]: buildCoWorkerFieldValue(coWorkers),
+      issuetype: { name: config.issueTypeName },
+      components: [{ name: config.componentName }],
+      assignee: { name: config.assigneeName },
+      [config.coWorkerFieldId]: buildCoWorkerFieldValue(coWorkers),
     },
   };
 }
@@ -152,7 +182,8 @@ export async function createVocJiraIssue(
   payload: JiraVocPayload,
   env: NodeJS.ProcessEnv = process.env,
 ) {
-  const response = await fetch(`${VOC_JIRA_CONFIG.jiraBaseUrl}${VOC_JIRA_CONFIG.createIssuePath}`, {
+  const config = resolveVocJiraConfig(env);
+  const response = await fetch(`${config.jiraBaseUrl}${config.createIssuePath}`, {
     method: "POST",
     headers: resolveJiraAuthHeaders(env),
     body: JSON.stringify(payload),
@@ -169,7 +200,7 @@ export async function createVocJiraIssue(
   const issueKey = parsed.key.trim();
   return {
     issueKey,
-    issueUrl: `${VOC_JIRA_CONFIG.jiraBaseUrl}${VOC_JIRA_CONFIG.browseIssuePath}/${issueKey}`,
+    issueUrl: `${config.jiraBaseUrl}${config.browseIssuePath}/${issueKey}`,
   };
 }
 
@@ -222,6 +253,7 @@ export async function handleEmployeeVocHttpRequest(params: {
       body,
       reporterEmployeeId,
       reporterName: session.name,
+      env: process.env,
     });
     const result = await createVocJiraIssue(payload);
     sendJson(params.res, 200, { ok: true, ...result });

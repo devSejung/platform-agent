@@ -160,19 +160,16 @@ function resolveJiraAuthHeaders(env: NodeJS.ProcessEnv = process.env): Headers {
     headers.set("Cookie", cookie);
     return headers;
   }
-  // Support the existing jira-omni env file without requiring extra export remapping.
-  const id =
-    env[JIRA_ID_ENV]?.trim() ||
-    env[JIRA_EMAIL_ENV]?.trim() ||
-    env[JIRA_LEGACY_USERNAME_ENV]?.trim() ||
-    "";
-  const token =
-    env[JIRA_TOKEN_ENV]?.trim() ||
-    env[JIRA_API_TOKEN_ENV]?.trim() ||
-    env[JIRA_LEGACY_API_TOKEN_ENV]?.trim() ||
-    "";
+  const id = env[JIRA_ID_ENV]?.trim() || env[JIRA_EMAIL_ENV]?.trim() || "";
+  const token = env[JIRA_TOKEN_ENV]?.trim() || env[JIRA_API_TOKEN_ENV]?.trim() || "";
   if (id && token) {
     headers.set("Authorization", `Basic ${Buffer.from(`${id}:${token}`).toString("base64")}`);
+    return headers;
+  }
+  // Support the existing jira-omni env file without requiring extra export remapping.
+  const legacyToken = env[JIRA_LEGACY_API_TOKEN_ENV]?.trim() || "";
+  if (legacyToken) {
+    headers.set("Authorization", `Bearer ${legacyToken}`);
     return headers;
   }
   throw new Error("Jira VOC credentials are not configured.");

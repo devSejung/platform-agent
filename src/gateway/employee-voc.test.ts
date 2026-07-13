@@ -208,9 +208,7 @@ describe("handleEmployeeVocHttpRequest", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://jira.company.example/rest/api/2/issue");
-    expect((init.headers as Headers).get("Authorization")).toBe(
-      `Basic ${Buffer.from("jira-legacy-user:jira-legacy-token").toString("base64")}`,
-    );
+    expect((init.headers as Headers).get("Authorization")).toBe("Bearer jira-legacy-token");
     const payload = JSON.parse(String(init.body));
     expect(payload.fields.project.key).toBe("VOC");
     expect(payload.fields.components).toEqual([{ name: "DMC" }]);
@@ -224,6 +222,45 @@ describe("handleEmployeeVocHttpRequest", () => {
       issueKey: "SOCPE-54321",
       issueUrl: "https://jira.company.example/browse/SOCPE-54321",
     });
+  });
+
+  it("prefers explicit OpenClaw credentials for basic auth", async () => {
+    process.env.OPENCLAW_EMPLOYEE_AUTH_SECRET = "employee-test-secret";
+    process.env.OPENCLAW_JIRA_VOC_ID = "jira-user";
+    process.env.OPENCLAW_JIRA_VOC_TOKEN = "jira-token";
+    process.env.JIRA_API_TOKEN = "legacy-token";
+    const token = signEmployeeSessionToken(
+      {
+        employeeId: "seungon.jung",
+        name: "Seungon Jung",
+        agentId: "eon",
+      },
+      process.env.OPENCLAW_EMPLOYEE_AUTH_SECRET,
+    );
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ key: "SOCPE-77777" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { res } = makeMockHttpResponse();
+
+    await handleEmployeeVocHttpRequest({
+      req: {
+        url: "/employee/voc",
+        method: "POST",
+        headers: { cookie: `openclaw_employee_session=${encodeURIComponent(token)}` },
+      } as IncomingMessage,
+      res,
+      readJsonBody: async () => ({
+        ok: true as const,
+        value: { title: "Basic auth wins", body: "Please improve the flow." },
+      }),
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Headers).get("Authorization")).toBe(
+      `Basic ${Buffer.from("jira-user:jira-token").toString("base64")}`,
+    );
   });
 });
 

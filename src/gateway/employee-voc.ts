@@ -26,6 +26,8 @@ const JIRA_ID_ENV = "OPENCLAW_JIRA_VOC_ID";
 const JIRA_TOKEN_ENV = "OPENCLAW_JIRA_VOC_TOKEN";
 const JIRA_EMAIL_ENV = "OPENCLAW_JIRA_EMAIL";
 const JIRA_API_TOKEN_ENV = "OPENCLAW_JIRA_API_TOKEN";
+const JIRA_LEGACY_USERNAME_ENV = "JIRA_USERNAME";
+const JIRA_LEGACY_API_TOKEN_ENV = "JIRA_API_TOKEN";
 
 type JsonBodyReader = (
   req: IncomingMessage,
@@ -128,8 +130,17 @@ function resolveJiraAuthHeaders(env: NodeJS.ProcessEnv = process.env): Headers {
     headers.set("Cookie", cookie);
     return headers;
   }
-  const id = env[JIRA_ID_ENV]?.trim() || env[JIRA_EMAIL_ENV]?.trim() || "";
-  const token = env[JIRA_TOKEN_ENV]?.trim() || env[JIRA_API_TOKEN_ENV]?.trim() || "";
+  // Support the existing jira-omni env file without requiring extra export remapping.
+  const id =
+    env[JIRA_ID_ENV]?.trim() ||
+    env[JIRA_EMAIL_ENV]?.trim() ||
+    env[JIRA_LEGACY_USERNAME_ENV]?.trim() ||
+    "";
+  const token =
+    env[JIRA_TOKEN_ENV]?.trim() ||
+    env[JIRA_API_TOKEN_ENV]?.trim() ||
+    env[JIRA_LEGACY_API_TOKEN_ENV]?.trim() ||
+    "";
   if (id && token) {
     headers.set("Authorization", `Basic ${Buffer.from(`${id}:${token}`).toString("base64")}`);
     return headers;

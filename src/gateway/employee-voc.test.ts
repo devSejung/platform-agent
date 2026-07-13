@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import type { IncomingMessage } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { signEmployeeSessionToken } from "./employee-auth.js";
@@ -16,6 +17,10 @@ describe("handleEmployeeVocHttpRequest", () => {
     delete process.env.OPENCLAW_JIRA_COOKIE;
     delete process.env.OPENCLAW_JIRA_VOC_ID;
     delete process.env.OPENCLAW_JIRA_VOC_TOKEN;
+    delete process.env.OPENCLAW_JIRA_EMAIL;
+    delete process.env.OPENCLAW_JIRA_API_TOKEN;
+    delete process.env.JIRA_USERNAME;
+    delete process.env.JIRA_API_TOKEN;
   });
 
   it("rejects unauthenticated requests", async () => {
@@ -157,6 +162,51 @@ describe("handleEmployeeVocHttpRequest", () => {
       ok: true,
       issueKey: "SOCPE-12345",
       issueUrl: "https://jira.samsungds.net/browse/SOCPE-12345",
+    });
+  });
+
+  it("accepts jira-omni legacy env names without remapping", async () => {
+    process.env.OPENCLAW_EMPLOYEE_AUTH_SECRET = "employee-test-secret";
+    process.env.JIRA_USERNAME = "jira-legacy-user";
+    process.env.JIRA_API_TOKEN = "jira-legacy-token";
+    const token = signEmployeeSessionToken(
+      {
+        employeeId: "seungon.jung",
+        name: "Seungon Jung",
+        agentId: "eon",
+      },
+      process.env.OPENCLAW_EMPLOYEE_AUTH_SECRET,
+    );
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ key: "SOCPE-54321" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { res, end } = makeMockHttpResponse();
+
+    await handleEmployeeVocHttpRequest({
+      req: {
+        url: "/employee/voc",
+        method: "POST",
+        headers: { cookie: `openclaw_employee_session=${encodeURIComponent(token)}` },
+      } as IncomingMessage,
+      res,
+      readJsonBody: async () => ({
+        ok: true as const,
+        value: { title: "Legacy env flow", body: "Please improve the flow." },
+      }),
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Headers).get("Authorization")).toBe(
+      `Basic ${Buffer.from("jira-legacy-user:jira-legacy-token").toString("base64")}`,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(String(end.mock.calls[0]?.[0] ?? ""))).toEqual({
+      ok: true,
+      issueKey: "SOCPE-54321",
+      issueUrl: "https://jira.samsungds.net/browse/SOCPE-54321",
     });
   });
 });

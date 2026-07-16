@@ -143,9 +143,9 @@ function buildVocDescription(params: {
   body: string;
   reporterName?: string;
   reporterEmployeeId: string;
-  config?: ResolvedVocJiraConfig;
+  config: ResolvedVocJiraConfig;
 }) {
-  const config = params.config ?? VOC_JIRA_CONFIG;
+  const config = params.config;
   const reporterLabel = params.reporterName?.trim() || params.reporterEmployeeId;
   return [
     params.body,
@@ -177,7 +177,7 @@ export function buildVocJiraPayload(params: {
     fields: {
       project: { key: config.projectKey },
       parent: { key: config.parentIssueKey },
-      summary: params.title,
+      summary: `[VOC] ${params.title}`,
       description: buildVocDescription({
         body: params.body,
         reporterEmployeeId: params.reporterEmployeeId,

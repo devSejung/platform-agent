@@ -448,10 +448,14 @@
 }
 
 .topbar-voc-link {
-  min-width: 38px;
-  width: 38px;
+  min-width: 84px;
+  width: auto;
   height: 38px;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
   border-radius: 9999px;
   letter-spacing: 0;
 }
@@ -485,6 +489,12 @@
   stroke-width: 1.75px;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.topbar-voc-link__label {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 

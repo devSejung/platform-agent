@@ -180,6 +180,7 @@ describe("employee mode", () => {
     const button = app.querySelector<HTMLButtonElement>(".topbar-voc-link");
     expect(button).not.toBeNull();
     expect(button?.getAttribute("aria-label")).toBe("VOC");
+    expect(button?.textContent).toContain("VOC");
     button?.click();
     await app.updateComplete;
 

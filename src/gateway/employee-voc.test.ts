@@ -179,6 +179,7 @@ describe("handleEmployeeVocHttpRequest", () => {
     const payload = JSON.parse(String(init.body));
     expect(payload.fields.project.key).toBe("SOCPE");
     expect(payload.fields.parent.key).toBe("SOCPE-75195");
+    expect(payload.fields.summary).toBe("[VOC] Need better workspace chat");
     expect(payload.fields.issuetype.name).toBe("Sub-task");
     expect(payload.fields.components[0].name).toBe("CLAW");
     expect(payload.fields.assignee.name).toBe("seungon.jung");
@@ -241,6 +242,7 @@ describe("handleEmployeeVocHttpRequest", () => {
     const payload = JSON.parse(String(init.body));
     expect(payload.fields.project.key).toBe("VOC");
     expect(payload.fields.parent.key).toBe("VOC-123");
+    expect(payload.fields.summary).toBe("[VOC] Legacy env flow");
     expect(payload.fields.issuetype.name).toBe("Task");
     expect(payload.fields.assignee.name).toBe("jira-owner");
     expect(payload.fields.components).toEqual([{ name: "DMC" }, { name: "CLAW" }]);
@@ -318,6 +320,7 @@ describe("VOC Jira helpers", () => {
 
     expect(payload.fields.project).toEqual({ key: "SOCPE" });
     expect(payload.fields.parent).toEqual({ key: "SOCPE-75195" });
+    expect(payload.fields.summary).toBe("[VOC] Need a better summary");
     expect(payload.fields.issuetype).toEqual({ name: "Sub-task" });
     expect(payload.fields.components).toEqual([{ name: "CLAW" }]);
     expect(payload.fields.assignee).toEqual({ name: "seungon.jung" });

@@ -1,6 +1,9 @@
 const EMPLOYEE_VOC_PATH = "/employee/voc";
 const MAX_VOC_TITLE_CHARS = 200;
 const MAX_VOC_BODY_CHARS = 8000;
+const EMPLOYEE_VOC_AUTO_CLOSE_MS = 2000;
+
+const autoCloseTimers = new WeakMap<EmployeeVocState, number>();
 
 export type EmployeeVocState = {
   employeeMode: boolean;
@@ -21,6 +24,14 @@ function trimText(value: string): string {
   return value.replace(/\r\n/g, "\n").trim();
 }
 
+function clearAutoCloseTimer(state: EmployeeVocState) {
+  const timer = autoCloseTimers.get(state);
+  if (typeof timer === "number") {
+    window.clearTimeout(timer);
+    autoCloseTimers.delete(state);
+  }
+}
+
 export async function submitEmployeeVoc(state: EmployeeVocState) {
   if (!state.employeeMode || state.employeeVocSubmitting) {
     return;
@@ -29,6 +40,9 @@ export async function submitEmployeeVoc(state: EmployeeVocState) {
   const english = isEnglish(state);
   const title = trimText(state.employeeVocTitle);
   const body = trimText(state.employeeVocBody);
+  const confirmMessage = english
+    ? "Would you like to register this VOC?"
+    : "등록하시겠습니까?";
 
   if (!title) {
     state.employeeVocError = english ? "Please enter a title." : "제목을 입력해주세요.";
@@ -51,6 +65,14 @@ export async function submitEmployeeVoc(state: EmployeeVocState) {
     return;
   }
 
+  if (typeof window !== "undefined" && typeof window.confirm === "function") {
+    const confirmed = window.confirm(confirmMessage);
+    if (!confirmed) {
+      return;
+    }
+  }
+
+  clearAutoCloseTimer(state);
   state.employeeVocSubmitting = true;
   state.employeeVocError = null;
   state.employeeVocResult = null;
@@ -94,6 +116,13 @@ export async function submitEmployeeVoc(state: EmployeeVocState) {
       issueKey: (payload as { issueKey: string }).issueKey,
       issueUrl: (payload as { issueUrl: string }).issueUrl,
     };
+    if (typeof window !== "undefined") {
+      const timer = window.setTimeout(() => {
+        state.employeeVocModalOpen = false;
+        autoCloseTimers.delete(state);
+      }, EMPLOYEE_VOC_AUTO_CLOSE_MS);
+      autoCloseTimers.set(state, timer);
+    }
   } catch (error) {
     state.employeeVocError = error instanceof Error ? error.message : String(error);
   } finally {

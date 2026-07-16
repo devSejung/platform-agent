@@ -2620,6 +2620,7 @@ export function renderApp(state: AppViewState) {
                     }}
                   >
                     <span class="topbar-voc-link__icon" aria-hidden="true">${icons.headset}</span>
+                    <span class="topbar-voc-link__label">VOC</span>
                   </button>
                 `
               : nothing}

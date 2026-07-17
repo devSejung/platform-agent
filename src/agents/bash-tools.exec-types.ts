@@ -5,6 +5,7 @@ import type { BashSandboxConfig } from "./bash-tools.shared.js";
 
 export type ExecToolDefaults = {
   hasCronTool?: boolean;
+  senderId?: string | null;
   host?: ExecTarget;
   security?: ExecSecurity;
   ask?: ExecAsk;

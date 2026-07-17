@@ -139,6 +139,19 @@ can call `from platformclaw import credentials` and
 `credentials.get("credential.key")`. The secret value is returned to the skill
 process by the runtime endpoint and is not written into the workspace.
 
+External subprocess-based skills can also receive the current request's trusted
+sender identity through `OPENCLAW_SENDER_ID`.
+
+- This is not a fixed `.env` setting.
+- PlatformClaw injects it automatically per request only for external subprocess
+  skill runs.
+- It is not an LLM-facing tool argument.
+- Channels without trusted sender identity may not provide it.
+- Skills should handle the variable being absent with an explicit fallback or
+  safe failure path.
+- Internal TypeScript tools should keep using request-scoped runtime fields such
+  as `requesterSenderId` instead of reading `process.env.OPENCLAW_SENDER_ID`.
+
 For Linux Docker hosts, sandbox credential SDK calls generally require:
 
 ```json5

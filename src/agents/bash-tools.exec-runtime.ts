@@ -88,6 +88,21 @@ export function sanitizeHostBaseEnv(env: Record<string, string>): Record<string,
   }
   return sanitized;
 }
+
+export function applyTrustedSenderEnv(
+  env: Record<string, string>,
+  senderId?: string | null,
+): void {
+  for (const key of Object.keys(env)) {
+    if (key.toUpperCase() === "OPENCLAW_SENDER_ID") {
+      delete env[key];
+    }
+  }
+  const normalizedSenderId = senderId?.trim();
+  if (normalizedSenderId) {
+    env.OPENCLAW_SENDER_ID = normalizedSenderId;
+  }
+}
 // Centralized sanitization helper.
 // Throws an error if dangerous variables or PATH modifications are detected on the host.
 export function validateHostEnv(env: Record<string, string>): void {

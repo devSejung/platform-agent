@@ -38,6 +38,7 @@ import {
   DEFAULT_PENDING_MAX_OUTPUT,
   type ExecProcessOutcome,
   applyPathPrepend,
+  applyTrustedSenderEnv,
   applyShellPath,
   normalizeExecAsk,
   normalizeExecSecurity,
@@ -1633,6 +1634,8 @@ export function createExecTool(
               containerWorkdir: containerWorkdir ?? sandbox.containerWorkdir,
             })
           : (hostEnvResult?.env ?? inheritedBaseEnv);
+
+      applyTrustedSenderEnv(env, defaults?.senderId);
 
       const sessionKeyForChild = normalizeOptionalString(defaults?.sessionKey);
       if (sessionKeyForChild) {

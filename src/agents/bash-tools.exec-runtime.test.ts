@@ -16,6 +16,7 @@ let detectCursorKeyMode: typeof import("./bash-tools.exec-runtime.js").detectCur
 let emitExecSystemEvent: typeof import("./bash-tools.exec-runtime.js").emitExecSystemEvent;
 let formatExecFailureReason: typeof import("./bash-tools.exec-runtime.js").formatExecFailureReason;
 let resolveExecTarget: typeof import("./bash-tools.exec-runtime.js").resolveExecTarget;
+let applyTrustedSenderEnv: typeof import("./bash-tools.exec-runtime.js").applyTrustedSenderEnv;
 let runExecProcess: typeof import("./bash-tools.exec-runtime.js").runExecProcess;
 let clearRuntimeSecretRedactionRegistryForTest: typeof import("../credentials/index.js").clearRuntimeSecretRedactionRegistryForTest;
 let registerRuntimeSecretForRedaction: typeof import("../credentials/index.js").registerRuntimeSecretForRedaction;
@@ -27,6 +28,7 @@ beforeAll(async () => {
     emitExecSystemEvent,
     formatExecFailureReason,
     resolveExecTarget,
+    applyTrustedSenderEnv,
     runExecProcess,
   } = await import("./bash-tools.exec-runtime.js"));
   ({ clearRuntimeSecretRedactionRegistryForTest, registerRuntimeSecretForRedaction } =
@@ -416,6 +418,84 @@ describe("runExecProcess redaction", () => {
     const outcome = await run.promise;
     expect(outcome.status).toBe("completed");
     expect(outcome.aggregated).toContain("platformclaw.credentials");
+  });
+});
+
+describe("trusted sender env injection", () => {
+  it("injects a trimmed OPENCLAW_SENDER_ID into the child process env", async () => {
+    const env = { ...(process.env as Record<string, string>) };
+    applyTrustedSenderEnv(env, "  hyeonho.jung  ");
+
+    const run = await runExecProcess({
+      command: 'node -e "process.stdout.write(process.env.OPENCLAW_SENDER_ID || \'\')"',
+      workdir: process.cwd(),
+      env,
+      usePty: false,
+      warnings: [],
+      maxOutput: 1000,
+      pendingMaxOutput: 1000,
+      notifyOnExit: false,
+      timeoutSec: 5,
+    });
+
+    const outcome = await run.promise;
+    expect(outcome.status).toBe("completed");
+    expect(outcome.aggregated).toBe("hyeonho.jung");
+  });
+
+  it("removes OPENCLAW_SENDER_ID entirely when no trusted sender is present", async () => {
+    const env = {
+      ...(process.env as Record<string, string>),
+      OPENCLAW_SENDER_ID: "spoofed.user",
+    };
+    applyTrustedSenderEnv(env, undefined);
+
+    const run = await runExecProcess({
+      command:
+        'node -e "process.stdout.write(Object.prototype.hasOwnProperty.call(process.env, \'OPENCLAW_SENDER_ID\') ? \'present\' : \'missing\')"',
+      workdir: process.cwd(),
+      env,
+      usePty: false,
+      warnings: [],
+      maxOutput: 1000,
+      pendingMaxOutput: 1000,
+      notifyOnExit: false,
+      timeoutSec: 5,
+    });
+
+    const outcome = await run.promise;
+    expect(outcome.status).toBe("completed");
+    expect(outcome.aggregated).toBe("missing");
+  });
+
+  it("keeps concurrent subprocess sender env isolated per request", async () => {
+    const createRun = async (senderId: string) => {
+      const env = { ...(process.env as Record<string, string>) };
+      applyTrustedSenderEnv(env, senderId);
+      return await runExecProcess({
+        command:
+          'node -e "setTimeout(() => process.stdout.write(process.env.OPENCLAW_SENDER_ID || \'\'), 25)"',
+        workdir: process.cwd(),
+        env,
+        usePty: false,
+        warnings: [],
+        maxOutput: 1000,
+        pendingMaxOutput: 1000,
+        notifyOnExit: false,
+        timeoutSec: 5,
+      });
+    };
+
+    const [runA, runB] = await Promise.all([
+      createRun("hyeonho.jung"),
+      createRun("woohyuk.lee"),
+    ]);
+    const [outcomeA, outcomeB] = await Promise.all([runA.promise, runB.promise]);
+
+    expect(outcomeA.status).toBe("completed");
+    expect(outcomeB.status).toBe("completed");
+    expect(outcomeA.aggregated).toBe("hyeonho.jung");
+    expect(outcomeB.aggregated).toBe("woohyuk.lee");
   });
 });
 

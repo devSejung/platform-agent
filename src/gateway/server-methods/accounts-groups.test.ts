@@ -218,6 +218,50 @@ describe("accounts/groups gateway handlers", () => {
       "member",
     ]);
 
+    upsertGroupJoinRequest({
+      accountId: "member",
+      groupId,
+      partId: partScope!.scopeId,
+    });
+
+    respond = createRespond();
+    await accountGroupHandlers["groups.joinRequests.pendingCount"]({
+      params: {},
+      respond,
+      client: adminClient,
+    } as never);
+    expect(respond).toHaveBeenCalledWith(true, { count: 1 }, undefined);
+
+    respond = createRespond();
+    await accountGroupHandlers["groups.joinRequests.list"]({
+      params: {},
+      respond,
+      client: leaderClient,
+    } as never);
+    const joinRequestPayload = respond.mock.calls[0]?.[1] as {
+      entries: Array<{ id: string; employeeId: string; groupId: string }>;
+    };
+    expect(joinRequestPayload.entries).toHaveLength(1);
+    expect(joinRequestPayload.entries[0]).toEqual(
+      expect.objectContaining({
+        employeeId: "member",
+        groupId,
+      }),
+    );
+
+    respond = createRespond();
+    await accountGroupHandlers["groups.joinRequests.approve"]({
+      params: { requestId: joinRequestPayload.entries[0].id },
+      respond,
+      client: leaderClient,
+    } as never);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ ok: true, message: "Join request approved." }),
+      undefined,
+    );
+    expect(getLatestGroupJoinRequestForAccount("member")?.status).toBe("approved");
+
     respond = createRespond();
     await accountGroupHandlers["groups.archive"]({
       params: { scopeId: groupId },

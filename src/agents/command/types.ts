@@ -23,6 +23,7 @@ export type AgentStreamParams = {
 export type AgentRunContext = {
   messageChannel?: string;
   accountId?: string;
+  senderId?: string;
   groupId?: string | null;
   groupChannel?: string | null;
   groupSpace?: string | null;
@@ -68,6 +69,8 @@ export type AgentCommandOpts = {
   channel?: string; // delivery channel (whatsapp|telegram|...)
   /** Account ID for multi-account channel routing (e.g., WhatsApp account). */
   accountId?: string;
+  /** Per-turn sender identity supplied by a trusted ingress. */
+  senderId?: string;
   /** Context for embedded run routing (channel/account/thread). */
   runContext?: AgentRunContext;
   /** Whether this caller is authorized for owner-only tools (defaults true for local CLI calls). */

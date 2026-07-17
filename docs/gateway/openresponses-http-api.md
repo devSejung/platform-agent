@@ -50,6 +50,31 @@ Auth matrix:
 
 Enable or disable this endpoint with `gateway.http.endpoints.responses.enabled`.
 
+### Trusted sender override environment variables
+
+OpenClaw also supports a trusted sender override path for Knox-style ingress.
+
+- `OPENCLAW_TRUSTED_SENDER_CLIENT_IDS`
+  - Comma-separated Gateway client ID allowlist.
+  - Applies to WebSocket `chat.send` only.
+  - A client can override `senderId` only when `clientInfo.mode === "backend"` and the
+    exact `clientInfo.id` is present in the allowlist.
+  - Default: empty list.
+  - Empty list means no WebSocket client can override `senderId`.
+  - Matching is case-sensitive exact match.
+  - Example: `OPENCLAW_TRUSTED_SENDER_CLIENT_IDS=knox-adapter`
+- `OPENCLAW_TRUST_HTTP_SENDER_HEADER`
+  - Controls whether the Gateway trusts `x-openclaw-sender-id` on `POST /v1/responses`.
+  - Default: `false`.
+  - When `true`, any caller that already authenticates successfully to `/v1/responses`
+    can supply a per-request sender ID through that header.
+  - Enable this only for a dedicated trusted ingress credential such as Knox Adapter.
+  - Do not enable it when multiple clients share the same API key, bearer token, or password.
+  - Example: `OPENCLAW_TRUST_HTTP_SENDER_HEADER=false`
+
+These two knobs are read directly from `process.env` by the Gateway trust helper, not
+through the Gateway config schema. Restart the Gateway after changing them.
+
 The same compatibility surface also includes:
 
 - `GET /v1/models`

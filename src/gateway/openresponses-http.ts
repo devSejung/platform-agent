@@ -57,6 +57,7 @@ import {
 } from "./open-responses.schema.js";
 import { buildAgentPrompt } from "./openresponses-prompt.js";
 import { createAssistantOutputItem, createFunctionCallOutputItem } from "./openresponses-shape.js";
+import { resolveTrustedHttpSenderId } from "./sender-override.js";
 import { injectTimestamp, timestampOptsFromConfig } from "./server-methods/agent-timestamp.js";
 
 type OpenResponsesHttpOptions = {
@@ -408,6 +409,7 @@ async function runResponsesAgentCommand(params: {
   sessionKey: string;
   runId: string;
   messageChannel: string;
+  senderId?: string;
   originatingTo?: string;
   originatingAccountId?: string;
   originatingThreadId?: string;
@@ -429,11 +431,13 @@ async function runResponsesAgentCommand(params: {
       to: params.originatingTo,
       channel: params.originatingTo ? params.messageChannel : undefined,
       accountId: params.originatingAccountId,
+      senderId: params.senderId,
       threadId: params.originatingThreadId,
       runContext: params.originatingTo
         ? {
             messageChannel: params.messageChannel,
             accountId: params.originatingAccountId,
+            senderId: params.senderId,
             currentChannelId: params.originatingTo,
             currentThreadTs: params.originatingThreadId,
           }
@@ -675,6 +679,21 @@ export async function handleOpenResponsesHttpRequest(
   const originatingTo = getHeader(req, "x-openclaw-originating-to")?.trim();
   const originatingAccountId = getHeader(req, "x-openclaw-originating-account-id")?.trim();
   const originatingThreadId = getHeader(req, "x-openclaw-originating-thread-id")?.trim();
+  const trustedSender = resolveTrustedHttpSenderId(req);
+  if (trustedSender.trusted && trustedSender.invalid) {
+    sendJson(res, 400, {
+      error: {
+        message: "Invalid `x-openclaw-sender-id`.",
+        type: "invalid_request_error",
+      },
+    });
+    return true;
+  }
+  if (trustedSender.present) {
+    logWarn(
+      `openresponses sender header: trusted=${trustedSender.trusted} senderIdPresent=true`,
+    );
+  }
   const hasOriginHeaders = Boolean(
     originatingChannel || originatingTo || originatingAccountId || originatingThreadId,
   );
@@ -744,6 +763,7 @@ export async function handleOpenResponsesHttpRequest(
         sessionKey,
         runId: responseId,
         messageChannel: effectiveMessageChannel,
+        senderId: trustedSender.senderId,
         originatingTo,
         originatingAccountId,
         originatingThreadId,
@@ -1024,6 +1044,7 @@ export async function handleOpenResponsesHttpRequest(
         sessionKey,
         runId: responseId,
         messageChannel: effectiveMessageChannel,
+        senderId: trustedSender.senderId,
         originatingTo,
         originatingAccountId,
         originatingThreadId,

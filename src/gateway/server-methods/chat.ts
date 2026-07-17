@@ -78,6 +78,7 @@ import {
   GATEWAY_CLIENT_NAMES,
   hasGatewayClientCap,
 } from "../protocol/client-info.js";
+import { resolveTrustedWsSenderId } from "../sender-override.js";
 import {
   ErrorCodes,
   errorShape,
@@ -1731,6 +1732,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       commandBody?: string;
       thinking?: string;
       deliver?: boolean;
+      senderId?: string;
       originatingChannel?: string;
       originatingTo?: string;
       originatingAccountId?: string;
@@ -1993,6 +1995,24 @@ export const chatHandlers: GatewayRequestHandlers = {
         sessionKey,
       });
       const accountId = routeAccountId ?? resolveEmployeeClientAccountId(client);
+      const trustedSender = resolveTrustedWsSenderId({
+        clientInfo,
+        senderId: p.senderId,
+      });
+      if (trustedSender.trusted && trustedSender.invalid) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "invalid chat.send senderId"));
+        return;
+      }
+      if (trustedSender.present) {
+        context.logGateway.debug(
+          `chat.send sender override: trusted=${trustedSender.trusted} senderIdPresent=true`,
+        );
+        if (!trustedSender.trusted) {
+          context.logGateway.warn(
+            `Ignoring untrusted senderId override: clientId=${formatForLog(clientInfo?.id ?? "unknown")} mode=${formatForLog(clientInfo?.mode ?? "unknown")}`,
+          );
+        }
+      }
       // Inject timestamp so agents know the current date/time.
       // Only BodyForAgent gets the timestamp — Body stays raw for UI display.
       // See: https://github.com/openclaw/openclaw/issues/3658
@@ -2018,7 +2038,7 @@ export const chatHandlers: GatewayRequestHandlers = {
         MessageSid: clientRunId,
         ...(!isOperatorUiClient(clientInfo)
           ? {
-              SenderId: clientInfo?.id,
+              SenderId: trustedSender.senderId ?? clientInfo?.id,
               SenderName: clientInfo?.displayName,
               SenderUsername: clientInfo?.displayName,
             }

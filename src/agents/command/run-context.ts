@@ -18,6 +18,11 @@ export function resolveAgentRunContext(opts: AgentCommandOpts): AgentRunContext 
     merged.accountId = normalizedAccountId;
   }
 
+  const senderId = (merged.senderId ?? opts.senderId)?.toString().trim();
+  if (senderId) {
+    merged.senderId = senderId;
+  }
+
   const groupId = (merged.groupId ?? opts.groupId)?.toString().trim();
   if (groupId) {
     merged.groupId = groupId;

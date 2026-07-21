@@ -129,6 +129,45 @@ export function handleChatScroll(host: ScrollHost, event: Event) {
   }
 }
 
+export function preserveChatScrollOnLayoutChange(host: ScrollHost) {
+  const container = queryHost(host, ".chat-thread") as HTMLElement | null;
+  if (!container) {
+    return;
+  }
+  const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+  const wasNearBottom = host.chatUserNearBottom || distanceFromBottom < NEAR_BOTTOM_THRESHOLD;
+  const previousScrollTop = container.scrollTop;
+
+  if (host.chatScrollFrame) {
+    cancelAnimationFrame(host.chatScrollFrame);
+  }
+  if (host.chatScrollTimeout != null) {
+    clearTimeout(host.chatScrollTimeout);
+    host.chatScrollTimeout = null;
+  }
+
+  void host.updateComplete.then(() => {
+    host.chatScrollFrame = requestAnimationFrame(() => {
+      host.chatScrollFrame = null;
+      const latest = queryHost(host, ".chat-thread") as HTMLElement | null;
+      if (!latest) {
+        return;
+      }
+      if (wasNearBottom) {
+        latest.scrollTop = latest.scrollHeight;
+        host.chatUserNearBottom = true;
+        host.chatNewMessagesBelow = false;
+        return;
+      }
+      const maxScrollTop = Math.max(0, latest.scrollHeight - latest.clientHeight);
+      latest.scrollTop = Math.min(previousScrollTop, maxScrollTop);
+      const nextDistanceFromBottom =
+        latest.scrollHeight - latest.scrollTop - latest.clientHeight;
+      host.chatUserNearBottom = nextDistanceFromBottom < NEAR_BOTTOM_THRESHOLD;
+    });
+  });
+}
+
 export function handleLogsScroll(host: ScrollHost, event: Event) {
   const container = event.currentTarget as HTMLElement | null;
   if (!container) {

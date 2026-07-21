@@ -140,6 +140,50 @@ describe("employee mode", () => {
     expect(sidebarSessions?.textContent).not.toContain("Other employee");
   });
 
+  it("keeps the session list inside the sidebar body while header and footer stay separate", async () => {
+    const app = mountConnectedEmployeeApp();
+    app.employeeProfile = {
+      employeeId: "eon",
+      name: "Eon",
+      department: "Ops",
+      agentId: "eon",
+    };
+    app.sessionKey = "agent:eon:main";
+    app.sessionsResult = createSessionsResult(
+      Array.from({ length: 24 }, (_, index) => ({
+        key: index === 0 ? "agent:eon:main" : `agent:eon:dashboard:${index}`,
+        kind: "direct" as const,
+        label: index === 0 ? "Main" : `Session ${index}`,
+        updatedAt: Date.now() - index * 1_000,
+      })),
+    );
+    app.connected = true;
+    app.requestUpdate();
+    await app.updateComplete;
+
+    const header = app.querySelector<HTMLElement>(".sidebar-shell__header");
+    const body = app.querySelector<HTMLElement>(".sidebar-shell__body");
+    const footer = app.querySelector<HTMLElement>(".sidebar-shell__footer");
+    const sidebarNav = app.querySelector<HTMLElement>(".sidebar-nav");
+    const sessions = app.querySelector<HTMLElement>(".employee-chat-sessions");
+    const list = app.querySelector<HTMLElement>(".employee-chat-sessions__list");
+
+    expect(header).not.toBeNull();
+    expect(body).not.toBeNull();
+    expect(footer).not.toBeNull();
+    expect(sidebarNav).not.toBeNull();
+    expect(sessions).not.toBeNull();
+    expect(list).not.toBeNull();
+
+    expect(header?.parentElement?.classList.contains("sidebar-shell")).toBe(true);
+    expect(footer?.parentElement?.classList.contains("sidebar-shell")).toBe(true);
+    expect(body?.contains(sidebarNav!)).toBe(true);
+    expect(sidebarNav?.contains(sessions!)).toBe(true);
+    expect(sessions?.contains(list!)).toBe(true);
+    expect(header?.contains(list!)).toBe(false);
+    expect(footer?.contains(list!)).toBe(false);
+  });
+
   it("opens Skill Hub from the employee topbar shortcut", async () => {
     const app = mountConnectedEmployeeApp();
     app.employeeProfile = {

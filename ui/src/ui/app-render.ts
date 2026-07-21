@@ -159,7 +159,6 @@ import {
   updateSkillEnabled,
 } from "./controllers/skills.ts";
 import {
-  dismissEmployeeAnnouncement,
   isEmployeeAnnouncementDismissed,
   resolveEmployeeAnnouncement,
 } from "./employee-announcement.ts";
@@ -2862,10 +2861,7 @@ export function renderApp(state: AppViewState) {
                   type="button"
                   title="Dismiss notice"
                   aria-label="Dismiss notice"
-                  @click=${() => {
-                    dismissEmployeeAnnouncement(employeeAnnouncement);
-                    (state as AppViewState & { requestUpdate?: () => void }).requestUpdate?.();
-                  }}
+                  @click=${() => state.handleDismissEmployeeAnnouncement()}
                 >
                   ${icons.x}
                 </button>
@@ -2904,18 +2900,19 @@ export function renderApp(state: AppViewState) {
               >
                 ${state.updateRunning ? "Updating..." : "Update now"}
               </button>
-              <button
-                class="update-banner__close"
-                type="button"
-                title="Dismiss"
-                aria-label="Dismiss update banner"
-                @click=${() => {
-                  dismissUpdateBanner(state.updateAvailable);
-                  state.updateAvailable = null;
-                }}
-              >
-                ${icons.x}
-              </button>
+                <button
+                  class="update-banner__close"
+                  type="button"
+                  title="Dismiss"
+                  aria-label="Dismiss update banner"
+                  @click=${() => {
+                    dismissUpdateBanner(state.updateAvailable);
+                    state.updateAvailable = null;
+                    state.handleChatLayoutChange();
+                  }}
+                >
+                  ${icons.x}
+                </button>
             </div>`
           : nothing}
         ${renderEmployeeUtilityPanel(state, employeeUtilityGroups)}

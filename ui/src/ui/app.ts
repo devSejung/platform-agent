@@ -43,6 +43,7 @@ import {
   exportLogs as exportLogsInternal,
   handleChatScroll as handleChatScrollInternal,
   handleLogsScroll as handleLogsScrollInternal,
+  preserveChatScrollOnLayoutChange as preserveChatScrollOnLayoutChangeInternal,
   resetChatScroll as resetChatScrollInternal,
   scheduleChatScroll as scheduleChatScrollInternal,
 } from "./app-scroll.ts";
@@ -66,6 +67,10 @@ import type { AppViewState } from "./app-view-state.ts";
 import { normalizeAssistantIdentity } from "./assistant-identity.ts";
 import type { ArtifactFocusItem } from "./chat/artifact-focus-viewer.ts";
 import { exportChatMarkdown } from "./chat/export.ts";
+import {
+  dismissEmployeeAnnouncement,
+  resolveEmployeeAnnouncement,
+} from "./employee-announcement.ts";
 import type { AccountDirectoryEntry } from "./controllers/accounts.ts";
 import type { AdminAccountDetail, AdminAccountEntry } from "./controllers/admin-accounts.ts";
 import {
@@ -1075,6 +1080,25 @@ export class OpenClawApp extends LitElement {
     clampEmployeeContentScrollInternal(
       this as unknown as Parameters<typeof clampEmployeeContentScrollInternal>[0],
     );
+  }
+
+  handleChatLayoutChange() {
+    if (this.tab !== "chat") {
+      return;
+    }
+    preserveChatScrollOnLayoutChangeInternal(
+      this as unknown as Parameters<typeof preserveChatScrollOnLayoutChangeInternal>[0],
+    );
+  }
+
+  handleDismissEmployeeAnnouncement() {
+    const announcement = resolveEmployeeAnnouncement(this.employeeMode, this.employeeUi);
+    if (!announcement) {
+      return;
+    }
+    dismissEmployeeAnnouncement(announcement);
+    this.requestUpdate();
+    this.handleChatLayoutChange();
   }
 
   exportLogs(lines: string[], label: string) {

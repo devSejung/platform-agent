@@ -619,6 +619,7 @@
   min-height: 0;
   flex: 1;
   display: flex;
+  overflow: hidden;
 }
 
 .sidebar-body-stack {
@@ -627,6 +628,7 @@
   flex: 1;
   flex-direction: column;
   gap: 14px;
+  overflow: hidden;
 }
 
 .sidebar-shell__footer {
@@ -677,9 +679,11 @@
 }
 
 .sidebar-nav {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   overscroll-behavior: contain;
   padding: 0;
   scrollbar-width: none;
@@ -819,6 +823,7 @@
   display: grid;
   gap: 6px;
   margin-bottom: 16px;
+  min-height: 0;
 }
 
 .nav-section:last-child {
@@ -991,7 +996,8 @@
 }
 
 .employee-chat-sessions {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 7px;
   margin: 6px 0 12px;
   padding: 0;

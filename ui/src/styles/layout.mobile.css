@@ -123,10 +123,11 @@
   .sidebar-nav,
   .sidebar--collapsed .sidebar-nav {
     flex: 1 1 auto;
-    display: block;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     padding: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: hidden;
     scrollbar-width: none;
   }
 

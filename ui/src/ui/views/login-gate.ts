@@ -3,7 +3,6 @@ import { ref } from "lit/directives/ref.js";
 import { t } from "../../i18n/index.ts";
 import type { AppViewState } from "../app-view-state.ts";
 import {
-  dismissEmployeeAnnouncement,
   isEmployeeAnnouncementDismissed,
   resolveEmployeeAnnouncement,
 } from "../employee-announcement.ts";
@@ -191,10 +190,7 @@ export function renderLoginGate(state: AppViewState) {
                       type="button"
                       title="Dismiss notice"
                       aria-label="Dismiss notice"
-                      @click=${() => {
-                        dismissEmployeeAnnouncement(employeeAnnouncement);
-                        (state as AppViewState & { requestUpdate?: () => void }).requestUpdate?.();
-                      }}
+                      @click=${() => state.handleDismissEmployeeAnnouncement()}
                     >
                       ${icons.x}
                     </button>

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clampEmployeeContentScroll,
   handleChatScroll,
+  preserveChatScrollOnLayoutChange,
   scheduleChatScroll,
   resetChatScroll,
 } from "./app-scroll.ts";
@@ -302,6 +303,51 @@ describe("resetChatScroll", () => {
 
     expect(host.chatHasAutoScrolled).toBe(false);
     expect(host.chatUserNearBottom).toBe(true);
+  });
+});
+
+describe("preserveChatScrollOnLayoutChange", () => {
+  beforeEach(() => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      cb(0);
+      return 1;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("keeps the chat pinned to the bottom when the user was already near bottom", async () => {
+    const { host, container } = createScrollHost({
+      scrollHeight: 2000,
+      scrollTop: 1600,
+      clientHeight: 400,
+    });
+    host.chatUserNearBottom = true;
+
+    preserveChatScrollOnLayoutChange(host);
+    await host.updateComplete;
+
+    expect(container.scrollTop).toBe(container.scrollHeight);
+    expect(host.chatUserNearBottom).toBe(true);
+  });
+
+  it("preserves the current reading position when the user was scrolled up", async () => {
+    const { host, container } = createScrollHost({
+      scrollHeight: 2000,
+      scrollTop: 720,
+      clientHeight: 400,
+    });
+    host.chatUserNearBottom = false;
+    container.clientHeight = 520;
+    const originalScrollTop = container.scrollTop;
+
+    preserveChatScrollOnLayoutChange(host);
+    await host.updateComplete;
+
+    expect(container.scrollTop).toBe(originalScrollTop);
+    expect(host.chatUserNearBottom).toBe(false);
   });
 });
 

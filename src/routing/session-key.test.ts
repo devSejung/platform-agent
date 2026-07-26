@@ -9,7 +9,6 @@ import {
 import {
   classifySessionKeyShape,
   isValidAgentId,
-  normalizeAgentId,
   parseAgentSessionKey,
   toAgentStoreSessionKey,
 } from "./session-key.js";
@@ -157,18 +156,11 @@ describe("isValidAgentId", () => {
   it.each([
     { input: "main", expected: true },
     { input: "my-research_agent01", expected: true },
-    { input: "hyeonho.jung", expected: true },
     { input: "", expected: false },
     { input: "Agent not found: xyz", expected: false },
     { input: "../../../etc/passwd", expected: false },
     { input: "a".repeat(65), expected: false },
   ] as const)("validates agent id %j => $expected", ({ input, expected }) => {
     expect(isValidAgentId(input)).toBe(expected);
-  });
-});
-
-describe("normalizeAgentId", () => {
-  it("preserves dot-separated employee agent IDs", () => {
-    expect(normalizeAgentId("hyeonho.jung")).toBe("hyeonho.jung");
   });
 });

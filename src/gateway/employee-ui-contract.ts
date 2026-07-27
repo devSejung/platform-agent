@@ -1,6 +1,7 @@
 export const EMPLOYEE_BOOTSTRAP_PATH = "/auth/me";
 export const EMPLOYEE_LOGIN_PATH = "/employee/auth/login";
 export const EMPLOYEE_ADSSO_PATH = "/employee/auth/adsso";
+export const EMPLOYEE_SSO_CALLBACK_PATH = "/employee/auth/sso-callback";
 export const EMPLOYEE_LOGOUT_PATH = "/employee/auth/logout";
 export const EMPLOYEE_RELEASE_NOTES_STATUS_PATH = "/employee/release-notes/status";
 export const EMPLOYEE_RELEASE_NOTES_READ_PATH = "/employee/release-notes/read";

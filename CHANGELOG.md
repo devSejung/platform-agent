@@ -6,6 +6,8 @@ Docs: https://docs.openclaw.ai
 
 ### Changes
 
+- PlatformClaw/employee auth: add a signed AD SSO callback flow that provisions the existing employee session, redirects browser sign-ins back to `/employee`, and keeps LDAP sign-in available as a fallback.
+
 ### Fixes
 
 ## 2026.4.9

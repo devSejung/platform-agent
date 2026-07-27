@@ -3,10 +3,11 @@ import { normalizeAgentId } from "../routing/session-key.js";
 
 export const EMPLOYEE_AUTH_ENV_SECRET = "OPENCLAW_EMPLOYEE_AUTH_SECRET";
 
-export type EmployeeAccessTokenKind = "session" | "bootstrap";
+export type EmployeeAccessTokenKind = "session" | "bootstrap" | "sso";
 
 type EmployeeAccessPayloadBase = {
   employeeId: string;
+  email?: string;
   name?: string;
   department?: string;
   agentId: string;
@@ -24,7 +25,14 @@ export type EmployeeBootstrapPayload = EmployeeAccessPayloadBase & {
   kind: "bootstrap";
 };
 
-export type EmployeeAccessPayload = EmployeeSessionPayload | EmployeeBootstrapPayload;
+export type EmployeeSsoHandoffPayload = EmployeeAccessPayloadBase & {
+  kind: "sso";
+};
+
+export type EmployeeAccessPayload =
+  | EmployeeSessionPayload
+  | EmployeeBootstrapPayload
+  | EmployeeSsoHandoffPayload;
 
 export type VerifiedEmployeeAccess = EmployeeAccessPayload & {
   token: string;
@@ -70,7 +78,10 @@ function normalizePayload(payload: Record<string, unknown>): EmployeeAccessPaylo
       : "";
   const agentIdRaw =
     typeof payload.agentId === "string" && payload.agentId.trim() ? payload.agentId.trim() : "";
-  const kind = payload.kind === "session" || payload.kind === "bootstrap" ? payload.kind : null;
+  const kind =
+    payload.kind === "session" || payload.kind === "bootstrap" || payload.kind === "sso"
+      ? payload.kind
+      : null;
   if (!employeeId || !agentIdRaw || !kind) {
     return null;
   }
@@ -80,12 +91,18 @@ function normalizePayload(payload: Record<string, unknown>): EmployeeAccessPaylo
       ? payload.sessionKey.trim()
       : undefined;
   const exp =
-    typeof payload.exp === "number" && Number.isFinite(payload.exp) ? Math.floor(payload.exp) : undefined;
+    typeof payload.exp === "number" && Number.isFinite(payload.exp)
+      ? Math.floor(payload.exp)
+      : undefined;
   const iat =
-    typeof payload.iat === "number" && Number.isFinite(payload.iat) ? Math.floor(payload.iat) : undefined;
+    typeof payload.iat === "number" && Number.isFinite(payload.iat)
+      ? Math.floor(payload.iat)
+      : undefined;
   return {
     kind,
     employeeId,
+    email:
+      typeof payload.email === "string" && payload.email.trim() ? payload.email.trim() : undefined,
     name: typeof payload.name === "string" && payload.name.trim() ? payload.name.trim() : undefined,
     department:
       typeof payload.department === "string" && payload.department.trim()
@@ -194,6 +211,13 @@ export function verifyEmployeeBootstrapToken(
   return verifyEmployeeAccessToken(token, "bootstrap", secret);
 }
 
+export function verifyEmployeeSsoHandoffToken(
+  token: string | null | undefined,
+  secret?: string,
+): VerifiedEmployeeAccess | null {
+  return verifyEmployeeAccessToken(token, "sso", secret);
+}
+
 export function inspectEmployeeBootstrapToken(
   token: string | null | undefined,
   secret = process.env[EMPLOYEE_AUTH_ENV_SECRET],
@@ -218,5 +242,13 @@ export function signEmployeeBootstrapToken(
 ): string {
   const normalizedPayload: EmployeeBootstrapPayload =
     "kind" in payload ? { ...payload, kind: "bootstrap" } : { ...payload, kind: "bootstrap" };
+  return signEmployeeAccessToken(normalizedPayload, secret);
+}
+
+export function signEmployeeSsoHandoffToken(
+  payload: Omit<EmployeeSsoHandoffPayload, "kind"> | EmployeeSsoHandoffPayload,
+  secret?: string,
+): string {
+  const normalizedPayload: EmployeeSsoHandoffPayload = { ...payload, kind: "sso" };
   return signEmployeeAccessToken(normalizedPayload, secret);
 }

@@ -1,4 +1,5 @@
 import {
+  EMPLOYEE_ADSSO_PATH,
   EMPLOYEE_LOGIN_PATH,
   EMPLOYEE_LOGOUT_PATH,
   type EmployeeUiLoginNotice,
@@ -113,8 +114,10 @@ export async function submitEmployeeAdSso(state: EmployeeLoginState) {
   if (!state.employeeMode || state.employeeLoginSubmitting) {
     return;
   }
-  state.employeeBootstrapError = "AD SSO sign-in is not supported yet.";
+  state.employeeLoginSubmitting = true;
+  state.employeeBootstrapError = null;
   state.employeeLoginNotice = null;
+  globalThis.location.assign(EMPLOYEE_ADSSO_PATH);
 }
 
 export async function logoutEmployee(state: EmployeeLoginState) {

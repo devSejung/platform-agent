@@ -1,20 +1,21 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { ensureAgentWorkspace, upsertWorkspaceUserProfile } from "../agents/workspace.js";
-import type { OpenClawConfig } from "../config/config.js";
-import { resolveTimezone } from "../infra/format-time/format-datetime.js";
-import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-key.js";
 import {
   provisionEmployeeAccount,
   resolveEmployeeAccountSummary,
 } from "../accounts/account-provisioning.js";
 import { listAccountMembershipSummaries } from "../accounts/account-store.js";
+import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { ensureAgentWorkspace, upsertWorkspaceUserProfile } from "../agents/workspace.js";
+import type { OpenClawConfig } from "../config/config.js";
+import { resolveTimezone } from "../infra/format-time/format-datetime.js";
+import { buildAgentMainSessionKey, normalizeAgentId } from "../routing/session-key.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
 import { upsertEmployeeActivationRecord } from "./employee-activation.js";
 import {
   signEmployeeSessionToken,
   signEmployeeBootstrapToken,
   verifyEmployeeSessionToken,
+  verifyEmployeeSsoHandoffToken,
   type EmployeeSessionPayload,
 } from "./employee-auth.js";
 import {
@@ -22,6 +23,7 @@ import {
   EMPLOYEE_ADSSO_PATH,
   EMPLOYEE_LOGIN_PATH,
   EMPLOYEE_LOGOUT_PATH,
+  EMPLOYEE_SSO_CALLBACK_PATH,
   type EmployeeTimezoneBody,
   type EmployeeUiLoginNotice,
   type EmployeeUiLoginSuccessResponse,
@@ -35,8 +37,10 @@ const EMPLOYEE_LOGIN_URL_ENV = "OPENCLAW_EMPLOYEE_AUTH_LOGIN_URL";
 const EMPLOYEE_LOGIN_BEARER_ENV = "OPENCLAW_EMPLOYEE_AUTH_BEARER_TOKEN";
 const EMPLOYEE_ADSSO_URL_ENV = "OPENCLAW_EMPLOYEE_AUTH_ADSSO_URL";
 const EMPLOYEE_ADSSO_BEARER_ENV = "OPENCLAW_EMPLOYEE_AUTH_ADSSO_BEARER_TOKEN";
+const EMPLOYEE_ADSSO_SECRET_ENV = "OPENCLAW_EMPLOYEE_AUTH_ADSSO_SECRET";
 const EMPLOYEE_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const EMPLOYEE_BOOTSTRAP_TTL_MS = 5 * 60 * 1000;
+const EMPLOYEE_SSO_HANDOFF_TTL_SEC = 60;
 const EMPLOYEE_AUTH_RATE_LIMIT_SCOPE = "employee-web-auth";
 
 export type EmployeeAuthRequestContext = {
@@ -310,7 +314,8 @@ async function initializeEmployeeWorkspaceAndActivation(params: {
   const workspaceDir = resolveAgentWorkspaceDir(params.config, agentId);
   const workspace = await ensureAgentWorkspace({ dir: workspaceDir, ensureBootstrapFiles: true });
   const accountSummary =
-    params.accountSummary ?? resolveEmployeeAccountSummary({ employeeId: params.authResult.employeeId });
+    params.accountSummary ??
+    resolveEmployeeAccountSummary({ employeeId: params.authResult.employeeId });
   const memberships = listAccountMembershipSummaries(params.authResult.employeeId)
     .filter((entry) => !entry.archived)
     .map((entry) =>
@@ -494,6 +499,122 @@ async function authenticateViaExternalAdSso(params: {
   return parseEmployeeExternalAuthResponse(parsed, "employee AD SSO response was invalid");
 }
 
+function resolveEmployeeAdSsoLoginUrl(): string | null {
+  const configured = process.env[EMPLOYEE_ADSSO_URL_ENV]?.trim();
+  if (!configured) {
+    return null;
+  }
+  try {
+    const url = new URL(configured);
+    const path = url.pathname.replace(/\/+$/, "");
+    url.pathname = path.endsWith("/login") ? path : `${path}/login`;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function requestPrefersJson(req: IncomingMessage): boolean {
+  const accept = req.headers.accept;
+  const value = Array.isArray(accept) ? accept.join(",") : (accept ?? "");
+  return value.toLowerCase().includes("application/json");
+}
+
+async function handleEmployeeSsoCallbackRequest(params: {
+  req: IncomingMessage;
+  res: ServerResponse;
+  config: OpenClawConfig;
+  context: EmployeeAuthRequestContext;
+}): Promise<boolean> {
+  const url = new URL(params.req.url ?? "/", "http://localhost");
+  if (url.pathname !== EMPLOYEE_SSO_CALLBACK_PATH) {
+    return false;
+  }
+  if ((params.req.method ?? "GET").toUpperCase() !== "GET") {
+    params.res.statusCode = 405;
+    params.res.setHeader("Allow", "GET");
+    params.res.end("Method Not Allowed");
+    return true;
+  }
+
+  const secret = process.env[EMPLOYEE_ADSSO_SECRET_ENV]?.trim();
+  const handoff = secret
+    ? verifyEmployeeSsoHandoffToken(url.searchParams.get("token"), secret)
+    : null;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const handoffIsFresh =
+    handoff &&
+    typeof handoff.iat === "number" &&
+    typeof handoff.exp === "number" &&
+    handoff.iat <= nowSec + 30 &&
+    handoff.exp > nowSec &&
+    handoff.exp - handoff.iat <= EMPLOYEE_SSO_HANDOFF_TTL_SEC;
+  if (!handoffIsFresh) {
+    clearEmployeeSessionCookie(params.req, params.res);
+    sendJson(params.res, secret ? 401 : 503, {
+      authenticated: false,
+      message: secret
+        ? "invalid or expired SSO callback"
+        : `${EMPLOYEE_ADSSO_SECRET_ENV} is not configured`,
+    });
+    return true;
+  }
+
+  const authResult: EmployeeExternalAuthSuccess = {
+    authenticated: true,
+    employeeId: handoff.employeeId,
+    email: handoff.email,
+    name: handoff.name,
+    department: handoff.department,
+    agentId: handoff.agentId,
+    sessionKey: handoff.sessionKey,
+  };
+  const sessionPayload = normalizeEmployeeAuthRecord(
+    params.config,
+    authResult,
+    params.context.gatewayUrl,
+  );
+  try {
+    provisionEmployeeAccount({
+      config: params.config,
+      employeeId: authResult.employeeId,
+      email: authResult.email,
+      name: authResult.name,
+      department: authResult.department,
+      agentId: sessionPayload.agentId,
+      sessionExpiresAt: resolveSessionExpiryIso(sessionPayload.exp),
+    });
+    const accountSummary = resolveEmployeeAccountSummary({ employeeId: authResult.employeeId });
+    await initializeEmployeeWorkspaceAndActivation({
+      config: params.config,
+      authResult,
+      accountSummary,
+    });
+    setEmployeeSessionCookie(params.req, params.res, signEmployeeSessionToken(sessionPayload));
+  } catch (error) {
+    clearEmployeeSessionCookie(params.req, params.res);
+    sendJson(params.res, 500, {
+      authenticated: false,
+      message:
+        error instanceof Error
+          ? `failed to initialize employee SSO session: ${error.message}`
+          : "failed to initialize employee SSO session",
+    });
+    return true;
+  }
+
+  if (requestPrefersJson(params.req)) {
+    sendJson(params.res, 200, { authenticated: true });
+    return true;
+  }
+  params.res.statusCode = 302;
+  params.res.setHeader("Cache-Control", "no-store");
+  params.res.setHeader("Referrer-Policy", "no-referrer");
+  params.res.setHeader("Location", "/employee");
+  params.res.end();
+  return true;
+}
+
 export function handleEmployeeBootstrapRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -667,13 +788,31 @@ export async function handleEmployeeAdSsoRequest(params: {
   rateLimiter?: AuthRateLimiter;
 }): Promise<boolean> {
   const url = new URL(params.req.url ?? "/", "http://localhost");
+  if (url.pathname === EMPLOYEE_SSO_CALLBACK_PATH) {
+    return handleEmployeeSsoCallbackRequest(params);
+  }
   if (url.pathname !== EMPLOYEE_ADSSO_PATH) {
     return false;
   }
   const method = (params.req.method ?? "POST").toUpperCase();
+  if (method === "GET") {
+    const loginUrl = resolveEmployeeAdSsoLoginUrl();
+    if (!loginUrl) {
+      sendJson(params.res, 503, {
+        authenticated: false,
+        message: `${EMPLOYEE_ADSSO_URL_ENV} is not configured or invalid`,
+      });
+      return true;
+    }
+    params.res.statusCode = 302;
+    params.res.setHeader("Cache-Control", "no-store");
+    params.res.setHeader("Location", loginUrl);
+    params.res.end();
+    return true;
+  }
   if (method !== "POST") {
     params.res.statusCode = 405;
-    params.res.setHeader("Allow", "POST");
+    params.res.setHeader("Allow", "GET, POST");
     params.res.end("Method Not Allowed");
     return true;
   }

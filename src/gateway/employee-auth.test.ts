@@ -3,8 +3,10 @@ import {
   inspectEmployeeBootstrapToken,
   signEmployeeBootstrapToken,
   signEmployeeSessionToken,
+  signEmployeeSsoHandoffToken,
   verifyEmployeeBootstrapToken,
   verifyEmployeeSessionToken,
+  verifyEmployeeSsoHandoffToken,
 } from "./employee-auth.js";
 
 describe("employee auth token separation", () => {
@@ -58,5 +60,27 @@ describe("employee auth token separation", () => {
       ok: false,
       reason: "expired",
     });
+  });
+
+  it("keeps SSO handoff tokens separate and preserves the employee email", () => {
+    const handoffToken = signEmployeeSsoHandoffToken(
+      {
+        employeeId: "eon",
+        email: "eon@samsung.com",
+        agentId: "eon",
+        iat: 1_700_000_000,
+        exp: 1_900_000_000,
+      },
+      secret,
+    );
+
+    expect(verifyEmployeeSsoHandoffToken(handoffToken, secret)).toEqual(
+      expect.objectContaining({
+        kind: "sso",
+        employeeId: "eon",
+        email: "eon@samsung.com",
+      }),
+    );
+    expect(verifyEmployeeSessionToken(handoffToken, secret)).toBeNull();
   });
 });

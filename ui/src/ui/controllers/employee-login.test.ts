@@ -42,17 +42,17 @@ describe("submitEmployeeAdSso", () => {
     vi.unstubAllGlobals();
   });
 
-  it("does not make network requests or connect while AD SSO is unsupported", async () => {
+  it("navigates to the gateway AD SSO start endpoint", async () => {
     const state = createEmployeeLoginState();
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign });
 
     await submitEmployeeAdSso(state);
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(assign).toHaveBeenCalledWith("/employee/auth/adsso");
     expect(state.connect).not.toHaveBeenCalled();
     expect(state.employeeBootstrapReady).toBe(false);
-    expect(state.employeeBootstrapError).toBe("AD SSO sign-in is not supported yet.");
-    expect(state.employeeLoginSubmitting).toBe(false);
+    expect(state.employeeBootstrapError).toBeNull();
+    expect(state.employeeLoginSubmitting).toBe(true);
   });
 });

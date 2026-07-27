@@ -293,19 +293,9 @@
 }
 
 .btn--sso {
-  border-color: transparent;
-  background: linear-gradient(
-    135deg,
-    var(--dark-surface, #161b1a),
-    var(--dark-surface-elevated, #1f2a28)
-  );
-  color: var(--on-dark-text, #f7f6f1);
-  box-shadow: none;
-}
-
-.btn--sso:hover:not(:disabled) {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 24%, #161b1a), #1f2a28);
-  color: var(--on-dark-text, #f7f6f1);
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --ring: #2563eb;
 }
 
 .login-gate__secret-row {

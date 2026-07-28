@@ -57,6 +57,7 @@ type EmployeeExternalAuthSuccess = {
   department?: string;
   part?: string;
   confluenceSpace?: string;
+  authMethod?: "saml";
   notes?: string;
   agentId?: string;
   sessionKey?: string;
@@ -279,11 +280,18 @@ function normalizeEmployeeAuthRecord(
   return {
     kind: "session",
     employeeId: raw.employeeId.trim(),
+    email: typeof raw.email === "string" && raw.email.trim() ? raw.email.trim() : undefined,
     name: typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : undefined,
     department:
       typeof raw.department === "string" && raw.department.trim()
         ? raw.department.trim()
         : undefined,
+    part: typeof raw.part === "string" && raw.part.trim() ? raw.part.trim() : undefined,
+    confluenceSpace:
+      typeof raw.confluenceSpace === "string" && raw.confluenceSpace.trim()
+        ? raw.confluenceSpace.trim()
+        : undefined,
+    authMethod: raw.authMethod,
     agentId,
     sessionKey,
     gatewayUrl: gatewayUrl?.trim() || undefined,
@@ -566,6 +574,9 @@ async function handleEmployeeSsoCallbackRequest(params: {
     email: handoff.email,
     name: handoff.name,
     department: handoff.department,
+    part: handoff.part,
+    confluenceSpace: handoff.confluenceSpace,
+    authMethod: handoff.authMethod,
     agentId: handoff.agentId,
     sessionKey: handoff.sessionKey,
   };
@@ -583,6 +594,7 @@ async function handleEmployeeSsoCallbackRequest(params: {
       department: authResult.department,
       agentId: sessionPayload.agentId,
       sessionExpiresAt: resolveSessionExpiryIso(sessionPayload.exp),
+      externalProvider: "saml",
     });
     const accountSummary = resolveEmployeeAccountSummary({ employeeId: authResult.employeeId });
     await initializeEmployeeWorkspaceAndActivation({
@@ -650,6 +662,7 @@ export function handleEmployeeBootstrapRequest(
     agentId: session.agentId,
     sessionExpiresAt: resolveSessionExpiryIso(session.exp),
     recordSession: false,
+    externalProvider: session.authMethod === "saml" ? "saml" : "ldap",
   });
   const accountSummary = resolveEmployeeAccountSummary({ employeeId: session.employeeId });
 
@@ -658,6 +671,9 @@ export function handleEmployeeBootstrapRequest(
     employeeId: session.employeeId,
     name: session.name,
     department: session.department,
+    part: session.part,
+    confluenceSpace: session.confluenceSpace,
+    authMethod: session.authMethod,
     agentId: session.agentId,
     sessionKey: session.sessionKey,
     gatewayUrl: gatewayUrl?.trim() || session.gatewayUrl,

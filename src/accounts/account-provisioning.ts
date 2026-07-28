@@ -24,6 +24,7 @@ export function provisionEmployeeAccount(params: {
   sessionId?: string;
   sessionExpiresAt?: string | null;
   recordSession?: boolean;
+  externalProvider?: "ldap" | "saml";
   env?: NodeJS.ProcessEnv;
 }): ProvisionedAccount {
   const env = params.env ?? process.env;
@@ -33,7 +34,7 @@ export function provisionEmployeeAccount(params: {
     displayName: params.name,
     department: params.department,
     timezone: params.timezone,
-    externalProvider: "ldap",
+    externalProvider: params.externalProvider ?? "ldap",
     externalSubject: params.employeeId,
     env,
   });

@@ -2,6 +2,10 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { normalizeAgentId } from "../routing/session-key.js";
 
 export const EMPLOYEE_AUTH_ENV_SECRET = "OPENCLAW_EMPLOYEE_AUTH_SECRET";
+export const EMPLOYEE_SSO_CONTRACT_VERSION = 1;
+export const EMPLOYEE_SSO_ISSUER = "platformclaw-auth";
+export const EMPLOYEE_SSO_AUDIENCE = "platformclaw";
+export const EMPLOYEE_SSO_AUTH_METHOD = "saml";
 
 export type EmployeeAccessTokenKind = "session" | "bootstrap" | "sso";
 
@@ -10,6 +14,9 @@ type EmployeeAccessPayloadBase = {
   email?: string;
   name?: string;
   department?: string;
+  part?: string;
+  confluenceSpace?: string;
+  authMethod?: "saml";
   agentId: string;
   sessionKey?: string;
   gatewayUrl?: string;
@@ -27,6 +34,12 @@ export type EmployeeBootstrapPayload = EmployeeAccessPayloadBase & {
 
 export type EmployeeSsoHandoffPayload = EmployeeAccessPayloadBase & {
   kind: "sso";
+  contractVersion: typeof EMPLOYEE_SSO_CONTRACT_VERSION;
+  issuer: typeof EMPLOYEE_SSO_ISSUER;
+  audience: typeof EMPLOYEE_SSO_AUDIENCE;
+  authMethod: typeof EMPLOYEE_SSO_AUTH_METHOD;
+  iat: number;
+  exp: number;
 };
 
 export type EmployeeAccessPayload =
@@ -67,8 +80,8 @@ function fromBase64Url(input: string): Buffer | null {
   }
 }
 
-function signPayload(secret: string, payloadPart: string): Buffer {
-  return createHmac("sha256", secret).update(payloadPart).digest();
+function signPayload(secret: string, input: Buffer | string): Buffer {
+  return createHmac("sha256", secret).update(input).digest();
 }
 
 function normalizePayload(payload: Record<string, unknown>): EmployeeAccessPayload | null {
@@ -98,8 +111,9 @@ function normalizePayload(payload: Record<string, unknown>): EmployeeAccessPaylo
     typeof payload.iat === "number" && Number.isFinite(payload.iat)
       ? Math.floor(payload.iat)
       : undefined;
-  return {
-    kind,
+  const authMethod: "saml" | undefined =
+    payload.authMethod === EMPLOYEE_SSO_AUTH_METHOD ? EMPLOYEE_SSO_AUTH_METHOD : undefined;
+  const normalized = {
     employeeId,
     email:
       typeof payload.email === "string" && payload.email.trim() ? payload.email.trim() : undefined,
@@ -108,6 +122,12 @@ function normalizePayload(payload: Record<string, unknown>): EmployeeAccessPaylo
       typeof payload.department === "string" && payload.department.trim()
         ? payload.department.trim()
         : undefined,
+    part: typeof payload.part === "string" && payload.part.trim() ? payload.part.trim() : undefined,
+    confluenceSpace:
+      typeof payload.confluenceSpace === "string" && payload.confluenceSpace.trim()
+        ? payload.confluenceSpace.trim()
+        : undefined,
+    authMethod,
     agentId,
     sessionKey,
     gatewayUrl:
@@ -116,6 +136,29 @@ function normalizePayload(payload: Record<string, unknown>): EmployeeAccessPaylo
         : undefined,
     exp,
     iat,
+  };
+  if (kind !== "sso") {
+    return { ...normalized, kind };
+  }
+  if (
+    payload.contractVersion !== EMPLOYEE_SSO_CONTRACT_VERSION ||
+    payload.issuer !== EMPLOYEE_SSO_ISSUER ||
+    payload.audience !== EMPLOYEE_SSO_AUDIENCE ||
+    payload.authMethod !== EMPLOYEE_SSO_AUTH_METHOD ||
+    iat === undefined ||
+    exp === undefined
+  ) {
+    return null;
+  }
+  return {
+    ...normalized,
+    kind: "sso",
+    contractVersion: EMPLOYEE_SSO_CONTRACT_VERSION,
+    issuer: EMPLOYEE_SSO_ISSUER,
+    audience: EMPLOYEE_SSO_AUDIENCE,
+    authMethod: EMPLOYEE_SSO_AUTH_METHOD,
+    iat,
+    exp,
   };
 }
 
@@ -155,7 +198,7 @@ function inspectEmployeeAccessToken(
   if (!payloadBuf || !signatureBuf) {
     return { ok: false, reason: "invalid_payload_encoding" };
   }
-  const expected = signPayload(secret, payloadPart);
+  const expected = signPayload(secret, expectedKind === "sso" ? payloadBuf : payloadPart);
   if (expected.length !== signatureBuf.length || !timingSafeEqual(expected, signatureBuf)) {
     return { ok: false, reason: "invalid_signature" };
   }
@@ -192,8 +235,11 @@ function signEmployeeAccessToken(
   if (!normalized) {
     throw new Error("invalid employee bootstrap payload");
   }
-  const payloadPart = toBase64Url(JSON.stringify(normalized));
-  const signaturePart = toBase64Url(signPayload(secret, payloadPart));
+  const payloadJson = JSON.stringify(normalized);
+  const payloadPart = toBase64Url(payloadJson);
+  const signaturePart = toBase64Url(
+    signPayload(secret, normalized.kind === "sso" ? payloadJson : payloadPart),
+  );
   return `${payloadPart}.${signaturePart}`;
 }
 

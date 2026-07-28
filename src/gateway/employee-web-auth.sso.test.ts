@@ -3,8 +3,16 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getAccountById, resolveAccountIdByEmployeeId } from "../accounts/account-store.js";
 import { resetPlatformClawDatabaseForTests } from "../accounts/db.js";
-import { signEmployeeSsoHandoffToken, verifyEmployeeSessionToken } from "./employee-auth.js";
+import {
+  EMPLOYEE_SSO_AUDIENCE,
+  EMPLOYEE_SSO_AUTH_METHOD,
+  EMPLOYEE_SSO_CONTRACT_VERSION,
+  EMPLOYEE_SSO_ISSUER,
+  signEmployeeSsoHandoffToken,
+  verifyEmployeeSessionToken,
+} from "./employee-auth.js";
 import { handleEmployeeAdSsoRequest } from "./employee-web-auth.js";
 import { makeMockHttpResponse } from "./test-http-response.js";
 
@@ -42,12 +50,18 @@ describe("employee SSO web auth", () => {
     const nowSec = Math.floor(Date.now() / 1000);
     return signEmployeeSsoHandoffToken(
       {
+        contractVersion: EMPLOYEE_SSO_CONTRACT_VERSION,
+        issuer: EMPLOYEE_SSO_ISSUER,
+        audience: EMPLOYEE_SSO_AUDIENCE,
         employeeId: "eon",
         email: "eon@samsung.com",
         name: "Eon",
         department: "AI Platform",
+        part: "Platform",
+        confluenceSpace: "PLATFORM",
         agentId: "eon",
         sessionKey: "agent:eon:main",
+        authMethod: EMPLOYEE_SSO_AUTH_METHOD,
         iat: nowSec,
         exp: nowSec + 60,
       },
@@ -89,8 +103,18 @@ describe("employee SSO web auth", () => {
       cookie.match(/openclaw_employee_session=([^;]+)/)?.[1] ?? "",
     );
     expect(verifyEmployeeSessionToken(sessionToken, sessionSecret)).toEqual(
-      expect.objectContaining({ employeeId: "eon", agentId: "eon", kind: "session" }),
+      expect.objectContaining({
+        employeeId: "eon",
+        email: "eon@samsung.com",
+        part: "Platform",
+        confluenceSpace: "PLATFORM",
+        agentId: "eon",
+        kind: "session",
+      }),
     );
+    const accountId = resolveAccountIdByEmployeeId("eon");
+    expect(accountId).not.toBeNull();
+    expect(getAccountById(accountId ?? "")?.externalProvider).toBe("saml");
   });
 
   it("returns JSON when the callback explicitly requests JSON", async () => {
@@ -121,8 +145,12 @@ describe("employee SSO web auth", () => {
     const nowSec = Math.floor(Date.now() / 1000);
     const token = signEmployeeSsoHandoffToken(
       {
+        contractVersion: EMPLOYEE_SSO_CONTRACT_VERSION,
+        issuer: EMPLOYEE_SSO_ISSUER,
+        audience: EMPLOYEE_SSO_AUDIENCE,
         employeeId: "eon",
         agentId: "eon",
+        authMethod: EMPLOYEE_SSO_AUTH_METHOD,
         iat: nowSec,
         exp: nowSec + 61,
       },

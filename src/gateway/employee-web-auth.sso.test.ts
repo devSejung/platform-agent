@@ -94,7 +94,7 @@ describe("employee SSO web auth", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(302);
-    expect(setHeader).toHaveBeenCalledWith("Location", "/employee");
+    expect(setHeader).toHaveBeenCalledWith("Location", "/chat?session=agent%3Aeon%3Amain");
     const cookie = String(setHeader.mock.calls.find((call) => call[0] === "Set-Cookie")?.[1] ?? "");
     expect(cookie).toContain("openclaw_employee_session=");
     expect(cookie).toContain("HttpOnly");

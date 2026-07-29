@@ -622,7 +622,12 @@ async function handleEmployeeSsoCallbackRequest(params: {
   params.res.statusCode = 302;
   params.res.setHeader("Cache-Control", "no-store");
   params.res.setHeader("Referrer-Policy", "no-referrer");
-  params.res.setHeader("Location", "/employee");
+  params.res.setHeader(
+    "Location",
+    `/chat?session=${encodeURIComponent(
+      sessionPayload.sessionKey ?? buildAgentMainSessionKey({ agentId: sessionPayload.agentId }),
+    )}`,
+  );
   params.res.end();
   return true;
 }

@@ -238,6 +238,7 @@ const lazyLogs = createLazy(() => import("./views/logs.ts"));
 const lazyNodes = createLazy(() => import("./views/nodes.ts"));
 const lazySessions = createLazy(() => import("./views/sessions.ts"));
 const lazySkills = createLazy(() => import("./views/skills.ts"));
+const lazyMcp = createLazy(() => import("./views/mcp.ts"));
 const lazySkillHub = createLazy(() => import("./views/skill-hub.ts"));
 const lazyCredentials = createLazy(() => import("./views/credentials.ts"));
 const lazyGroups = createLazy(() => import("./views/groups.ts"));
@@ -1349,9 +1350,7 @@ function renderEmployeeMembershipBootstrapDialog(state: AppViewState) {
     : english
       ? "Confirm"
       : "확인";
-  const groupPlaceholder = english
-    ? "Select a group"
-    : "Group을 선택해주세요. (Select a group.)";
+  const groupPlaceholder = english ? "Select a group" : "Group을 선택해주세요. (Select a group.)";
   const partPlaceholder = english ? "Select a part" : "Part를 선택해주세요";
   const partDisabledHint = english
     ? "Please select a group first."
@@ -1423,7 +1422,9 @@ function renderEmployeeMembershipBootstrapDialog(state: AppViewState) {
             <span>${partLabel}</span>
             <select
               .value=${state.employeeMembershipBootstrapSelectedPartId ?? ""}
-              ?disabled=${state.employeeMembershipBootstrapLoading || !state.employeeMembershipBootstrapSelectedGroupId || !hasParts}
+              ?disabled=${state.employeeMembershipBootstrapLoading ||
+              !state.employeeMembershipBootstrapSelectedGroupId ||
+              !hasParts}
               @change=${(event: Event) => {
                 state.employeeMembershipBootstrapSelectedPartId = (
                   event.target as HTMLSelectElement
@@ -1432,7 +1433,9 @@ function renderEmployeeMembershipBootstrapDialog(state: AppViewState) {
               }}
             >
               <option value="">
-                ${state.employeeMembershipBootstrapSelectedGroupId ? partPlaceholder : partDisabledHint}
+                ${state.employeeMembershipBootstrapSelectedGroupId
+                  ? partPlaceholder
+                  : partDisabledHint}
               </option>
               ${state.employeeMembershipBootstrapParts.map(
                 (part) => html`<option value=${part.id}>${part.name}</option>`,
@@ -1565,9 +1568,9 @@ function renderEmployeeMembershipBootstrapDialogV2(state: AppViewState) {
         <div class="md-preview-dialog__header employee-membership-dialog__header">
           <div>
             <div class="md-preview-dialog__title employee-membership-dialog__title">
-              ${title.split("\n").map(
-                (line, index) => html`${index > 0 ? html`<br />` : nothing}${line}`,
-              )}
+              ${title
+                .split("\n")
+                .map((line, index) => html`${index > 0 ? html`<br />` : nothing}${line}`)}
             </div>
           </div>
         </div>
@@ -1603,7 +1606,8 @@ function renderEmployeeMembershipBootstrapDialogV2(state: AppViewState) {
                 <div
                   class="callout warn employee-membership-dialog__message employee-membership-dialog__message--rejected"
                 >
-                  <strong class="employee-membership-dialog__message-title employee-membership-dialog__message-title--rejected"
+                  <strong
+                    class="employee-membership-dialog__message-title employee-membership-dialog__message-title--rejected"
                     >${rejectedMessageKo}</strong
                   >
                   <div class="employee-membership-dialog__message-subtitle">
@@ -1613,12 +1617,8 @@ function renderEmployeeMembershipBootstrapDialogV2(state: AppViewState) {
                     <span>${groupLabel}: ${rejectedRequest.group_name}</span>
                     <span>${partLabel}: ${rejectedRequest.part_name}</span>
                   </div>
-                  <div class="employee-membership-dialog__message-copy">
-                    ${rejectedHintKo}
-                  </div>
-                  <div class="employee-membership-dialog__message-subcopy">
-                    ${rejectedHintEn}
-                  </div>
+                  <div class="employee-membership-dialog__message-copy">${rejectedHintKo}</div>
+                  <div class="employee-membership-dialog__message-subcopy">${rejectedHintEn}</div>
                   ${rejectedRequest.review_comment
                     ? html`
                         <div class="employee-membership-dialog__message-note">
@@ -1649,7 +1649,9 @@ function renderEmployeeMembershipBootstrapDialogV2(state: AppViewState) {
             <span>${partLabel}</span>
             <select
               .value=${state.employeeMembershipBootstrapSelectedPartId ?? ""}
-              ?disabled=${state.employeeMembershipBootstrapLoading || !state.employeeMembershipBootstrapSelectedGroupId || !hasParts}
+              ?disabled=${state.employeeMembershipBootstrapLoading ||
+              !state.employeeMembershipBootstrapSelectedGroupId ||
+              !hasParts}
               @change=${(event: Event) => {
                 state.employeeMembershipBootstrapSelectedPartId = (
                   event.target as HTMLSelectElement
@@ -1658,7 +1660,9 @@ function renderEmployeeMembershipBootstrapDialogV2(state: AppViewState) {
               }}
             >
               <option value="">
-                ${state.employeeMembershipBootstrapSelectedGroupId ? partPlaceholder : partDisabledHint}
+                ${state.employeeMembershipBootstrapSelectedGroupId
+                  ? partPlaceholder
+                  : partDisabledHint}
               </option>
               ${state.employeeMembershipBootstrapParts.map(
                 (part) => html`<option value=${part.id}>${part.name}</option>`,
@@ -2022,8 +2026,7 @@ export function renderApp(state: AppViewState) {
   // The gateway URL confirmation overlay is always rendered so URL-param flows still work.
   if (!state.connected) {
     return html`
-      ${renderLoginGate(state)}
-      ${renderGatewayUrlConfirmation(state)}
+      ${renderLoginGate(state)} ${renderGatewayUrlConfirmation(state)}
       ${renderEmployeeMembershipBootstrapDialogV2(state)}
     `;
   }
@@ -2900,19 +2903,19 @@ export function renderApp(state: AppViewState) {
               >
                 ${state.updateRunning ? "Updating..." : "Update now"}
               </button>
-                <button
-                  class="update-banner__close"
-                  type="button"
-                  title="Dismiss"
-                  aria-label="Dismiss update banner"
-                  @click=${() => {
-                    dismissUpdateBanner(state.updateAvailable);
-                    state.updateAvailable = null;
-                    state.handleChatLayoutChange();
-                  }}
-                >
-                  ${icons.x}
-                </button>
+              <button
+                class="update-banner__close"
+                type="button"
+                title="Dismiss"
+                aria-label="Dismiss update banner"
+                @click=${() => {
+                  dismissUpdateBanner(state.updateAvailable);
+                  state.updateAvailable = null;
+                  state.handleChatLayoutChange();
+                }}
+              >
+                ${icons.x}
+              </button>
             </div>`
           : nothing}
         ${renderEmployeeUtilityPanel(state, employeeUtilityGroups)}
@@ -3679,6 +3682,7 @@ export function renderApp(state: AppViewState) {
               }),
             )
           : nothing}
+        ${state.tab === "mcp" ? lazyRender(lazyMcp, (m) => m.renderMcp()) : nothing}
         ${state.tab === "skillHub"
           ? lazyRender(lazySkillHub, (m) =>
               m.renderSkillHub({
@@ -4370,7 +4374,7 @@ export function renderApp(state: AppViewState) {
                 joinRequestsPendingCount: state.groupsJoinRequestsPendingCount,
                 showJoinRequests: Boolean(
                   state.employeeAccountSummary?.hasAdminAccess ||
-                    state.employeeAccountSummary?.hasLeaderScope,
+                  state.employeeAccountSummary?.hasLeaderScope,
                 ),
                 createOpen: state.groupsCreateOpen,
                 createName: state.groupsCreateName,
@@ -4434,8 +4438,7 @@ export function renderApp(state: AppViewState) {
                   }
                   const isGroupLeader = Boolean(
                     state.groupsDetail?.members.some(
-                      (entry) =>
-                        entry.accountId === actorAccountId && entry.groupRole === "leader",
+                      (entry) => entry.accountId === actorAccountId && entry.groupRole === "leader",
                     ),
                   );
                   if (isGroupLeader) {
@@ -5389,8 +5392,7 @@ export function renderApp(state: AppViewState) {
           : nothing}
       </main>
       ${renderExecApprovalPrompt(state)} ${renderGatewayUrlConfirmation(state)}
-      ${renderEmployeeMembershipBootstrapDialogV2(state)}
-      ${renderEmployeeVocDialog(state)}
+      ${renderEmployeeMembershipBootstrapDialogV2(state)} ${renderEmployeeVocDialog(state)}
       ${renderReleaseNotesDialog(state)}
     </div>
   `;

@@ -128,6 +128,7 @@ describe("employee mode", () => {
     expect(toolsPanel?.textContent).toContain("Workspace tools");
     expect(toolsPanel?.textContent).toContain("Files");
     expect(toolsPanel?.textContent).toContain("Skills");
+    expect(toolsPanel?.textContent).toContain("MCP");
     expect(toolsPanel?.textContent).toContain("Cron Jobs");
     expect(toolsPanel?.textContent).toContain("Heartbeat");
     expect(toolsPanel?.textContent).toContain("Groups");

@@ -21,6 +21,7 @@ export type McpCatalogTool = {
   description?: string;
   inputSchema: unknown;
   fallbackDescription: string;
+  untrusted?: boolean;
 };
 
 export type McpToolCatalog = {
@@ -35,6 +36,7 @@ export type SessionMcpRuntime = {
   sessionKey?: string;
   workspaceDir: string;
   configFingerprint: string;
+  scopeIdentity?: string;
   createdAt: number;
   lastUsedAt: number;
   getCatalog: () => Promise<McpToolCatalog>;
@@ -49,10 +51,12 @@ export type SessionMcpRuntimeManager = {
     sessionKey?: string;
     workspaceDir: string;
     cfg?: OpenClawConfig;
+    userScope?: { ownerUserId: string; agentId: string };
   }) => Promise<SessionMcpRuntime>;
   bindSessionKey: (sessionKey: string, sessionId: string) => void;
   resolveSessionId: (sessionKey: string) => string | undefined;
   disposeSession: (sessionId: string) => Promise<void>;
+  disposeUser: (ownerUserId: string) => Promise<void>;
   disposeAll: () => Promise<void>;
   listSessionIds: () => string[];
 };

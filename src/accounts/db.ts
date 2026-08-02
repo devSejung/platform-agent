@@ -162,6 +162,40 @@ function ensureSchema(db: DatabaseSync) {
       FOREIGN KEY (actor_account_id) REFERENCES accounts(id)
     );
 
+    CREATE TABLE IF NOT EXISTS user_mcp_servers (
+      id TEXT PRIMARY KEY,
+      owner_account_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      transport TEXT NOT NULL CHECK (transport IN ('stdio', 'streamable-http', 'sse')),
+      config_json TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+      forced_disabled INTEGER NOT NULL DEFAULT 0 CHECK (forced_disabled IN (0, 1)),
+      timeout_ms INTEGER NOT NULL,
+      tool_policy_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'unknown',
+      last_error_code TEXT,
+      last_error_message TEXT,
+      last_checked_at TEXT,
+      last_success_at TEXT,
+      tool_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(owner_account_id, name),
+      FOREIGN KEY (owner_account_id) REFERENCES accounts(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS user_mcp_policy (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      policy_json TEXT NOT NULL,
+      updated_by_account_id TEXT,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (updated_by_account_id) REFERENCES accounts(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS user_mcp_servers_owner_idx
+      ON user_mcp_servers(owner_account_id, updated_at);
+
     CREATE TABLE IF NOT EXISTS credential_definitions (
       id TEXT PRIMARY KEY,
       credential_key TEXT NOT NULL UNIQUE,

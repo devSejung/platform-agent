@@ -3,6 +3,7 @@ import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { logWarn } from "../logger.js";
+import { wrapExternalContent } from "../security/external-content.js";
 import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 import {
   buildSafeToolName,
@@ -16,10 +17,18 @@ function toAgentToolResult(params: {
   serverName: string;
   toolName: string;
   result: CallToolResult;
+  untrusted?: boolean;
 }): AgentToolResult<unknown> {
-  const content = Array.isArray(params.result.content)
+  const rawContent = Array.isArray(params.result.content)
     ? (params.result.content as AgentToolResult<unknown>["content"])
     : [];
+  const content = params.untrusted
+    ? rawContent.map((item) =>
+        item.type === "text"
+          ? { ...item, text: wrapExternalContent(item.text, { source: "api" }) }
+          : item,
+      )
+    : rawContent;
   const normalizedContent: AgentToolResult<unknown>["content"] =
     content.length > 0
       ? content
@@ -108,6 +117,7 @@ export async function materializeBundleMcpToolsForRun(params: {
           serverName: tool.serverName,
           toolName: tool.toolName,
           result,
+          untrusted: tool.untrusted,
         });
       },
     });

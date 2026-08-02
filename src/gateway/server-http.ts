@@ -40,6 +40,7 @@ import { handleOpenAiEmbeddingsHttpRequest } from "./embeddings-http.js";
 import { handleEmployeeChatAttachmentsHttpRequest } from "./employee-chat-attachments.js";
 import { handleEmployeeMembershipHttpRequest } from "./employee-membership.js";
 import { handleEmployeeReleaseNotesHttpRequest } from "./employee-release-notes.js";
+import { handleEmployeeUserMcpHttpRequest } from "./employee-user-mcp.js";
 import { handleEmployeeVocHttpRequest } from "./employee-voc.js";
 import {
   handleEmployeeAdSsoRequest,
@@ -1077,6 +1078,16 @@ export function createGatewayHttpServer(opts: {
         name: "employee-voc",
         run: () =>
           handleEmployeeVocHttpRequest({
+            req,
+            res,
+            readJsonBody,
+          }),
+      });
+
+      requestStages.push({
+        name: "employee-user-mcp",
+        run: () =>
+          handleEmployeeUserMcpHttpRequest({
             req,
             res,
             readJsonBody,

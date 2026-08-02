@@ -3,6 +3,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import {
+  authorizeUserMcpToolCall,
+  isToolAllowed,
+  resolveUserMcpRuntimeServers,
+  updateUserMcpStatus,
+  type UserMcpToolPolicy,
+} from "../accounts/user-mcp-store.js";
 import type { OpenClawConfig } from "../config/config.js";
 import { logWarn } from "../logger.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
@@ -26,10 +33,32 @@ type BundleMcpSession = {
   transport: Transport;
   transportType: "stdio" | "sse" | "streamable-http";
   detachStderr?: () => void;
+  disposeTransportResources?: () => Promise<void>;
 };
 
 type LoadedMcpConfig = ReturnType<typeof loadEmbeddedPiMcpConfig>;
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
+
+type UserMcpRuntimeMeta = {
+  ownerUserId: string;
+  serverId: string;
+  toolPolicy: UserMcpToolPolicy;
+};
+
+function readUserMcpRuntimeMeta(raw: unknown): UserMcpRuntimeMeta | undefined {
+  if (!isMcpConfigRecord(raw) || !isMcpConfigRecord(raw.__platformclawUserMcp)) {
+    return undefined;
+  }
+  const meta = raw.__platformclawUserMcp;
+  if (typeof meta.ownerUserId !== "string" || typeof meta.serverId !== "string") {
+    return undefined;
+  }
+  const toolPolicy = meta.toolPolicy as UserMcpToolPolicy;
+  if (!toolPolicy || !["all", "allowlist", "denylist"].includes(toolPolicy.mode)) {
+    return undefined;
+  }
+  return { ownerUserId: meta.ownerUserId, serverId: meta.serverId, toolPolicy };
+}
 
 const SESSION_MCP_RUNTIME_MANAGER_KEY = Symbol.for("openclaw.sessionMcpRuntimeManager");
 
@@ -78,6 +107,7 @@ async function disposeSession(session: BundleMcpSession) {
   }
   await session.client.close().catch(() => {});
   await session.transport.close().catch(() => {});
+  await session.disposeTransportResources?.().catch(() => {});
 }
 
 function createCatalogFingerprint(servers: Record<string, unknown>): string {
@@ -88,6 +118,7 @@ function loadSessionMcpConfig(params: {
   workspaceDir: string;
   cfg?: OpenClawConfig;
   logDiagnostics?: boolean;
+  userScope?: { ownerUserId: string; agentId: string };
 }): {
   loaded: LoadedMcpConfig;
   fingerprint: string;
@@ -96,6 +127,12 @@ function loadSessionMcpConfig(params: {
     workspaceDir: params.workspaceDir,
     cfg: params.cfg,
   });
+  if (params.userScope) {
+    loaded.mcpServers = {
+      ...loaded.mcpServers,
+      ...resolveUserMcpRuntimeServers(params.userScope.ownerUserId),
+    };
+  }
   if (params.logDiagnostics !== false) {
     for (const diagnostic of loaded.diagnostics) {
       logWarn(`bundle-mcp: ${diagnostic.pluginId}: ${diagnostic.message}`);
@@ -116,12 +153,17 @@ export function createSessionMcpRuntime(params: {
   sessionKey?: string;
   workspaceDir: string;
   cfg?: OpenClawConfig;
+  userScope?: { ownerUserId: string; agentId: string };
 }): SessionMcpRuntime {
   const { loaded, fingerprint: configFingerprint } = loadSessionMcpConfig({
     workspaceDir: params.workspaceDir,
     cfg: params.cfg,
     logDiagnostics: true,
+    userScope: params.userScope,
   });
+  const scopeIdentity = params.userScope
+    ? `${params.userScope.ownerUserId}:${params.userScope.agentId}`
+    : "global";
   const createdAt = Date.now();
   let lastUsedAt = createdAt;
   let disposed = false;
@@ -164,6 +206,7 @@ export function createSessionMcpRuntime(params: {
             continue;
           }
           const safeServerName = sanitizeServerName(serverName, usedServerNames);
+          const userMeta = readUserMcpRuntimeMeta(rawServer);
           if (safeServerName !== serverName) {
             logWarn(
               `bundle-mcp: server key "${serverName}" registered as "${safeServerName}" for provider-safe tool names.`,
@@ -183,6 +226,7 @@ export function createSessionMcpRuntime(params: {
             transport: resolved.transport,
             transportType: resolved.transportType,
             detachStderr: resolved.detachStderr,
+            disposeTransportResources: resolved.disposeTransportResources,
           };
           sessions.set(serverName, session);
 
@@ -191,13 +235,16 @@ export function createSessionMcpRuntime(params: {
             await connectWithTimeout(client, resolved.transport, resolved.connectionTimeoutMs);
             failIfDisposed();
             const listedTools = await listAllTools(client);
+            const allowedTools = userMeta
+              ? listedTools.filter((tool) => isToolAllowed(userMeta.toolPolicy, tool.name))
+              : listedTools;
             failIfDisposed();
             servers[serverName] = {
               serverName,
               launchSummary: resolved.description,
-              toolCount: listedTools.length,
+              toolCount: allowedTools.length,
             };
-            for (const tool of listedTools) {
+            for (const tool of allowedTools) {
               const toolName = tool.name.trim();
               if (!toolName) {
                 continue;
@@ -210,6 +257,16 @@ export function createSessionMcpRuntime(params: {
                 description: normalizeOptionalString(tool.description),
                 inputSchema: tool.inputSchema,
                 fallbackDescription: `Provided by bundle MCP server "${serverName}" (${resolved.description}).`,
+                untrusted: Boolean(userMeta),
+              });
+            }
+            if (userMeta) {
+              updateUserMcpStatus({
+                ownerUserId: userMeta.ownerUserId,
+                serverId: userMeta.serverId,
+                status: "connected",
+                toolCount: allowedTools.length,
+                success: true,
               });
             }
           } catch (error) {
@@ -220,6 +277,15 @@ export function createSessionMcpRuntime(params: {
             }
             await disposeSession(session);
             sessions.delete(serverName);
+            if (userMeta) {
+              updateUserMcpStatus({
+                ownerUserId: userMeta.ownerUserId,
+                serverId: userMeta.serverId,
+                status: "error",
+                errorCode: "transport_error",
+                errorMessage: redactErrorUrls(error),
+              });
+            }
             failIfDisposed();
           }
         }
@@ -255,6 +321,7 @@ export function createSessionMcpRuntime(params: {
     sessionKey: params.sessionKey,
     workspaceDir: params.workspaceDir,
     configFingerprint,
+    scopeIdentity,
     createdAt,
     get lastUsedAt() {
       return lastUsedAt;
@@ -269,6 +336,17 @@ export function createSessionMcpRuntime(params: {
       const session = sessions.get(serverName);
       if (!session) {
         throw new Error(`bundle-mcp server "${serverName}" is not connected`);
+      }
+      const userMeta = readUserMcpRuntimeMeta(loaded.mcpServers[serverName]);
+      if (
+        userMeta &&
+        !authorizeUserMcpToolCall({
+          ownerUserId: userMeta.ownerUserId,
+          serverId: userMeta.serverId,
+          toolName,
+        })
+      ) {
+        throw new Error("blocked_by_policy");
       }
       return (await session.client.callTool({
         name: toolName,
@@ -298,6 +376,7 @@ function createSessionMcpRuntimeManager(): SessionMcpRuntimeManager {
       promise: Promise<SessionMcpRuntime>;
       workspaceDir: string;
       configFingerprint: string;
+      scopeIdentity: string;
     }
   >();
 
@@ -310,11 +389,16 @@ function createSessionMcpRuntimeManager(): SessionMcpRuntimeManager {
         workspaceDir: params.workspaceDir,
         cfg: params.cfg,
         logDiagnostics: false,
+        userScope: params.userScope,
       });
+      const nextScopeIdentity = params.userScope
+        ? `${params.userScope.ownerUserId}:${params.userScope.agentId}`
+        : "global";
       const existing = runtimesBySessionId.get(params.sessionId);
       if (existing) {
         if (
           existing.workspaceDir !== params.workspaceDir ||
+          existing.scopeIdentity !== nextScopeIdentity ||
           existing.configFingerprint !== nextFingerprint
         ) {
           runtimesBySessionId.delete(params.sessionId);
@@ -328,6 +412,7 @@ function createSessionMcpRuntimeManager(): SessionMcpRuntimeManager {
       if (inFlight) {
         if (
           inFlight.workspaceDir === params.workspaceDir &&
+          inFlight.scopeIdentity === nextScopeIdentity &&
           inFlight.configFingerprint === nextFingerprint
         ) {
           return inFlight.promise;
@@ -343,6 +428,7 @@ function createSessionMcpRuntimeManager(): SessionMcpRuntimeManager {
           sessionKey: params.sessionKey,
           workspaceDir: params.workspaceDir,
           cfg: params.cfg,
+          userScope: params.userScope,
         }),
       ).then((runtime) => {
         runtime.markUsed();
@@ -353,6 +439,7 @@ function createSessionMcpRuntimeManager(): SessionMcpRuntimeManager {
         promise: created,
         workspaceDir: params.workspaceDir,
         configFingerprint: nextFingerprint,
+        scopeIdentity: nextScopeIdentity,
       });
       try {
         return await created;
@@ -389,6 +476,16 @@ function createSessionMcpRuntimeManager(): SessionMcpRuntimeManager {
       }
       await runtime.dispose();
     },
+    async disposeUser(ownerUserId) {
+      const prefix = `${ownerUserId}:`;
+      const targets = Array.from(runtimesBySessionId.entries()).filter(([, runtime]) =>
+        runtime.scopeIdentity?.startsWith(prefix),
+      );
+      for (const [sessionId] of targets) {
+        runtimesBySessionId.delete(sessionId);
+      }
+      await Promise.allSettled(targets.map(([, runtime]) => runtime.dispose()));
+    },
     async disposeAll() {
       const inFlightRuntimes = Array.from(createInFlight.values());
       createInFlight.clear();
@@ -421,6 +518,7 @@ export async function getOrCreateSessionMcpRuntime(params: {
   sessionKey?: string;
   workspaceDir: string;
   cfg?: OpenClawConfig;
+  userScope?: { ownerUserId: string; agentId: string };
 }): Promise<SessionMcpRuntime> {
   return await getSessionMcpRuntimeManager().getOrCreate(params);
 }
@@ -431,6 +529,10 @@ export async function disposeSessionMcpRuntime(sessionId: string): Promise<void>
 
 export async function disposeAllSessionMcpRuntimes(): Promise<void> {
   await getSessionMcpRuntimeManager().disposeAll();
+}
+
+export async function disposeUserMcpRuntimes(ownerUserId: string): Promise<void> {
+  await getSessionMcpRuntimeManager().disposeUser(ownerUserId);
 }
 
 export const __testing = {

@@ -294,7 +294,10 @@ export async function refreshActiveTab(host: SettingsHost) {
       includeGlobal: false,
       includeUnknown: false,
     });
-    if (host.employeeAccountSummary?.hasAdminAccess || host.employeeAccountSummary?.hasLeaderScope) {
+    if (
+      host.employeeAccountSummary?.hasAdminAccess ||
+      host.employeeAccountSummary?.hasLeaderScope
+    ) {
       await loadGroupJoinRequestPendingCount(host as unknown as OpenClawApp);
     }
     if (
@@ -304,6 +307,7 @@ export async function refreshActiveTab(host: SettingsHost) {
       host.tab !== "cron" &&
       host.tab !== "heartbeat" &&
       host.tab !== "skills" &&
+      host.tab !== "mcp" &&
       host.tab !== "skillHub" &&
       host.tab !== "credentials" &&
       host.tab !== "groups" &&

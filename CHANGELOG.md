@@ -7,6 +7,7 @@ Docs: https://docs.openclaw.ai
 ### Changes
 
 - PlatformClaw/employee auth: add a signed AD SSO callback flow that provisions the existing employee session, redirects browser sign-ins back to `/employee`, and keeps LDAP sign-in available as a fallback.
+- PlatformClaw/MCP: add employee-owned MCP server management with personal-session isolation, remote transport safeguards, administrator policy controls, tool allow/deny rules, and redacted operational auditing.
 
 ### Fixes
 

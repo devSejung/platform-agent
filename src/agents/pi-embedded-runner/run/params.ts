@@ -34,6 +34,10 @@ export type RunEmbeddedPiAgentParams = {
   messageChannel?: string;
   messageProvider?: string;
   agentAccountId?: string;
+  /** Authenticated PlatformClaw requester. Never populate from an untrusted RPC body. */
+  requesterUserId?: string;
+  /** Authoritative conversation metadata propagated by the trusted ingress. */
+  conversationType?: "dm" | "direct" | "room" | "group" | "unknown";
   /** What initiated this agent run: "user", "heartbeat", "cron", "memory", "overflow", or "manual". */
   trigger?: EmbeddedRunTrigger;
   /** Relative workspace path that memory-triggered writes are allowed to append to. */

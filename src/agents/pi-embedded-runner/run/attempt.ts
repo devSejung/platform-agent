@@ -107,6 +107,7 @@ import { buildSystemPromptReport } from "../../system-prompt-report.js";
 import { sanitizeToolCallIdsForCloudCodeAssist } from "../../tool-call-id.js";
 import { resolveTranscriptPolicy } from "../../transcript-policy.js";
 import { normalizeUsage, type NormalizedUsage, type UsageLike } from "../../usage.js";
+import { decideUserMcpAccess } from "../../user-mcp-access.js";
 import { DEFAULT_BOOTSTRAP_FILENAME } from "../../workspace.js";
 import { isRunnerAbortError } from "../abort.js";
 import { isCacheTtlEligibleProvider, readLastCacheTtlTimestamp } from "../cache-ttl.js";
@@ -600,12 +601,23 @@ export async function runEmbeddedAttempt(
       model: params.model,
     });
     const clientTools = toolsEnabled ? params.clientTools : undefined;
+    const userMcpAccess = decideUserMcpAccess({
+      requesterUserId: params.requesterUserId,
+      agentId: params.agentId,
+      conversationType: params.conversationType,
+      channel: params.messageProvider,
+      trigger: params.trigger,
+    });
     const bundleMcpSessionRuntime = toolsEnabled
       ? await getOrCreateSessionMcpRuntime({
           sessionId: params.sessionId,
           sessionKey: params.sessionKey,
           workspaceDir: effectiveWorkspace,
           cfg: params.config,
+          userScope:
+            userMcpAccess.allowed && userMcpAccess.ownerUserId && params.agentId
+              ? { ownerUserId: userMcpAccess.ownerUserId, agentId: params.agentId }
+              : undefined,
         })
       : undefined;
     const bundleMcpRuntime = bundleMcpSessionRuntime

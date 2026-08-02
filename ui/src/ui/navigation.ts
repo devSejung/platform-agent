@@ -31,7 +31,7 @@ export const EMPLOYEE_TAB_GROUPS = [
   },
   {
     label: "workspace",
-    tabs: ["files", "skills", "credentials"],
+    tabs: ["files", "skills", "mcp", "credentials"],
   },
   {
     label: "automation",
@@ -55,6 +55,7 @@ export type Tab =
   | "files"
   | "heartbeat"
   | "skills"
+  | "mcp"
   | "skillHub"
   | "credentials"
   | "groups"
@@ -83,6 +84,7 @@ const TAB_PATHS: Record<Tab, string> = {
   files: "/files",
   heartbeat: "/heartbeat",
   skills: "/skills",
+  mcp: "/mcp",
   skillHub: "/skill-hub",
   credentials: "/credentials",
   groups: "/groups",
@@ -214,6 +216,8 @@ export function iconForTab(tab: Tab): IconName {
       return "activity";
     case "skills":
       return "zap";
+    case "mcp":
+      return "link";
     case "skillHub":
       return "package";
     case "credentials":
@@ -260,6 +264,7 @@ export function titleForTab(tab: Tab) {
     files: "Files",
     heartbeat: "Heartbeat",
     skills: "Skills",
+    mcp: "MCP",
     skillHub: "Skill Hub",
     credentials: i18n.getLocale() === "ko" ? "Credentials" : "Credentials",
     groups: "Groups",
@@ -288,6 +293,9 @@ export function subtitleForTab(tab: Tab) {
   }
   if (tab === "files") {
     return "Browse and manage files in your workspace.";
+  }
+  if (tab === "mcp") {
+    return "Manage MCP servers for your personal agent sessions.";
   }
   if (tab === "skillHub") {
     return "Publish, install, update, and manage shared skills.";

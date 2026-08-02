@@ -186,15 +186,25 @@ export function buildEmbeddedContextFromTemplate(params: {
   hasRepliedRef: { value: boolean } | undefined;
 }) {
   const config = params.run.config;
+  const messageProvider = resolveOriginMessageProvider({
+    originatingChannel: params.sessionCtx.OriginatingChannel,
+    provider: params.sessionCtx.Provider,
+  });
+  const conversationType: "direct" | "group" | "unknown" =
+    params.sessionCtx.ChatType === "direct"
+      ? "direct"
+      : params.sessionCtx.ChatType === "group" || params.sessionCtx.ChatType === "channel"
+        ? "group"
+        : "unknown";
   return {
     sessionId: params.run.sessionId,
     sessionKey: params.run.sessionKey,
     agentId: params.run.agentId,
-    messageProvider: resolveOriginMessageProvider({
-      originatingChannel: params.sessionCtx.OriginatingChannel,
-      provider: params.sessionCtx.Provider,
-    }),
+    messageProvider,
     agentAccountId: params.sessionCtx.AccountId,
+    requesterUserId:
+      messageProvider === "knox" ? params.sessionCtx.SenderId : params.sessionCtx.AccountId,
+    conversationType,
     messageTo: resolveOriginMessageTo({
       originatingTo: params.sessionCtx.OriginatingTo,
       to: params.sessionCtx.To,

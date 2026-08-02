@@ -78,7 +78,6 @@ import {
   GATEWAY_CLIENT_NAMES,
   hasGatewayClientCap,
 } from "../protocol/client-info.js";
-import { resolveTrustedWsSenderId } from "../sender-override.js";
 import {
   ErrorCodes,
   errorShape,
@@ -89,6 +88,7 @@ import {
   validateChatSendParams,
 } from "../protocol/index.js";
 import { CHAT_SEND_SESSION_KEY_MAX_LENGTH } from "../protocol/schema/primitives.js";
+import { resolveTrustedWsSenderId } from "../sender-override.js";
 import { getMaxChatHistoryMessagesBytes } from "../server-constants.js";
 import {
   capArrayByJsonBytes,
@@ -2000,7 +2000,11 @@ export const chatHandlers: GatewayRequestHandlers = {
         senderId: p.senderId,
       });
       if (trustedSender.trusted && trustedSender.invalid) {
-        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "invalid chat.send senderId"));
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "invalid chat.send senderId"),
+        );
         return;
       }
       if (trustedSender.present) {
@@ -2033,7 +2037,10 @@ export const chatHandlers: GatewayRequestHandlers = {
         ExplicitDeliverRoute: explicitDeliverRoute,
         AccountId: accountId,
         MessageThreadId: messageThreadId,
-        ChatType: "direct",
+        ChatType:
+          originatingChannel === "knox" && originatingTo?.toLowerCase().startsWith("room:")
+            ? "group"
+            : "direct",
         CommandAuthorized: true,
         MessageSid: clientRunId,
         ...(!isOperatorUiClient(clientInfo)

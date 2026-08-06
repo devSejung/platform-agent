@@ -16,7 +16,7 @@ ARG OPENCLAW_BUNDLED_CLAUDE_ACP_VERSION="0.25.0"
 ARG OPENCLAW_BUNDLED_CLAUDE_CODE_VERSION="1.0.119"
 ARG OPENCLAW_INSTALL_SKILL_NANO_PDF="1"
 
-FROM ubuntu:22.04 AS ext-deps
+FROM ubuntu:26.04 AS ext-deps
 ARG OPENCLAW_EXTENSIONS
 COPY extensions /tmp/extensions
 RUN mkdir -p /out && \
@@ -27,7 +27,7 @@ RUN mkdir -p /out && \
       fi; \
     done
 
-FROM ubuntu:22.04 AS build
+FROM ubuntu:26.04 AS build
 ARG OPENCLAW_NODE_VERSION
 ARG OPENCLAW_USE_COMPANY_APT
 ARG OPENCLAW_NODE_SHA256_AMD64
@@ -122,7 +122,7 @@ FROM build AS runtime-assets
 RUN CI=true pnpm prune --prod && \
     find dist -type f \( -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' -o -name '*.map' \) -delete
 
-FROM ubuntu:22.04 AS runtime
+FROM ubuntu:26.04 AS runtime
 ARG OPENCLAW_NODE_VERSION
 ARG OPENCLAW_USE_COMPANY_APT
 ARG OPENCLAW_NODE_SHA256_AMD64

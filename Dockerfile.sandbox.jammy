@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM ubuntu:22.04
+FROM ubuntu:26.04
 
 ARG OPENCLAW_NODE_VERSION="24.11.0"
 ARG OPENCLAW_USE_COMPANY_APT="0"
